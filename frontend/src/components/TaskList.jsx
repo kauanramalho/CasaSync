@@ -1,26 +1,9 @@
 import { useState } from "react";
 import { Check, Edit3, MoreHorizontal, RotateCcw, Trash2 } from "lucide-react";
 
-import Avatar from "./Avatar";
+import AssigneeStack from "./AssigneeStack";
 import { CategoryBadge, PriorityBadge, StatusBadge } from "./Badges";
 import { formatDate } from "../utils/formatters";
-import { getAssigneeNames, getTaskAssignees } from "../utils/tasks";
-
-function AssigneeStack({ task }) {
-  const assignees = getTaskAssignees(task);
-  if (!assignees.length) return <span className="text-sm font-medium text-muted">Sem responsável</span>;
-
-  return (
-    <div className="flex min-w-0 items-center gap-2 text-sm font-medium text-ink">
-      <div className="flex -space-x-2">
-        {assignees.slice(0, 4).map((assignee) => (
-          <Avatar key={assignee.id} user={assignee} size="sm" />
-        ))}
-      </div>
-      <span className="truncate">{getAssigneeNames(task)}</span>
-    </div>
-  );
-}
 
 export default function TaskList({ tasks = [], onComplete, onEdit, onRemoveRecent, compact = false }) {
   const [openMenuId, setOpenMenuId] = useState(null);
@@ -69,7 +52,7 @@ export default function TaskList({ tasks = [], onComplete, onEdit, onRemoveRecen
                 </p>
               )}
             </div>
-            <CategoryBadge category={task.category} />
+            <CategoryBadge category={task.category} className="w-full justify-start" />
             <AssigneeStack task={task} />
             <PriorityBadge priority={task.priority} />
             <span className="text-sm text-muted">{formatDate(task.due_date)}</span>

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CalendarClock, CheckCircle2, Clock3, Loader2, Search, Tag, UserRound } from "lucide-react";
+import { CalendarClock, CheckCircle2, Clock3, Loader2, Search, UserRound } from "lucide-react";
 
+import { CategoryBadge } from "./Badges";
 import { tasksApi } from "../services/api";
 import { formatDate, priorityLabels, statusLabels } from "../utils/formatters";
 import { getAssigneeNames, getTaskPointLabel } from "../utils/tasks";
@@ -140,10 +141,7 @@ export default function GlobalSearch() {
                     <div className="min-w-0">
                       <p className="truncate font-bold text-ink group-hover:text-blush">{task.title}</p>
                       <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-bold text-muted">
-                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-blue-600">
-                          <Tag className="h-3 w-3" />
-                          {task.category?.name || "Sem categoria"}
-                        </span>
+                        <CategoryBadge category={task.category} compact />
                         <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-1 text-violet-600">
                           <UserRound className="h-3 w-3" />
                           {getAssigneeNames(task)}

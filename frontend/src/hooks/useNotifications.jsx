@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
 
 const STORAGE_KEY = "casasync_notifications";
 const NotificationsContext = createContext(null);
@@ -24,15 +24,15 @@ function saveNotifications(notifications) {
 export function NotificationsProvider({ children }) {
   const [notifications, setNotifications] = useState(() => readNotifications());
 
-  function updateNotifications(updater) {
+  const updateNotifications = useCallback((updater) => {
     setNotifications((current) => {
       const next = updater(current);
       saveNotifications(next);
       return next;
     });
-  }
+  }, []);
 
-  function addNotification({ title, description, type = "info", actor }) {
+  const addNotification = useCallback(({ title, description, type = "info", actor }) => {
     updateNotifications((current) => [
       {
         id: createId(),
@@ -45,24 +45,24 @@ export function NotificationsProvider({ children }) {
       },
       ...current
     ].slice(0, 80));
-  }
+  }, [updateNotifications]);
 
-  function markAsRead(id) {
+  const markAsRead = useCallback((id) => {
     updateNotifications((current) => current.map((item) => (item.id === id ? { ...item, read: true } : item)));
-  }
+  }, [updateNotifications]);
 
-  function clearAll() {
+  const clearAll = useCallback(() => {
     updateNotifications(() => []);
-  }
+  }, [updateNotifications]);
 
-  function markAllAsRead() {
+  const markAllAsRead = useCallback(() => {
     updateNotifications((current) => current.map((item) => ({ ...item, read: true })));
-  }
+  }, [updateNotifications]);
 
   const value = useMemo(() => {
     const unreadCount = notifications.filter((item) => !item.read).length;
     return { notifications, unreadCount, addNotification, markAsRead, markAllAsRead, clearAll };
-  }, [notifications]);
+  }, [notifications, addNotification, markAsRead, markAllAsRead, clearAll]);
 
   return <NotificationsContext.Provider value={value}>{children}</NotificationsContext.Provider>;
 }

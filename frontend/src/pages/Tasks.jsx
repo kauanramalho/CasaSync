@@ -97,7 +97,7 @@ export default function Tasks() {
   };
 
   const categoryOptions = useMemo(
-    () => [{ value: "", label: "Categoria" }, ...categories.map((item) => ({ value: item.id, label: item.name }))],
+    () => [{ value: "", label: "Categoria" }, ...categories.map((item) => ({ value: item.id, label: item.name, category: item, helper: item.is_default ? "Padrao da familia" : "Personalizada" }))],
     [categories]
   );
 

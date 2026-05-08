@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { AlertCircle, CheckCircle2, Clock3, Plus, Star } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
+import { CategoryBadge } from "../components/Badges";
 import Button from "../components/Button";
 import Card from "../components/Card";
 import { WeeklyTasksTooltip } from "../components/ChartTooltips";
@@ -15,8 +16,12 @@ import { useNotifications } from "../hooks/useNotifications";
 import { categoriesApi, dashboardApi, familiesApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError } from "../utils/formatters";
-import { getCategoryTone } from "../utils/tasks";
 import { getHiddenRecentTaskIds, hideRecentTask } from "../utils/recentTasks";
+
+const chartTooltipProps = {
+  allowEscapeViewBox: { x: true, y: true },
+  wrapperStyle: { pointerEvents: "auto", zIndex: 60 }
+};
 
 const statMeta = {
   done: { icon: CheckCircle2, tone: "emerald" },
@@ -126,10 +131,10 @@ export default function Dashboard() {
     });
   }
 
-  const stats = dashboard?.stats ?? [];
-  const productivity = dashboard?.weekly_productivity ?? [];
-  const categories = dashboard?.tasks_by_category ?? [];
-  const ranking = dashboard?.ranking ?? [];
+  const stats = useMemo(() => dashboard?.stats ?? [], [dashboard]);
+  const productivity = useMemo(() => dashboard?.weekly_productivity ?? [], [dashboard]);
+  const categories = useMemo(() => dashboard?.tasks_by_category ?? [], [dashboard]);
+  const ranking = useMemo(() => dashboard?.ranking ?? [], [dashboard]);
   const recentTasks = (dashboard?.recent_tasks ?? []).filter((task) => !hiddenRecentIds.includes(task.id)).slice(0, 6);
   const productivityRows = useMemo(() => buildProductivityView(productivity, allTasks), [productivity, allTasks]);
 
@@ -180,7 +185,7 @@ export default function Dashboard() {
           <TaskList tasks={recentTasks} onComplete={handleComplete} onEdit={setEditingTask} onRemoveRecent={handleRemoveRecent} compact />
         </Card>
 
-        <Card className="overflow-hidden">
+        <Card>
           <div className="mb-5 flex items-center justify-between">
             <h2 className="section-title">Produtividade da semana</h2>
             <div className="flex flex-wrap items-center justify-end gap-2 text-[11px] font-bold">
@@ -189,18 +194,20 @@ export default function Dashboard() {
               <span className="rounded-full bg-rose-50 px-2.5 py-1 text-rose-700">Atrasadas</span>
             </div>
           </div>
-          <div className="h-72 rounded-[24px] bg-gradient-to-br from-white via-rose-50/40 to-blue-50/40 p-3">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={productivityRows} margin={{ top: 10, right: 8, left: -18, bottom: 0 }}>
-                <CartesianGrid vertical={false} stroke="#e8eef7" strokeDasharray="4 6" />
-                <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: "#687895", fontSize: 12 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: "#687895", fontSize: 12 }} />
-                <Tooltip cursor={{ fill: "rgba(255,241,244,0.65)" }} content={<WeeklyTasksTooltip />} />
-                <Bar dataKey="done" stackId="week" radius={[0, 0, 10, 10]} fill="#34d399" animationDuration={750} />
-                <Bar dataKey="pending" stackId="week" fill="#fbbf24" animationDuration={900} />
-                <Bar dataKey="overdue" stackId="week" radius={[12, 12, 0, 0]} fill="#fb7185" animationDuration={1050} />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="overflow-x-auto overflow-y-visible pb-2">
+            <div className="h-72 min-w-[560px] rounded-[24px] bg-gradient-to-br from-white via-rose-50/40 to-blue-50/40 p-3">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={productivityRows} margin={{ top: 10, right: 12, left: -12, bottom: 0 }}>
+                  <CartesianGrid vertical={false} stroke="#e8eef7" strokeDasharray="4 6" />
+                  <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: "#687895", fontSize: 12 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: "#687895", fontSize: 12 }} />
+                  <Tooltip cursor={{ fill: "rgba(255,241,244,0.65)" }} content={<WeeklyTasksTooltip />} {...chartTooltipProps} />
+                  <Bar dataKey="done" stackId="week" radius={[0, 0, 10, 10]} fill="#34d399" animationDuration={750} />
+                  <Bar dataKey="pending" stackId="week" fill="#fbbf24" animationDuration={900} />
+                  <Bar dataKey="overdue" stackId="week" radius={[12, 12, 0, 0]} fill="#fb7185" animationDuration={1050} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </Card>
       </div>
@@ -215,8 +222,8 @@ export default function Dashboard() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             {categories.slice(0, 6).map((item) => (
-              <div key={item.category} className={`rounded-2xl border p-4 ${getCategoryTone({ name: item.category, color: item.color })}`}>
-                <p className="font-semibold">{item.category}</p>
+              <div key={item.category} className="rounded-2xl border border-slate-100 bg-white/70 p-4 shadow-sm">
+                <CategoryBadge category={item} className="max-w-full" />
                 <p className="mt-1 text-sm opacity-80">{item.total} tarefas</p>
               </div>
             ))}

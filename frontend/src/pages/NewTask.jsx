@@ -40,7 +40,15 @@ export default function NewTask() {
   }, []);
 
   const categoryOptions = useMemo(
-    () => [{ value: "", label: "Sem categoria" }, ...categories.map((category) => ({ value: category.id, label: category.name, helper: category.is_default ? "Padrao da familia" : "Personalizada" }))],
+    () => [
+      { value: "", label: "Sem categoria" },
+      ...categories.map((category) => ({
+        value: category.id,
+        label: category.name,
+        category,
+        helper: category.is_default ? "Padrao da familia" : "Personalizada"
+      }))
+    ],
     [categories]
   );
 

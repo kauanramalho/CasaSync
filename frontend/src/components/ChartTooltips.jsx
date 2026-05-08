@@ -1,4 +1,5 @@
 import Avatar from "./Avatar";
+import { CategoryBadge } from "./Badges";
 import { statusLabels } from "../utils/formatters";
 import { getAssigneeNames, getTaskPointLabel } from "../utils/tasks";
 
@@ -11,7 +12,10 @@ const statusTone = {
 
 function TooltipShell({ children }) {
   return (
-    <div className="max-w-[340px] rounded-[22px] border border-rose-100 bg-white/95 p-4 text-sm text-ink shadow-soft backdrop-blur-xl animate-in">
+    <div
+      className="max-w-[360px] rounded-[22px] border border-rose-100 bg-white/95 p-4 text-sm text-ink shadow-soft backdrop-blur-xl animate-in"
+      onWheel={(event) => event.stopPropagation()}
+    >
       {children}
     </div>
   );
@@ -74,10 +78,14 @@ export function WeeklyTasksTooltip({ active, payload }) {
 export function CategoryTasksTooltip({ active, payload }) {
   if (!active || !payload?.length) return null;
   const category = payload[0].payload;
+  const percent = payload[0].percent ? Math.round(payload[0].percent * 100) : 0;
   return (
     <TooltipShell>
-      <p className="font-bold text-ink">{category.category}</p>
-      <p className="mt-1 text-sm font-semibold text-blue-500">{category.total} tarefas</p>
+      <div className="flex items-start justify-between gap-3">
+        <CategoryBadge category={category} />
+        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-600">{percent}%</span>
+      </div>
+      <p className="mt-3 text-sm font-semibold text-blue-500">{category.total} tarefas nesta categoria</p>
       <TaskRows tasks={category.tasks} label="Lista" tone="neutral" showStatus />
     </TooltipShell>
   );

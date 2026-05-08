@@ -1,3 +1,5 @@
+import { findColor } from "./categoryDesign";
+
 export const priorityPoints = {
   baixa: 5,
   media: 10,
@@ -80,8 +82,38 @@ export function getTaskPointLabel(task) {
 
 export function getCategoryTone(category) {
   const color = typeof category === "string" ? null : category?.color;
-  const name = typeof category === "string" ? category : category?.name;
+  const name = typeof category === "string" ? category : category?.name || category?.category;
   return categoryToneClasses[color] || categoryNameToneClasses[name] || "bg-slate-100 text-slate-600 border-slate-200";
+}
+
+export function getCategoryName(category, fallback = "Sem categoria") {
+  if (typeof category === "string") return category || fallback;
+  return category?.name || category?.category || fallback;
+}
+
+export function getCategoryColorKey(category) {
+  if (!category || typeof category === "string") return null;
+  return category.color || category.tasks?.[0]?.category?.color || null;
+}
+
+export function getCategoryHex(category, fallback = "#94a3b8") {
+  const color = findColor(getCategoryColorKey(category));
+  return color?.hex || fallback;
+}
+
+export function getCategoryIconKey(category) {
+  if (!category || typeof category === "string") return "sparkles";
+  return category.icon || category.tasks?.[0]?.category?.icon || "sparkles";
+}
+
+export function getCategoryMeta(category) {
+  return {
+    name: getCategoryName(category),
+    color: getCategoryColorKey(category),
+    hex: getCategoryHex(category),
+    icon: getCategoryIconKey(category),
+    tone: getCategoryTone(category)
+  };
 }
 
 export function normalizeTaskForForm(task) {
