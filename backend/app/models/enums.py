@@ -1,0 +1,26 @@
+from enum import Enum
+
+
+class FamilyRole(str, Enum):
+    OWNER = "owner"
+    MEMBER = "member"
+
+
+class TaskPriority(str, Enum):
+    LOW = "baixa"
+    MEDIUM = "media"
+    HIGH = "alta"
+
+
+class TaskStatus(str, Enum):
+    PENDING = "pendente"
+    IN_PROGRESS = "em_andamento"
+    DONE = "concluida"
+    OVERDUE = "atrasada"
+
+
+class GoalStatus(str, Enum):
+    ACTIVE = "ativa"
+    DONE = "concluida"
+    PAUSED = "pausada"
+

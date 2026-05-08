@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    min-height: 100vh;
+    color: #12213b;
+    background:
+      linear-gradient(135deg, rgba(255, 246, 242, 0.92), rgba(248, 250, 255, 0.88) 48%, rgba(245, 251, 255, 0.96)),
+      #fbfcff;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply border border-white/80 bg-white/78 shadow-card backdrop-blur-xl;
+  }
+
+  .soft-input {
+    @apply w-full rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-3 text-sm text-ink outline-none transition focus:border-rose-300 focus:ring-4 focus:ring-rose-100;
+  }
+
+  .page-title {
+    @apply text-2xl font-bold tracking-normal text-ink md:text-3xl;
+  }
+
+  .section-title {
+    @apply text-base font-semibold text-ink;
+  }
+}
+
