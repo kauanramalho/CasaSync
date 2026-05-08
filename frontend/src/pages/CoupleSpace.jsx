@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
-import { CalendarHeart, Heart, MessageCircleHeart, Plus, Target } from "lucide-react";
+import { CalendarHeart, Heart, MessageCircleHeart, Plus, Sparkles, Target } from "lucide-react";
 
 import Button from "../components/Button";
 import Card from "../components/Card";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../hooks/useAuth";
+import { useNotifications } from "../hooks/useNotifications";
 import { coupleApi } from "../services/api";
+import { emitAppDataChanged } from "../utils/events";
 import { formatDate, normalizeApiError } from "../utils/formatters";
 
 export default function CoupleSpace() {
   const { user } = useAuth();
+  const { addNotification } = useNotifications();
   const [space, setSpace] = useState({ goals: [], date_ideas: [], notes: [] });
   const [goalTitle, setGoalTitle] = useState("");
   const [dateTitle, setDateTitle] = useState("");
@@ -32,7 +35,14 @@ export default function CoupleSpace() {
     event.preventDefault();
     try {
       await coupleApi.createGoal({ title: goalTitle, target_date: null });
+      addNotification({
+        title: "Nova meta do casal",
+        description: `${goalTitle} entrou no cantinho de metas.`,
+        type: "couple",
+        actor: user?.name
+      });
       setGoalTitle("");
+      emitAppDataChanged();
       load();
     } catch (err) {
       setError(normalizeApiError(err));
@@ -43,7 +53,14 @@ export default function CoupleSpace() {
     event.preventDefault();
     try {
       await coupleApi.createDateIdea({ title: dateTitle, mood: "romântico" });
+      addNotification({
+        title: "Nova ideia de date",
+        description: `${dateTitle} foi adicionada para um momento especial.`,
+        type: "couple",
+        actor: user?.name
+      });
       setDateTitle("");
+      emitAppDataChanged();
       load();
     } catch (err) {
       setError(normalizeApiError(err));
@@ -54,7 +71,14 @@ export default function CoupleSpace() {
     event.preventDefault();
     try {
       await coupleApi.createNote({ message: note });
+      addNotification({
+        title: "Nova nota rápida",
+        description: "Uma mensagem carinhosa foi guardada no Espaço do Casal.",
+        type: "couple",
+        actor: user?.name
+      });
       setNote("");
+      emitAppDataChanged();
       load();
     } catch (err) {
       setError(normalizeApiError(err));
@@ -109,15 +133,33 @@ export default function CoupleSpace() {
         </Card>
 
         <div className="space-y-6">
-          <Card>
-            <h2 className="section-title">Metas do casal</h2>
-            <div className="mt-4 space-y-3">
+          <Card className="bg-gradient-to-br from-rose-50 via-white to-violet-50">
+            <div className="flex items-center gap-3">
+              <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-blush shadow-card">
+                <Sparkles className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="section-title">Metas do casal</h2>
+                <p className="text-sm text-muted">Planos pequenos, sonhos grandes.</p>
+              </div>
+            </div>
+            <div className="mt-5 space-y-3">
               {space.goals.map((goal) => (
-                <div key={goal.id} className="rounded-2xl bg-white/75 px-4 py-3">
-                  <p className="font-semibold text-ink">{goal.title}</p>
-                  <p className="mt-1 text-sm text-muted">{formatDate(goal.target_date, "Sem data definida")}</p>
+                <div key={goal.id} className="rounded-[22px] border border-white/80 bg-white/80 px-4 py-4 shadow-card">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-bold text-ink">{goal.title}</p>
+                      {goal.description && <p className="mt-2 text-sm leading-relaxed text-muted">{goal.description}</p>}
+                    </div>
+                    <span className="shrink-0 rounded-full bg-rose-50 px-3 py-1 text-xs font-bold text-blush">{goal.status || "ativa"}</span>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-muted">
+                    <CalendarHeart className="h-4 w-4 text-orange-400" />
+                    {formatDate(goal.target_date, "Sem data definida")}
+                  </div>
                 </div>
               ))}
+              {!space.goals.length && <p className="rounded-2xl bg-white/70 px-4 py-4 text-sm font-semibold text-muted">Nenhuma meta por enquanto.</p>}
             </div>
           </Card>
 
@@ -148,3 +190,4 @@ export default function CoupleSpace() {
     </>
   );
 }
+

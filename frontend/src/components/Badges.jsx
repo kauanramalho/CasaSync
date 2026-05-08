@@ -1,6 +1,7 @@
 import clsx from "clsx";
 
 import { priorityLabels, statusLabels } from "../utils/formatters";
+import { getCategoryTone } from "../utils/tasks";
 
 const categoryClasses = {
   Relacionamento: "bg-rose-50 text-rose-600",
@@ -34,7 +35,7 @@ function Pill({ children, className }) {
 
 export function CategoryBadge({ category }) {
   const name = typeof category === "string" ? category : category?.name;
-  return <Pill className={categoryClasses[name] || "bg-slate-100 text-slate-600"}>{name || "Sem categoria"}</Pill>;
+  return <Pill className={getCategoryTone(category) || categoryClasses[name] || "bg-slate-100 text-slate-600"}>{name || "Sem categoria"}</Pill>;
 }
 
 export function PriorityBadge({ priority }) {
@@ -44,4 +45,3 @@ export function PriorityBadge({ priority }) {
 export function StatusBadge({ status }) {
   return <Pill className={statusClasses[status] || statusClasses.pendente}>{statusLabels[status] || "Pendente"}</Pill>;
 }
-

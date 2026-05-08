@@ -27,7 +27,7 @@
 
 @layer components {
   .glass-panel {
-    @apply border border-white/80 bg-white/78 shadow-card backdrop-blur-xl;
+    @apply border border-white/80 bg-white/80 shadow-card backdrop-blur-xl;
   }
 
   .soft-input {

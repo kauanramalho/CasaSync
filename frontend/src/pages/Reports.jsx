@@ -5,6 +5,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Legend,
   Line,
   LineChart,
   Pie,
@@ -18,10 +19,12 @@ import {
 import Avatar from "../components/Avatar";
 import Button from "../components/Button";
 import Card from "../components/Card";
+import { CategoryTasksTooltip, MemberProductivityTooltip, WeeklyTasksTooltip } from "../components/ChartTooltips";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../hooks/useAuth";
 import { dashboardApi } from "../services/api";
 import { normalizeApiError } from "../utils/formatters";
+import { buildProductivityRows, memberChartColors } from "../utils/tasks";
 
 const chartColors = ["#7aa5ff", "#f85d8f", "#63c982", "#ffc77d", "#9d7cf4", "#61c9d6"];
 
@@ -39,8 +42,17 @@ export default function Reports() {
 
   const categoryData = dashboard?.tasks_by_category ?? [];
   const productivity = dashboard?.weekly_productivity ?? [];
+  const productivityRows = useMemo(() => buildProductivityRows(productivity), [productivity]);
   const ranking = dashboard?.ranking ?? [];
+  const stats = dashboard?.stats ?? [];
   const totalPoints = useMemo(() => ranking.reduce((sum, item) => sum + item.points, 0), [ranking]);
+  const completionRate = useMemo(() => {
+    const done = stats.find((item) => item.key === "done")?.value ?? 0;
+    const pending = stats.find((item) => item.key === "pending")?.value ?? 0;
+    const overdue = stats.find((item) => item.key === "overdue")?.value ?? 0;
+    const total = done + pending + overdue;
+    return total ? Math.round((done / total) * 100) : 0;
+  }, [stats]);
 
   return (
     <>
@@ -68,7 +80,7 @@ export default function Reports() {
                     <Cell key={index} fill={chartColors[index % chartColors.length]} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip content={<CategoryTasksTooltip />} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -78,12 +90,25 @@ export default function Reports() {
           <h2 className="section-title">Produtividade semanal</h2>
           <div className="mt-5 h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={productivity}>
+              <LineChart data={productivityRows}>
                 <CartesianGrid vertical={false} stroke="#edf1f7" />
                 <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: "#687895", fontSize: 12 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: "#687895", fontSize: 12 }} />
-                <Tooltip />
-                <Line type="monotone" dataKey="total" stroke="#f85d8f" strokeWidth={3} dot={{ r: 4 }} />
+                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "#687895", fontSize: 12 }} />
+                <Tooltip content={<MemberProductivityTooltip />} />
+                <Legend verticalAlign="bottom" height={28} iconType="circle" />
+                {ranking.map((item, index) => (
+                  <Line
+                    key={item.user.id}
+                    type="monotone"
+                    dataKey={`member_${item.user.id}`}
+                    name={item.user.name}
+                    stroke={memberChartColors[index % memberChartColors.length]}
+                    strokeWidth={3}
+                    dot={{ r: 4 }}
+                    activeDot={{ r: 6 }}
+                    connectNulls
+                  />
+                ))}
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -91,10 +116,10 @@ export default function Reports() {
 
         <Card>
           <h2 className="section-title">Média de conclusão</h2>
-          <p className="mt-8 text-5xl font-bold text-ink">84%</p>
-          <p className="mt-3 text-sm font-semibold text-emerald-600">+12% que a semana passada</p>
+          <p className="mt-8 text-5xl font-bold text-ink">{completionRate}%</p>
+          <p className="mt-3 text-sm font-semibold text-emerald-600">Atualizada pelos status das tarefas</p>
           <div className="mt-8 h-3 rounded-full bg-slate-100">
-            <div className="h-3 w-[84%] rounded-full bg-gradient-to-r from-emerald-400 to-blue-400" />
+            <div className="h-3 rounded-full bg-gradient-to-r from-emerald-400 to-blue-400" style={{ width: `${completionRate}%` }} />
           </div>
         </Card>
       </div>
@@ -140,8 +165,8 @@ export default function Reports() {
             <BarChart data={productivity}>
               <CartesianGrid vertical={false} stroke="#edf1f7" />
               <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: "#687895", fontSize: 12 }} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fill: "#687895", fontSize: 12 }} />
-              <Tooltip />
+              <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "#687895", fontSize: 12 }} />
+              <Tooltip cursor={{ fill: "#fff1f4" }} content={<WeeklyTasksTooltip />} />
               <Bar dataKey="total" fill="#7aa5ff" radius={[12, 12, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>

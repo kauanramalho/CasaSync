@@ -1,7 +1,7 @@
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.security import hash_password, verify_password
+from app.core.security import hash_password, password_needs_rehash, verify_password
 from app.models.user import User
 from app.schemas.user import UserCreate
 
@@ -15,7 +15,7 @@ def register_user(db: Session, payload: UserCreate) -> User:
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Já existe uma conta com este e-mail.",
+            detail="Ja existe uma conta com este e-mail.",
         )
 
     user = User(
@@ -34,7 +34,11 @@ def authenticate_user(db: Session, email: str, password: str) -> User:
     if not user or not verify_password(password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="E-mail ou senha inválidos.",
+            detail="E-mail ou senha invalidos.",
         )
+    if password_needs_rehash(user.hashed_password):
+        user.hashed_password = hash_password(password)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
     return user
-

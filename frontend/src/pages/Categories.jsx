@@ -7,6 +7,7 @@ import PageHeader from "../components/PageHeader";
 import { useAuth } from "../hooks/useAuth";
 import { categoriesApi } from "../services/api";
 import { normalizeApiError } from "../utils/formatters";
+import { getCategoryTone } from "../utils/tasks";
 
 const iconMap = {
   heart: Heart,
@@ -76,12 +77,12 @@ export default function Categories() {
             {categories.map((category) => {
               const Icon = iconMap[category.icon] ?? FolderPlus;
               return (
-                <div key={category.id} className="rounded-[24px] bg-white/75 p-5">
-                  <div className={`grid h-12 w-12 place-items-center rounded-2xl ${colorMap[category.color] || colorMap.rose}`}>
+                <div key={category.id} className={`rounded-[22px] border p-5 shadow-card ${getCategoryTone(category)}`}>
+                  <div className={`grid h-12 w-12 place-items-center rounded-2xl bg-white/75 ${colorMap[category.color] || colorMap.rose}`}>
                     <Icon className="h-6 w-6" />
                   </div>
-                  <p className="mt-4 font-bold text-ink">{category.name}</p>
-                  <p className="mt-1 text-sm text-muted">{category.is_default ? "Categoria padrão" : "Categoria personalizada"}</p>
+                  <p className="mt-4 font-bold">{category.name}</p>
+                  <p className="mt-1 text-sm opacity-80">{category.is_default ? "Categoria padrão" : "Categoria personalizada"}</p>
                 </div>
               );
             })}
@@ -109,4 +110,3 @@ export default function Categories() {
     </>
   );
 }
-

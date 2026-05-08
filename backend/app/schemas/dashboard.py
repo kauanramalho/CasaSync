@@ -15,6 +15,7 @@ class CategoryStat(BaseModel):
     category: str
     total: int
     color: str
+    tasks: list[TaskRead] = []
 
 
 class RankingItem(BaseModel):
@@ -26,13 +27,25 @@ class RankingItem(BaseModel):
 
 class ProductivityPoint(BaseModel):
     label: str
+    date: str
     total: int
+    tasks: list[TaskRead] = []
+
+
+class MemberProductivityPoint(BaseModel):
+    user: UserSummary
+    total: int
+    points: int
+    tasks: list[TaskRead] = []
+
+
+class DailyProductivityPoint(ProductivityPoint):
+    members: list[MemberProductivityPoint] = []
 
 
 class DashboardRead(BaseModel):
     stats: list[DashboardStat]
     tasks_by_category: list[CategoryStat]
     ranking: list[RankingItem]
-    weekly_productivity: list[ProductivityPoint]
+    weekly_productivity: list[DailyProductivityPoint]
     recent_tasks: list[TaskRead]
-

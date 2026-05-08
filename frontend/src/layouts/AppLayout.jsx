@@ -18,6 +18,7 @@ import LogoMark from "../components/LogoMark";
 import ProgressRing from "../components/ProgressRing";
 import { useAuth } from "../hooks/useAuth";
 import { dashboardApi, familiesApi } from "../services/api";
+import { APP_DATA_CHANGED_EVENT } from "../utils/events";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: Home },
@@ -56,8 +57,10 @@ export default function AppLayout() {
     }
 
     loadSidebarData();
+    window.addEventListener(APP_DATA_CHANGED_EVENT, loadSidebarData);
     return () => {
       alive = false;
+      window.removeEventListener(APP_DATA_CHANGED_EVENT, loadSidebarData);
     };
   }, []);
 
@@ -134,4 +137,3 @@ export default function AppLayout() {
     </div>
   );
 }
-

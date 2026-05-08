@@ -6,10 +6,14 @@ import Button from "../components/Button";
 import Card from "../components/Card";
 import PageHeader from "../components/PageHeader";
 import StatCard from "../components/StatCard";
+import TaskEditorModal from "../components/TaskEditorModal";
 import TaskList from "../components/TaskList";
 import { useAuth } from "../hooks/useAuth";
+import { useNotifications } from "../hooks/useNotifications";
 import { categoriesApi, familiesApi, tasksApi } from "../services/api";
+import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError } from "../utils/formatters";
+import { getTaskAssigneeIds } from "../utils/tasks";
 
 const statusTabs = [
   { key: "all", label: "Todas" },
@@ -20,6 +24,7 @@ const statusTabs = [
 
 export default function Tasks() {
   const { user } = useAuth();
+  const { addNotification } = useNotifications();
   const [tasks, setTasks] = useState([]);
   const [categories, setCategories] = useState([]);
   const [members, setMembers] = useState([]);
@@ -28,6 +33,8 @@ export default function Tasks() {
   const [assignee, setAssignee] = useState("");
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
+  const [editingTask, setEditingTask] = useState(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   async function load() {
     setError("");
@@ -49,7 +56,7 @@ export default function Tasks() {
     return tasks.filter((task) => {
       const matchesStatus = status === "all" || task.status === status;
       const matchesCategory = !category || task.category_id === category;
-      const matchesAssignee = !assignee || task.assignee_id === assignee;
+      const matchesAssignee = !assignee || getTaskAssigneeIds(task).includes(assignee);
       const matchesSearch = !search || task.title.toLowerCase().includes(search.toLowerCase());
       return matchesStatus && matchesCategory && matchesAssignee && matchesSearch;
     });
@@ -63,9 +70,36 @@ export default function Tasks() {
   };
 
   async function handleComplete(task) {
-    if (task.status === "concluida") return;
-    await tasksApi.complete(task.id);
+    const updated = await tasksApi.complete(task.id);
+    addNotification({
+      title: updated.status === "concluida" ? "Tarefa concluída" : "Tarefa reaberta",
+      description: updated.status === "concluida" ? `${updated.title} gerou pontos para os responsáveis.` : `${updated.title} voltou para pendente e os pontos foram removidos.`,
+      type: updated.status === "concluida" ? "done" : "reopened",
+      actor: user?.name
+    });
+    emitAppDataChanged();
     load();
+  }
+
+  async function handleSaveEdit(payload) {
+    if (!editingTask) return;
+    setSavingEdit(true);
+    try {
+      const updated = await tasksApi.update(editingTask.id, payload);
+      addNotification({
+        title: "Tarefa editada",
+        description: `${updated.title} foi atualizada. Responsáveis, prazo, prioridade e status já refletem nos relatórios.`,
+        type: "task",
+        actor: user?.name
+      });
+      setEditingTask(null);
+      emitAppDataChanged();
+      load();
+    } catch (err) {
+      setError(normalizeApiError(err));
+    } finally {
+      setSavingEdit(false);
+    }
   }
 
   return (
@@ -132,8 +166,18 @@ export default function Tasks() {
             </Button>
           </div>
         </div>
-        <TaskList tasks={filteredTasks} onComplete={handleComplete} />
+        <TaskList tasks={filteredTasks} onComplete={handleComplete} onEdit={setEditingTask} />
       </Card>
+
+      <TaskEditorModal
+        task={editingTask}
+        categories={categories}
+        members={members}
+        saving={savingEdit}
+        onClose={() => setEditingTask(null)}
+        onSave={handleSaveEdit}
+      />
     </>
   );
 }
+

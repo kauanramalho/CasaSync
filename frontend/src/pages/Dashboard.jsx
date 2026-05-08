@@ -5,12 +5,18 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 
 import Button from "../components/Button";
 import Card from "../components/Card";
+import { WeeklyTasksTooltip } from "../components/ChartTooltips";
 import PageHeader from "../components/PageHeader";
 import StatCard from "../components/StatCard";
+import TaskEditorModal from "../components/TaskEditorModal";
 import TaskList from "../components/TaskList";
 import { useAuth } from "../hooks/useAuth";
-import { dashboardApi, tasksApi } from "../services/api";
+import { useNotifications } from "../hooks/useNotifications";
+import { categoriesApi, dashboardApi, familiesApi, tasksApi } from "../services/api";
+import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError } from "../utils/formatters";
+import { getCategoryTone } from "../utils/tasks";
+import { getHiddenRecentTaskIds, hideRecentTask } from "../utils/recentTasks";
 
 const statMeta = {
   done: { icon: CheckCircle2, tone: "emerald" },
@@ -21,7 +27,13 @@ const statMeta = {
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { addNotification } = useNotifications();
   const [dashboard, setDashboard] = useState(null);
+  const [categoriesRows, setCategoriesRows] = useState([]);
+  const [members, setMembers] = useState([]);
+  const [hiddenRecentIds, setHiddenRecentIds] = useState(() => getHiddenRecentTaskIds());
+  const [editingTask, setEditingTask] = useState(null);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -29,7 +41,10 @@ export default function Dashboard() {
     setLoading(true);
     setError("");
     try {
-      setDashboard(await dashboardApi.get());
+      const [dashboardRows, categoryRows, memberRows] = await Promise.all([dashboardApi.get(), categoriesApi.list(), familiesApi.members()]);
+      setDashboard(dashboardRows);
+      setCategoriesRows(categoryRows);
+      setMembers(memberRows);
     } catch (err) {
       setError(normalizeApiError(err));
     } finally {
@@ -42,16 +57,53 @@ export default function Dashboard() {
   }, []);
 
   async function handleComplete(task) {
-    if (task.status === "concluida") return;
-    await tasksApi.complete(task.id);
+    const updated = await tasksApi.complete(task.id);
+    addNotification({
+      title: updated.status === "concluida" ? "Tarefa concluída" : "Tarefa reaberta",
+      description: updated.status === "concluida" ? `${updated.title} somou pontos no ranking.` : `${updated.title} voltou para pendente e removeu os pontos.`,
+      type: updated.status === "concluida" ? "done" : "reopened",
+      actor: user?.name
+    });
+    emitAppDataChanged();
     load();
   }
 
+  async function handleSaveEdit(payload) {
+    if (!editingTask) return;
+    setSavingEdit(true);
+    try {
+      const updated = await tasksApi.update(editingTask.id, payload);
+      addNotification({
+        title: "Tarefa editada",
+        description: `${updated.title} foi atualizada nas recentes e nos relatórios.`,
+        type: "task",
+        actor: user?.name
+      });
+      setEditingTask(null);
+      emitAppDataChanged();
+      load();
+    } catch (err) {
+      setError(normalizeApiError(err));
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  function handleRemoveRecent(task) {
+    setHiddenRecentIds(hideRecentTask(task.id));
+    addNotification({
+      title: "Tarefa removida das recentes",
+      description: `${task.title} continua salva em tarefas, relatórios e estatísticas.`,
+      type: "task",
+      actor: user?.name
+    });
+  }
+
   const stats = dashboard?.stats ?? [];
-  const recentTasks = dashboard?.recent_tasks ?? [];
   const productivity = dashboard?.weekly_productivity ?? [];
   const categories = dashboard?.tasks_by_category ?? [];
   const ranking = dashboard?.ranking ?? [];
+  const recentTasks = (dashboard?.recent_tasks ?? []).filter((task) => !hiddenRecentIds.includes(task.id)).slice(0, 6);
 
   const greeting = useMemo(() => {
     const firstName = user?.name?.split(" ")[0] || "família";
@@ -97,7 +149,7 @@ export default function Dashboard() {
               Nova tarefa
             </Link>
           </div>
-          <TaskList tasks={recentTasks} onComplete={handleComplete} compact />
+          <TaskList tasks={recentTasks} onComplete={handleComplete} onEdit={setEditingTask} onRemoveRecent={handleRemoveRecent} compact />
         </Card>
 
         <Card>
@@ -111,7 +163,7 @@ export default function Dashboard() {
                 <CartesianGrid vertical={false} stroke="#edf1f7" />
                 <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: "#687895", fontSize: 12 }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: "#687895", fontSize: 12 }} />
-                <Tooltip cursor={{ fill: "#fff1f4" }} />
+                <Tooltip cursor={{ fill: "#fff1f4" }} content={<WeeklyTasksTooltip />} />
                 <Bar dataKey="total" radius={[12, 12, 0, 0]} fill="#7aa5ff" />
               </BarChart>
             </ResponsiveContainer>
@@ -129,9 +181,9 @@ export default function Dashboard() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             {categories.slice(0, 6).map((item) => (
-              <div key={item.category} className="rounded-2xl bg-white/75 p-4">
-                <p className="font-semibold text-ink">{item.category}</p>
-                <p className="mt-1 text-sm text-muted">{item.total} tarefas</p>
+              <div key={item.category} className={`rounded-2xl border p-4 ${getCategoryTone({ name: item.category, color: item.color })}`}>
+                <p className="font-semibold">{item.category}</p>
+                <p className="mt-1 text-sm opacity-80">{item.total} tarefas</p>
               </div>
             ))}
           </div>
@@ -178,6 +230,16 @@ export default function Dashboard() {
           </div>
         </Card>
       </div>
+
+      <TaskEditorModal
+        task={editingTask}
+        categories={categoriesRows}
+        members={members}
+        saving={savingEdit}
+        onClose={() => setEditingTask(null)}
+        onSave={handleSaveEdit}
+      />
     </>
   );
 }
+

@@ -17,4 +17,4 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     memberships = relationship("FamilyMember", back_populates="user", cascade="all, delete-orphan")
     created_tasks = relationship("Task", back_populates="creator", foreign_keys="Task.creator_id")
     assigned_tasks = relationship("Task", back_populates="assignee", foreign_keys="Task.assignee_id")
-
+    task_assignment_links = relationship("TaskAssignee", back_populates="user", cascade="all, delete-orphan")
