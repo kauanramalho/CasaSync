@@ -17,9 +17,21 @@ class FamilyJoin(BaseModel):
 class FamilyRead(ORMModel):
     id: str
     name: str
+    description: str | None = None
+    image_url: str | None = None
     invite_code: str
     created_by_id: str | None = None
     created_at: datetime
+
+
+class FamilyUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=140)
+    description: str | None = Field(default=None, max_length=1200)
+    image_url: str | None = None
+
+
+class FamilyMemberUpdate(BaseModel):
+    role: str = Field(pattern="^(admin|member)$")
 
 
 class FamilyMemberRead(ORMModel):
@@ -30,4 +42,3 @@ class FamilyMemberRead(ORMModel):
     points: int
     created_at: datetime
     user: UserSummary
-

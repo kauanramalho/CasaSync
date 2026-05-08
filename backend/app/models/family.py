@@ -1,4 +1,4 @@
-from sqlalchemy import Column, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Column, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.database.base import Base
@@ -10,6 +10,8 @@ class Family(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "families"
 
     name = Column(String(140), nullable=False)
+    description = Column(Text, nullable=True)
+    image_url = Column(Text, nullable=True)
     invite_code = Column(String(16), unique=True, index=True, nullable=False)
     created_by_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
@@ -32,4 +34,3 @@ class FamilyMember(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     family = relationship("Family", back_populates="members")
     user = relationship("User", back_populates="memberships")
-

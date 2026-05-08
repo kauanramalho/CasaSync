@@ -6,8 +6,8 @@ from app.core.security import create_access_token
 from app.database.session import get_db
 from app.models.user import User
 from app.schemas.token import AuthResponse
-from app.schemas.user import UserCreate, UserLogin, UserRead
-from app.services.auth_service import authenticate_user, register_user
+from app.schemas.user import PasswordUpdate, UserCreate, UserLogin, UserRead, UserUpdate
+from app.services.auth_service import authenticate_user, change_user_password, register_user, update_user_profile
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -29,3 +29,13 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
 def me(current_user: User = Depends(get_current_user)):
     return current_user
 
+
+@router.patch("/me", response_model=UserRead)
+def update_me(payload: UserUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return update_user_profile(db, current_user, payload)
+
+
+@router.post("/me/password", status_code=204)
+def update_password(payload: PasswordUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    change_user_password(db, current_user, payload)
+    return None

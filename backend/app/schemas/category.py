@@ -9,6 +9,12 @@ class CategoryCreate(BaseModel):
     icon: str = "sparkles"
 
 
+class CategoryUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=80)
+    color: str | None = None
+    icon: str | None = None
+
+
 class CategoryRead(ORMModel):
     id: str
     family_id: str
@@ -16,4 +22,3 @@ class CategoryRead(ORMModel):
     color: str
     icon: str
     is_default: bool
-

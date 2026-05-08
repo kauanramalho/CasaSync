@@ -25,11 +25,37 @@ const statMeta = {
   points: { icon: Star, tone: "violet" }
 };
 
+function dateKey(value) {
+  if (!value) return "";
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+function buildProductivityView(productivity = [], tasks = []) {
+  return productivity.map((point) => {
+    const doneTasks = point.tasks?.length ? point.tasks : tasks.filter((task) => task.status === "concluida" && dateKey(task.completed_at) === point.date);
+    const dueTasks = tasks.filter((task) => dateKey(task.due_date) === point.date);
+    const pendingTasks = dueTasks.filter((task) => ["pendente", "em_andamento"].includes(task.status));
+    const overdueTasks = dueTasks.filter((task) => task.status === "atrasada");
+
+    return {
+      ...point,
+      done: doneTasks.length,
+      pending: pendingTasks.length,
+      overdue: overdueTasks.length,
+      total: doneTasks.length + pendingTasks.length + overdueTasks.length,
+      doneTasks,
+      pendingTasks,
+      overdueTasks
+    };
+  });
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const { addNotification } = useNotifications();
   const [dashboard, setDashboard] = useState(null);
   const [categoriesRows, setCategoriesRows] = useState([]);
+  const [allTasks, setAllTasks] = useState([]);
   const [members, setMembers] = useState([]);
   const [hiddenRecentIds, setHiddenRecentIds] = useState(() => getHiddenRecentTaskIds());
   const [editingTask, setEditingTask] = useState(null);
@@ -41,10 +67,11 @@ export default function Dashboard() {
     setLoading(true);
     setError("");
     try {
-      const [dashboardRows, categoryRows, memberRows] = await Promise.all([dashboardApi.get(), categoriesApi.list(), familiesApi.members()]);
+      const [dashboardRows, categoryRows, memberRows, taskRows] = await Promise.all([dashboardApi.get(), categoriesApi.list(), familiesApi.members(), tasksApi.list()]);
       setDashboard(dashboardRows);
       setCategoriesRows(categoryRows);
       setMembers(memberRows);
+      setAllTasks(taskRows);
     } catch (err) {
       setError(normalizeApiError(err));
     } finally {
@@ -104,6 +131,7 @@ export default function Dashboard() {
   const categories = dashboard?.tasks_by_category ?? [];
   const ranking = dashboard?.ranking ?? [];
   const recentTasks = (dashboard?.recent_tasks ?? []).filter((task) => !hiddenRecentIds.includes(task.id)).slice(0, 6);
+  const productivityRows = useMemo(() => buildProductivityView(productivity, allTasks), [productivity, allTasks]);
 
   const greeting = useMemo(() => {
     const firstName = user?.name?.split(" ")[0] || "família";
@@ -152,19 +180,25 @@ export default function Dashboard() {
           <TaskList tasks={recentTasks} onComplete={handleComplete} onEdit={setEditingTask} onRemoveRecent={handleRemoveRecent} compact />
         </Card>
 
-        <Card>
+        <Card className="overflow-hidden">
           <div className="mb-5 flex items-center justify-between">
             <h2 className="section-title">Produtividade da semana</h2>
-            <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-muted">Esta semana</span>
+            <div className="flex flex-wrap items-center justify-end gap-2 text-[11px] font-bold">
+              <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">Concluidas</span>
+              <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">Pendentes</span>
+              <span className="rounded-full bg-rose-50 px-2.5 py-1 text-rose-700">Atrasadas</span>
+            </div>
           </div>
-          <div className="h-72">
+          <div className="h-72 rounded-[24px] bg-gradient-to-br from-white via-rose-50/40 to-blue-50/40 p-3">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={productivity}>
-                <CartesianGrid vertical={false} stroke="#edf1f7" />
+              <BarChart data={productivityRows} margin={{ top: 10, right: 8, left: -18, bottom: 0 }}>
+                <CartesianGrid vertical={false} stroke="#e8eef7" strokeDasharray="4 6" />
                 <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: "#687895", fontSize: 12 }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: "#687895", fontSize: 12 }} />
-                <Tooltip cursor={{ fill: "#fff1f4" }} content={<WeeklyTasksTooltip />} />
-                <Bar dataKey="total" radius={[12, 12, 0, 0]} fill="#7aa5ff" />
+                <Tooltip cursor={{ fill: "rgba(255,241,244,0.65)" }} content={<WeeklyTasksTooltip />} />
+                <Bar dataKey="done" stackId="week" radius={[0, 0, 10, 10]} fill="#34d399" animationDuration={750} />
+                <Bar dataKey="pending" stackId="week" fill="#fbbf24" animationDuration={900} />
+                <Bar dataKey="overdue" stackId="week" radius={[12, 12, 0, 0]} fill="#fb7185" animationDuration={1050} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -196,12 +230,18 @@ export default function Dashboard() {
               Ver mais
             </Link>
           </div>
-          <div className="rounded-[24px] bg-rose-50/80 p-4">
+          <div className="rounded-[24px] bg-gradient-to-br from-rose-50 via-white to-violet-50 p-4 shadow-card">
             <p className="text-center font-semibold text-ink">Nosso cantinho especial</p>
             <div className="mt-4 space-y-3 text-sm text-ink">
-              <p className="rounded-2xl bg-white/70 px-4 py-3">Próximo date: cinema em casa</p>
-              <p className="rounded-2xl bg-white/70 px-4 py-3">Meta do mês: viajar juntos</p>
-              <p className="rounded-2xl bg-white/70 px-4 py-3">Mensagem do dia: "Te amo!"</p>
+              <p className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3 shadow-card transition hover:-translate-y-0.5">
+                <span className="font-bold text-blush">Próximo date</span> cinema em casa
+              </p>
+              <p className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3 shadow-card transition hover:-translate-y-0.5">
+                <span className="font-bold text-orange-500">Meta do mês</span> viajar juntos
+              </p>
+              <p className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3 shadow-card transition hover:-translate-y-0.5">
+                <span className="font-bold text-lavender">Mensagem</span> "Te amo!"
+              </p>
             </div>
           </div>
         </Card>
@@ -242,4 +282,3 @@ export default function Dashboard() {
     </>
   );
 }
-

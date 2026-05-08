@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, String
+from sqlalchemy import Boolean, Column, String, Text
 from sqlalchemy.orm import relationship
 
 from app.database.base import Base
@@ -9,9 +9,10 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "users"
 
     name = Column(String(120), nullable=False)
+    username = Column(String(80), nullable=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
-    avatar_url = Column(String(500), nullable=True)
+    avatar_url = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
 
     memberships = relationship("FamilyMember", back_populates="user", cascade="all, delete-orphan")

@@ -5,6 +5,32 @@
 @layer base {
   * {
     box-sizing: border-box;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(248, 93, 143, 0.45) rgba(255, 255, 255, 0.2);
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.28);
+    border-radius: 999px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(255, 155, 115, 0.72), rgba(248, 93, 143, 0.72));
+    border: 2px solid rgba(255, 255, 255, 0.75);
+    border-radius: 999px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(255, 155, 115, 0.95), rgba(248, 93, 143, 0.95));
+  }
+
+  html {
+    scroll-behavior: smooth;
   }
 
   body {
@@ -23,15 +49,31 @@
   select {
     font: inherit;
   }
+
+  button,
+  a,
+  input,
+  textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: 3px solid rgba(248, 93, 143, 0.22);
+    outline-offset: 3px;
+  }
 }
 
 @layer components {
   .glass-panel {
-    @apply border border-white/80 bg-white/80 shadow-card backdrop-blur-xl;
+    @apply border border-white/80 bg-white/80 shadow-card backdrop-blur-xl transition duration-300;
   }
 
   .soft-input {
-    @apply w-full rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-3 text-sm text-ink outline-none transition focus:border-rose-300 focus:ring-4 focus:ring-rose-100;
+    @apply w-full rounded-2xl border border-slate-200/80 bg-white/90 px-4 py-3 text-sm text-ink outline-none transition duration-200 placeholder:text-slate-400 hover:border-rose-200 focus:border-rose-300 focus:bg-white focus:ring-4 focus:ring-rose-100;
   }
 
   .page-title {
@@ -41,5 +83,41 @@
   .section-title {
     @apply text-base font-semibold text-ink;
   }
+
+  .animate-in {
+    animation: fade-up 180ms ease-out both;
+  }
+
+  .soft-scroll {
+    @apply overflow-y-auto pr-1;
+  }
+
+  .surface-hover {
+    @apply transition duration-300 hover:-translate-y-0.5 hover:shadow-soft;
+  }
+
+  .empty-state {
+    @apply rounded-2xl border border-dashed border-rose-100 bg-rose-50/50 px-4 py-8 text-center text-sm font-semibold text-muted;
+  }
 }
 
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes float-soft {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}

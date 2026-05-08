@@ -10,8 +10,8 @@ export default function StatCard({ icon: Icon, label, value, hint, tone = "rose"
   };
 
   return (
-    <Card className="flex min-h-[132px] items-center gap-4">
-      <div className={`grid h-14 w-14 place-items-center rounded-2xl ${tones[tone]}`}>
+    <Card className="surface-hover flex min-h-[132px] items-center gap-4 overflow-hidden">
+      <div className={`grid h-14 w-14 place-items-center rounded-2xl shadow-card ${tones[tone]}`}>
         <Icon className="h-7 w-7" />
       </div>
       <div>
@@ -22,4 +22,3 @@ export default function StatCard({ icon: Icon, label, value, hint, tone = "rose"
     </Card>
   );
 }
-

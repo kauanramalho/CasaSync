@@ -3,6 +3,7 @@ import { CalendarClock, Save, X } from "lucide-react";
 
 import AssigneePicker from "./AssigneePicker";
 import Button from "./Button";
+import SelectMenu from "./SelectMenu";
 import { formatDateTimeLocal, toIsoOrNull } from "../utils/formatters";
 import { normalizeTaskForForm, priorityPoints } from "../utils/tasks";
 
@@ -20,6 +21,11 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
     const selected = new Set(form.assignee_ids);
     return members.filter((member) => selected.has(member.user_id));
   }, [form.assignee_ids, members]);
+
+  const categoryOptions = useMemo(
+    () => [{ value: "", label: "Sem categoria" }, ...categories.map((category) => ({ value: category.id, label: category.name, helper: category.is_default ? "Padrao da familia" : "Personalizada" }))],
+    [categories]
+  );
 
   if (!task) return null;
 
@@ -43,11 +49,11 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/25 px-4 py-8 backdrop-blur-sm">
-      <div className="max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-soft">
+      <div className="max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-soft animate-in">
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
           <div>
             <p className="section-title">Editar tarefa</p>
-            <p className="mt-1 text-sm text-muted">Ajuste responsáveis, status, prioridade e prazo em um só lugar.</p>
+            <p className="mt-1 text-sm text-muted">Ajuste responsaveis, status, prioridade e prazo em um so lugar.</p>
           </div>
           <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-2xl bg-slate-50 text-muted hover:text-ink">
             <X className="h-5 w-5" />
@@ -62,13 +68,13 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
             </div>
 
             <div className="md:col-span-2">
-              <label className="mb-2 block text-sm font-semibold text-ink">Descrição</label>
+              <label className="mb-2 block text-sm font-semibold text-ink">Descricao</label>
               <textarea className="soft-input min-h-24 resize-none" value={form.description} onChange={(event) => updateField("description", event.target.value)} />
             </div>
 
             <div className="md:col-span-2">
               <div className="mb-2 flex items-center justify-between gap-3">
-                <label className="block text-sm font-semibold text-ink">Responsáveis</label>
+                <label className="block text-sm font-semibold text-ink">Responsaveis</label>
                 <span className="text-xs font-semibold text-muted">{selectedMembers.length || 1} selecionado(s)</span>
               </div>
               <AssigneePicker members={members} value={form.assignee_ids} onChange={(value) => updateField("assignee_ids", value)} />
@@ -76,23 +82,20 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
 
             <div>
               <label className="mb-2 block text-sm font-semibold text-ink">Categoria</label>
-              <select className="soft-input" value={form.category_id} onChange={(event) => updateField("category_id", event.target.value)}>
-                <option value="">Sem categoria</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
+              <SelectMenu value={form.category_id} onChange={(value) => updateField("category_id", value)} options={categoryOptions} />
             </div>
 
             <div>
               <label className="mb-2 block text-sm font-semibold text-ink">Prioridade</label>
-              <select className="soft-input" value={form.priority} onChange={(event) => updateField("priority", event.target.value)}>
-                <option value="baixa">Baixa · {priorityPoints.baixa} pontos</option>
-                <option value="media">Média · {priorityPoints.media} pontos</option>
-                <option value="alta">Alta · {priorityPoints.alta} pontos</option>
-              </select>
+              <SelectMenu
+                value={form.priority}
+                onChange={(value) => updateField("priority", value)}
+                options={[
+                  { value: "baixa", label: "Baixa", helper: `${priorityPoints.baixa} pontos` },
+                  { value: "media", label: "Media", helper: `${priorityPoints.media} pontos` },
+                  { value: "alta", label: "Alta", helper: `${priorityPoints.alta} pontos` }
+                ]}
+              />
             </div>
 
             <div>
@@ -105,12 +108,16 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
 
             <div>
               <label className="mb-2 block text-sm font-semibold text-ink">Status</label>
-              <select className="soft-input" value={form.status} onChange={(event) => updateField("status", event.target.value)}>
-                <option value="pendente">Pendente</option>
-                <option value="em_andamento">Em andamento</option>
-                <option value="concluida">Concluída</option>
-                <option value="atrasada">Atrasada</option>
-              </select>
+              <SelectMenu
+                value={form.status}
+                onChange={(value) => updateField("status", value)}
+                options={[
+                  { value: "pendente", label: "Pendente", helper: "Aguardando acao" },
+                  { value: "em_andamento", label: "Em andamento", helper: "Ja comecou" },
+                  { value: "concluida", label: "Concluida", helper: "Pontua no ranking" },
+                  { value: "atrasada", label: "Atrasada", helper: "Precisa de atencao" }
+                ]}
+              />
             </div>
           </div>
 
@@ -120,7 +127,7 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
             </Button>
             <Button type="submit" disabled={saving}>
               <Save className="h-5 w-5" />
-              Salvar edição
+              Salvar edicao
             </Button>
           </div>
         </form>
@@ -128,4 +135,3 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
     </div>
   );
 }
-

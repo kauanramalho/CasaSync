@@ -1,22 +1,67 @@
 import { useEffect, useState } from "react";
-import { CalendarHeart, Heart, MessageCircleHeart, Plus, Sparkles, Target } from "lucide-react";
+import {
+  CalendarHeart,
+  CheckCircle2,
+  Clock3,
+  ExternalLink,
+  Heart,
+  ImagePlus,
+  Link2,
+  MapPin,
+  MessageCircleHeart,
+  PiggyBank,
+  Plus,
+  Save,
+  Sparkles,
+  Target,
+  Trash2,
+  UserRound
+} from "lucide-react";
 
 import Button from "../components/Button";
 import Card from "../components/Card";
 import PageHeader from "../components/PageHeader";
+import SelectMenu from "../components/SelectMenu";
 import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
 import { coupleApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
-import { formatDate, normalizeApiError } from "../utils/formatters";
+import { formatDate, normalizeApiError, toIsoOrNull } from "../utils/formatters";
+
+const initialGoal = { title: "", description: "", target_date: "", progress: 0 };
+const initialDate = { title: "", description: "", location: "", budget: "", external_url: "", image_url: "", mood: "romantico" };
+const initialNote = { message: "", color: "rose" };
+
+const noteColors = {
+  rose: "bg-rose-50 border-rose-100 text-rose-900",
+  peach: "bg-orange-50 border-orange-100 text-orange-900",
+  lavender: "bg-violet-50 border-violet-100 text-violet-900",
+  mint: "bg-emerald-50 border-emerald-100 text-emerald-900",
+  sky: "bg-blue-50 border-blue-100 text-blue-900"
+};
+
+function domainFromUrl(url) {
+  if (!url) return "";
+  try {
+    return new URL(url).hostname.replace("www.", "");
+  } catch {
+    return url;
+  }
+}
+
+function formatTime(value) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+}
 
 export default function CoupleSpace() {
   const { user } = useAuth();
   const { addNotification } = useNotifications();
   const [space, setSpace] = useState({ goals: [], date_ideas: [], notes: [] });
-  const [goalTitle, setGoalTitle] = useState("");
-  const [dateTitle, setDateTitle] = useState("");
-  const [note, setNote] = useState("");
+  const [goalForm, setGoalForm] = useState(initialGoal);
+  const [dateForm, setDateForm] = useState(initialDate);
+  const [noteForm, setNoteForm] = useState(initialNote);
+  const [editingNote, setEditingNote] = useState(null);
   const [error, setError] = useState("");
 
   async function load() {
@@ -34,50 +79,64 @@ export default function CoupleSpace() {
   async function createGoal(event) {
     event.preventDefault();
     try {
-      await coupleApi.createGoal({ title: goalTitle, target_date: null });
-      addNotification({
-        title: "Nova meta do casal",
-        description: `${goalTitle} entrou no cantinho de metas.`,
-        type: "couple",
-        actor: user?.name
+      await coupleApi.createGoal({
+        ...goalForm,
+        progress: Number(goalForm.progress) || 0,
+        target_date: toIsoOrNull(goalForm.target_date)
       });
-      setGoalTitle("");
+      addNotification({ title: "Nova meta do casal", description: `${goalForm.title} entrou no cantinho de metas.`, type: "couple", actor: user?.name });
+      setGoalForm(initialGoal);
       emitAppDataChanged();
       load();
     } catch (err) {
       setError(normalizeApiError(err));
     }
+  }
+
+  async function updateGoal(goal, payload) {
+    try {
+      await coupleApi.updateGoal(goal.id, payload);
+      emitAppDataChanged();
+      load();
+    } catch (err) {
+      setError(normalizeApiError(err));
+    }
+  }
+
+  async function removeGoal(goal) {
+    await coupleApi.deleteGoal(goal.id);
+    load();
   }
 
   async function createDateIdea(event) {
     event.preventDefault();
     try {
-      await coupleApi.createDateIdea({ title: dateTitle, mood: "romântico" });
-      addNotification({
-        title: "Nova ideia de date",
-        description: `${dateTitle} foi adicionada para um momento especial.`,
-        type: "couple",
-        actor: user?.name
-      });
-      setDateTitle("");
+      await coupleApi.createDateIdea({ ...dateForm, suggested_date: null });
+      addNotification({ title: "Nova ideia de date", description: `${dateForm.title} foi adicionada para um momento especial.`, type: "couple", actor: user?.name });
+      setDateForm(initialDate);
       emitAppDataChanged();
       load();
     } catch (err) {
       setError(normalizeApiError(err));
     }
+  }
+
+  async function toggleDateIdea(idea) {
+    await coupleApi.updateDateIdea(idea.id, { is_done: !idea.is_done });
+    load();
+  }
+
+  async function removeDateIdea(idea) {
+    await coupleApi.deleteDateIdea(idea.id);
+    load();
   }
 
   async function createNote(event) {
     event.preventDefault();
     try {
-      await coupleApi.createNote({ message: note });
-      addNotification({
-        title: "Nova nota rápida",
-        description: "Uma mensagem carinhosa foi guardada no Espaço do Casal.",
-        type: "couple",
-        actor: user?.name
-      });
-      setNote("");
+      await coupleApi.createNote(noteForm);
+      addNotification({ title: "Nova nota rapida", description: "Uma mensagem carinhosa foi guardada no Espaco do Casal.", type: "couple", actor: user?.name });
+      setNoteForm(initialNote);
       emitAppDataChanged();
       load();
     } catch (err) {
@@ -85,58 +144,119 @@ export default function CoupleSpace() {
     }
   }
 
+  async function saveNote() {
+    if (!editingNote) return;
+    await coupleApi.updateNote(editingNote.id, { message: editingNote.message, color: editingNote.color });
+    setEditingNote(null);
+    load();
+  }
+
+  async function removeNote(note) {
+    await coupleApi.deleteNote(note.id);
+    load();
+  }
+
   return (
     <>
-      <PageHeader title="Espaço do Casal" subtitle="Metas, ideias de dates, relacionamento e mensagens rápidas." user={user} />
+      <PageHeader title="Espaco do Casal" subtitle="Metas, ideias de dates, relacionamento e mensagens rapidas." user={user} />
       {error && <p className="mb-5 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</p>}
 
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card className="bg-rose-50/70">
-          <div className="flex items-center gap-3">
-            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white text-blush">
-              <Heart className="h-6 w-6" />
-            </div>
-            <div>
-              <h2 className="section-title">Nosso cantinho especial</h2>
-              <p className="text-sm text-muted">Pequenas ações que mantêm a conexão visível.</p>
-            </div>
-          </div>
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            <form onSubmit={createGoal} className="rounded-[24px] bg-white/80 p-4">
-              <Target className="h-5 w-5 text-blush" />
-              <p className="mt-3 font-bold text-ink">Meta</p>
-              <input className="soft-input mt-3" placeholder="Nova meta" value={goalTitle} onChange={(event) => setGoalTitle(event.target.value)} required />
-              <Button type="submit" className="mt-3 w-full py-2">
-                <Plus className="h-4 w-4" />
-                Adicionar
-              </Button>
-            </form>
-            <form onSubmit={createDateIdea} className="rounded-[24px] bg-white/80 p-4">
-              <CalendarHeart className="h-5 w-5 text-orange-500" />
-              <p className="mt-3 font-bold text-ink">Date</p>
-              <input className="soft-input mt-3" placeholder="Ideia de date" value={dateTitle} onChange={(event) => setDateTitle(event.target.value)} required />
-              <Button type="submit" className="mt-3 w-full py-2">
-                <Plus className="h-4 w-4" />
-                Adicionar
-              </Button>
-            </form>
-            <form onSubmit={createNote} className="rounded-[24px] bg-white/80 p-4">
-              <MessageCircleHeart className="h-5 w-5 text-lavender" />
-              <p className="mt-3 font-bold text-ink">Nota</p>
-              <input className="soft-input mt-3" placeholder="Mensagem rápida" value={note} onChange={(event) => setNote(event.target.value)} required />
-              <Button type="submit" className="mt-3 w-full py-2">
-                <Plus className="h-4 w-4" />
-                Adicionar
-              </Button>
-            </form>
-          </div>
-        </Card>
-
+      <div className="grid gap-6 xl:grid-cols-[0.9fr_1.2fr]">
         <div className="space-y-6">
           <Card className="bg-gradient-to-br from-rose-50 via-white to-violet-50">
             <div className="flex items-center gap-3">
+              <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white text-blush shadow-card">
+                <Heart className="h-6 w-6" />
+              </div>
+              <div>
+                <h2 className="section-title">Nosso cantinho especial</h2>
+                <p className="text-sm text-muted">Pequenas acoes com cara de ritual.</p>
+              </div>
+            </div>
+            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl bg-white/80 p-4 shadow-card">
+                <p className="text-2xl font-bold text-blush">{space.goals.length}</p>
+                <p className="text-xs font-bold text-muted">metas vivas</p>
+              </div>
+              <div className="rounded-2xl bg-white/80 p-4 shadow-card">
+                <p className="text-2xl font-bold text-orange-500">{space.date_ideas.length}</p>
+                <p className="text-xs font-bold text-muted">dates salvos</p>
+              </div>
+              <div className="rounded-2xl bg-white/80 p-4 shadow-card">
+                <p className="text-2xl font-bold text-lavender">{space.notes.length}</p>
+                <p className="text-xs font-bold text-muted">notas rapidas</p>
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <h2 className="section-title">Criar meta</h2>
+            <form onSubmit={createGoal} className="mt-5 space-y-3">
+              <input className="soft-input" placeholder="Ex: viagem juntos" value={goalForm.title} onChange={(event) => setGoalForm((current) => ({ ...current, title: event.target.value }))} required />
+              <textarea className="soft-input min-h-24 resize-none" placeholder="Descricao opcional" value={goalForm.description} onChange={(event) => setGoalForm((current) => ({ ...current, description: event.target.value }))} />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <input className="soft-input" type="date" value={goalForm.target_date} onChange={(event) => setGoalForm((current) => ({ ...current, target_date: event.target.value }))} />
+                <input className="soft-input" type="number" min="0" max="100" placeholder="Progresso %" value={goalForm.progress} onChange={(event) => setGoalForm((current) => ({ ...current, progress: event.target.value }))} />
+              </div>
+              <Button type="submit" className="w-full">
+                <Plus className="h-5 w-5" />
+                Adicionar meta
+              </Button>
+            </form>
+          </Card>
+
+          <Card>
+            <h2 className="section-title">Nova ideia de date</h2>
+            <form onSubmit={createDateIdea} className="mt-5 space-y-3">
+              <input className="soft-input" placeholder="Titulo do date" value={dateForm.title} onChange={(event) => setDateForm((current) => ({ ...current, title: event.target.value }))} required />
+              <textarea className="soft-input min-h-20 resize-none" placeholder="Descricao" value={dateForm.description} onChange={(event) => setDateForm((current) => ({ ...current, description: event.target.value }))} />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <input className="soft-input" placeholder="Local" value={dateForm.location} onChange={(event) => setDateForm((current) => ({ ...current, location: event.target.value }))} />
+                <input className="soft-input" placeholder="Orcamento" value={dateForm.budget} onChange={(event) => setDateForm((current) => ({ ...current, budget: event.target.value }))} />
+              </div>
+              <div className="relative">
+                <Link2 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+                <input className="soft-input pl-10" placeholder="Link do local, Instagram ou Google Maps" value={dateForm.external_url} onChange={(event) => setDateForm((current) => ({ ...current, external_url: event.target.value }))} />
+              </div>
+              <div className="relative">
+                <ImagePlus className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+                <input className="soft-input pl-10" placeholder="Imagem opcional (URL)" value={dateForm.image_url} onChange={(event) => setDateForm((current) => ({ ...current, image_url: event.target.value }))} />
+              </div>
+              <Button type="submit" className="w-full">
+                <Plus className="h-5 w-5" />
+                Salvar date
+              </Button>
+            </form>
+          </Card>
+
+          <Card>
+            <h2 className="section-title">Nota rapida</h2>
+            <form onSubmit={createNote} className="mt-5 space-y-3">
+              <textarea className="soft-input min-h-24 resize-none" placeholder="Escreva uma mensagem curta..." value={noteForm.message} onChange={(event) => setNoteForm((current) => ({ ...current, message: event.target.value }))} required />
+              <SelectMenu
+                value={noteForm.color}
+                onChange={(value) => setNoteForm((current) => ({ ...current, color: value }))}
+                options={[
+                  { value: "rose", label: "Rosa" },
+                  { value: "peach", label: "Pessego" },
+                  { value: "lavender", label: "Lavanda" },
+                  { value: "mint", label: "Menta" },
+                  { value: "sky", label: "Azul suave" }
+                ]}
+              />
+              <Button type="submit" className="w-full">
+                <MessageCircleHeart className="h-5 w-5" />
+                Guardar nota
+              </Button>
+            </form>
+          </Card>
+        </div>
+
+        <div className="space-y-6">
+          <Card className="bg-gradient-to-br from-white via-rose-50/60 to-violet-50">
+            <div className="flex items-center gap-3">
               <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-blush shadow-card">
-                <Sparkles className="h-5 w-5" />
+                <Target className="h-5 w-5" />
               </div>
               <div>
                 <h2 className="section-title">Metas do casal</h2>
@@ -145,7 +265,7 @@ export default function CoupleSpace() {
             </div>
             <div className="mt-5 space-y-3">
               {space.goals.map((goal) => (
-                <div key={goal.id} className="rounded-[22px] border border-white/80 bg-white/80 px-4 py-4 shadow-card">
+                <div key={goal.id} className="rounded-[24px] border border-white/80 bg-white/80 p-4 shadow-card transition hover:-translate-y-0.5 hover:shadow-soft">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-bold text-ink">{goal.title}</p>
@@ -153,36 +273,152 @@ export default function CoupleSpace() {
                     </div>
                     <span className="shrink-0 rounded-full bg-rose-50 px-3 py-1 text-xs font-bold text-blush">{goal.status || "ativa"}</span>
                   </div>
-                  <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-muted">
-                    <CalendarHeart className="h-4 w-4 text-orange-400" />
-                    {formatDate(goal.target_date, "Sem data definida")}
+                  <div className="mt-4 h-3 overflow-hidden rounded-full bg-rose-100/80">
+                    <div className="h-full rounded-full bg-gradient-to-r from-peach to-blush transition-all" style={{ width: `${Math.min(100, goal.progress || 0)}%` }} />
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs font-semibold text-muted">
+                    <span className="inline-flex items-center gap-1">
+                      <CalendarHeart className="h-4 w-4 text-orange-400" />
+                      {formatDate(goal.target_date, "Sem data definida")}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <UserRound className="h-4 w-4 text-lavender" />
+                      {goal.created_by?.name || "CasaSync"}
+                    </span>
+                    <span>{goal.progress || 0}%</span>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {[25, 50, 75, 100].map((value) => (
+                      <button key={value} type="button" onClick={() => updateGoal(goal, { progress: value, status: value === 100 ? "concluida" : "ativa" })} className="rounded-full bg-white px-3 py-1 text-xs font-bold text-muted shadow-card hover:bg-rose-50 hover:text-blush">
+                        {value}%
+                      </button>
+                    ))}
+                    <button type="button" onClick={() => updateGoal(goal, { progress: 100, status: "concluida" })} className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Concluir
+                    </button>
+                    <button type="button" onClick={() => removeGoal(goal)} className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-3 py-1 text-xs font-bold text-rose-600">
+                      <Trash2 className="h-3 w-3" />
+                      Remover
+                    </button>
                   </div>
                 </div>
               ))}
-              {!space.goals.length && <p className="rounded-2xl bg-white/70 px-4 py-4 text-sm font-semibold text-muted">Nenhuma meta por enquanto.</p>}
+              {!space.goals.length && <p className="empty-state">Nenhuma meta por enquanto.</p>}
             </div>
           </Card>
 
           <Card>
-            <h2 className="section-title">Ideias de dates</h2>
-            <div className="mt-4 space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="grid h-11 w-11 place-items-center rounded-2xl bg-orange-50 text-orange-500 shadow-card">
+                <CalendarHeart className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="section-title">Ideias de dates</h2>
+                <p className="text-sm text-muted">Com local, orcamento e link para abrir direto.</p>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
               {space.date_ideas.map((idea) => (
-                <div key={idea.id} className="rounded-2xl bg-white/75 px-4 py-3">
-                  <p className="font-semibold text-ink">{idea.title}</p>
-                  <p className="mt-1 text-sm text-muted">{idea.mood}</p>
+                <div key={idea.id} className="overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-card transition hover:-translate-y-0.5 hover:shadow-soft">
+                  <div
+                    className="h-28 bg-gradient-to-br from-rose-100 via-orange-50 to-violet-100"
+                    style={idea.image_url ? { backgroundImage: `url(${idea.image_url})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
+                  />
+                  <div className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-ink">{idea.title}</p>
+                        {idea.description && <p className="mt-1 text-sm text-muted">{idea.description}</p>}
+                      </div>
+                      <button type="button" onClick={() => toggleDateIdea(idea)} className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${idea.is_done ? "bg-emerald-400 text-white" : "bg-slate-50 text-muted hover:bg-emerald-50 hover:text-emerald-600"}`}>
+                        <CheckCircle2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <div className="mt-4 space-y-2 text-xs font-bold text-muted">
+                      {idea.location && (
+                        <p className="inline-flex items-center gap-2">
+                          <MapPin className="h-4 w-4 text-blush" />
+                          {idea.location}
+                        </p>
+                      )}
+                      {idea.budget && (
+                        <p className="inline-flex items-center gap-2">
+                          <PiggyBank className="h-4 w-4 text-orange-500" />
+                          {idea.budget}
+                        </p>
+                      )}
+                      <p className="inline-flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-lavender" />
+                        {idea.mood}
+                      </p>
+                    </div>
+                    {idea.external_url && (
+                      <a href={idea.external_url} target="_blank" rel="noreferrer" className="mt-4 flex items-center justify-between gap-2 rounded-2xl bg-rose-50 px-3 py-2 text-sm font-bold text-blush transition hover:bg-rose-100">
+                        <span className="truncate">{domainFromUrl(idea.external_url)}</span>
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                    )}
+                    <button type="button" onClick={() => removeDateIdea(idea)} className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-rose-500 hover:text-rose-700">
+                      <Trash2 className="h-3 w-3" />
+                      Remover date
+                    </button>
+                  </div>
                 </div>
               ))}
+              {!space.date_ideas.length && <p className="empty-state md:col-span-2">Nenhuma ideia salva ainda.</p>}
             </div>
           </Card>
 
           <Card>
-            <h2 className="section-title">Notas rápidas</h2>
-            <div className="mt-4 space-y-3">
-              {space.notes.map((item) => (
-                <p key={item.id} className="rounded-2xl bg-white/75 px-4 py-3 text-sm text-ink">
-                  {item.message}
-                </p>
-              ))}
+            <div className="flex items-center gap-3">
+              <div className="grid h-11 w-11 place-items-center rounded-2xl bg-violet-50 text-lavender shadow-card">
+                <MessageCircleHeart className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="section-title">Notas rapidas</h2>
+                <p className="text-sm text-muted">Sticky notes suaves, editaveis e com autoria.</p>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              {space.notes.map((note) => {
+                const editing = editingNote?.id === note.id;
+                return (
+                  <div key={note.id} className={`rotate-[-0.5deg] rounded-[22px] border p-4 shadow-card transition hover:rotate-0 hover:-translate-y-0.5 ${noteColors[note.color] || noteColors.rose}`}>
+                    {editing ? (
+                      <textarea className="soft-input min-h-28 resize-none bg-white/80" value={editingNote.message} onChange={(event) => setEditingNote((current) => ({ ...current, message: event.target.value }))} />
+                    ) : (
+                      <p className="text-sm font-semibold leading-relaxed">{note.message}</p>
+                    )}
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold opacity-75">
+                      <span className="inline-flex items-center gap-1">
+                        <UserRound className="h-3 w-3" />
+                        {note.created_by?.name || "CasaSync"}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Clock3 className="h-3 w-3" />
+                        {formatDate(note.created_at)} as {formatTime(note.created_at)}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      {editing ? (
+                        <button type="button" onClick={saveNote} className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-bold text-emerald-600 shadow-card">
+                          <Save className="h-3 w-3" />
+                          Salvar
+                        </button>
+                      ) : (
+                        <button type="button" onClick={() => setEditingNote(note)} className="rounded-full bg-white px-3 py-1 text-xs font-bold text-muted shadow-card hover:text-blush">
+                          Editar
+                        </button>
+                      )}
+                      <button type="button" onClick={() => removeNote(note)} className="rounded-full bg-white px-3 py-1 text-xs font-bold text-rose-600 shadow-card">
+                        Remover
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              {!space.notes.length && <p className="empty-state md:col-span-2">Nenhuma nota ainda.</p>}
             </div>
           </Card>
         </div>
@@ -190,4 +426,3 @@ export default function CoupleSpace() {
     </>
   );
 }
-

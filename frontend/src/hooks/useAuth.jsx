@@ -53,7 +53,17 @@ export function AuthProvider({ children }) {
     setUser(null);
   }
 
-  const value = useMemo(() => ({ user, loading, login, register, logout }), [user, loading]);
+  function updateUser(nextUser) {
+    setUser(nextUser);
+  }
+
+  async function refreshUser() {
+    const me = await authApi.me();
+    setUser(me);
+    return me;
+  }
+
+  const value = useMemo(() => ({ user, loading, login, register, logout, updateUser, refreshUser }), [user, loading]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
@@ -65,4 +75,3 @@ export function useAuth() {
   }
   return value;
 }
-

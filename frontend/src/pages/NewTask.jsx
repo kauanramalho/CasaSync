@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CalendarClock, Plus } from "lucide-react";
 
@@ -6,6 +6,7 @@ import AssigneePicker from "../components/AssigneePicker";
 import Button from "../components/Button";
 import Card from "../components/Card";
 import PageHeader from "../components/PageHeader";
+import SelectMenu from "../components/SelectMenu";
 import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
 import { categoriesApi, familiesApi, tasksApi } from "../services/api";
@@ -38,6 +39,11 @@ export default function NewTask() {
       .catch((err) => setError(normalizeApiError(err)));
   }, []);
 
+  const categoryOptions = useMemo(
+    () => [{ value: "", label: "Sem categoria" }, ...categories.map((category) => ({ value: category.id, label: category.name, helper: category.is_default ? "Padrao da familia" : "Personalizada" }))],
+    [categories]
+  );
+
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
   }
@@ -68,33 +74,26 @@ export default function NewTask() {
 
   return (
     <>
-      <PageHeader title="Nova tarefa" subtitle="Crie uma responsabilidade com contexto, prazo, prioridade e pontuação." user={user} />
+      <PageHeader title="Nova tarefa" subtitle="Crie uma responsabilidade com contexto, prazo, prioridade e pontuacao." user={user} />
 
       <Card className="mx-auto max-w-4xl">
         <form onSubmit={handleSubmit} className="grid gap-5 md:grid-cols-2">
           <div className="md:col-span-2">
-            <label className="mb-2 block text-sm font-semibold text-ink">Título</label>
+            <label className="mb-2 block text-sm font-semibold text-ink">Titulo</label>
             <input className="soft-input" value={form.title} onChange={(event) => updateField("title", event.target.value)} required />
           </div>
           <div className="md:col-span-2">
-            <label className="mb-2 block text-sm font-semibold text-ink">Descrição</label>
+            <label className="mb-2 block text-sm font-semibold text-ink">Descricao</label>
             <textarea className="soft-input min-h-28 resize-none" value={form.description} onChange={(event) => updateField("description", event.target.value)} />
           </div>
           <div className="md:col-span-2">
-            <label className="mb-2 block text-sm font-semibold text-ink">Responsáveis</label>
+            <label className="mb-2 block text-sm font-semibold text-ink">Responsaveis</label>
             <AssigneePicker members={members} value={form.assignee_ids} onChange={(value) => updateField("assignee_ids", value)} />
-            <p className="mt-2 text-xs font-semibold text-muted">Se ninguém for selecionado, a tarefa fica para você.</p>
+            <p className="mt-2 text-xs font-semibold text-muted">Se ninguem for selecionado, a tarefa fica para voce.</p>
           </div>
           <div>
             <label className="mb-2 block text-sm font-semibold text-ink">Categoria</label>
-            <select className="soft-input" value={form.category_id} onChange={(event) => updateField("category_id", event.target.value)}>
-              <option value="">Sem categoria</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
+            <SelectMenu value={form.category_id} onChange={(value) => updateField("category_id", value)} options={categoryOptions} />
           </div>
           <div>
             <label className="mb-2 block text-sm font-semibold text-ink">Prazo</label>
@@ -105,19 +104,27 @@ export default function NewTask() {
           </div>
           <div>
             <label className="mb-2 block text-sm font-semibold text-ink">Prioridade</label>
-            <select className="soft-input" value={form.priority} onChange={(event) => updateField("priority", event.target.value)}>
-              <option value="baixa">Baixa · 5 pontos</option>
-              <option value="media">Média · 10 pontos</option>
-              <option value="alta">Alta · 20 pontos</option>
-            </select>
+            <SelectMenu
+              value={form.priority}
+              onChange={(value) => updateField("priority", value)}
+              options={[
+                { value: "baixa", label: "Baixa", helper: "5 pontos" },
+                { value: "media", label: "Media", helper: "10 pontos" },
+                { value: "alta", label: "Alta", helper: "20 pontos" }
+              ]}
+            />
           </div>
           <div>
             <label className="mb-2 block text-sm font-semibold text-ink">Status</label>
-            <select className="soft-input" value={form.status} onChange={(event) => updateField("status", event.target.value)}>
-              <option value="pendente">Pendente</option>
-              <option value="em_andamento">Em andamento</option>
-              <option value="concluida">Concluída</option>
-            </select>
+            <SelectMenu
+              value={form.status}
+              onChange={(value) => updateField("status", value)}
+              options={[
+                { value: "pendente", label: "Pendente", helper: "Entra na fila" },
+                { value: "em_andamento", label: "Em andamento", helper: "Ja comecou" },
+                { value: "concluida", label: "Concluida", helper: "Ja pontua" }
+              ]}
+            />
           </div>
           {error && <p className="md:col-span-2 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</p>}
           <div className="md:col-span-2 flex justify-end">
@@ -131,4 +138,3 @@ export default function NewTask() {
     </>
   );
 }
-

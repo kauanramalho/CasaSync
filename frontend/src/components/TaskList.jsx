@@ -35,7 +35,7 @@ export default function TaskList({ tasks = [], onComplete, onEdit, onRemoveRecen
   }
 
   return (
-    <div className="overflow-visible rounded-[24px] border border-slate-100 bg-white/70">
+    <div className="rounded-[24px] border border-slate-100 bg-white/70">
       <div className="hidden grid-cols-[44px_1.8fr_1fr_1.15fr_1fr_0.8fr_1fr_44px] gap-4 border-b border-slate-100 px-5 py-4 text-sm font-medium text-muted md:grid">
         <span />
         <span>Tarefa</span>
@@ -46,11 +46,11 @@ export default function TaskList({ tasks = [], onComplete, onEdit, onRemoveRecen
         <span>Status</span>
         <span />
       </div>
-      <div className="divide-y divide-slate-100">
+      <div className="max-h-[620px] divide-y divide-slate-100 overflow-y-auto">
         {tasks.map((task) => (
           <div
             key={task.id}
-            className="grid gap-3 px-5 py-4 md:grid-cols-[44px_1.8fr_1fr_1.15fr_1fr_0.8fr_1fr_44px] md:items-center md:gap-4"
+            className="grid gap-3 px-5 py-4 transition hover:bg-rose-50/40 md:grid-cols-[44px_1.8fr_1fr_1.15fr_1fr_0.8fr_1fr_44px] md:items-center md:gap-4"
           >
             <button
               onClick={() => onComplete?.(task)}
@@ -83,7 +83,7 @@ export default function TaskList({ tasks = [], onComplete, onEdit, onRemoveRecen
                 <MoreHorizontal className="h-5 w-5" />
               </button>
               {openMenuId === task.id && (
-                <div className="absolute right-0 top-9 z-30 w-52 overflow-hidden rounded-2xl border border-slate-100 bg-white p-1 shadow-card">
+                <div className="absolute right-0 top-9 z-30 w-52 overflow-hidden rounded-2xl border border-slate-100 bg-white p-1 shadow-card animate-in">
                   {onEdit && (
                     <button onClick={() => runAction(onEdit, task)} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-ink hover:bg-blue-50">
                       <Edit3 className="h-4 w-4 text-blue-500" />
@@ -110,4 +110,3 @@ export default function TaskList({ tasks = [], onComplete, onEdit, onRemoveRecen
     </div>
   );
 }
-

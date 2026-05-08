@@ -3,6 +3,7 @@ from enum import Enum
 
 class FamilyRole(str, Enum):
     OWNER = "owner"
+    ADMIN = "admin"
     MEMBER = "member"
 
 
@@ -23,4 +24,3 @@ class GoalStatus(str, Enum):
     ACTIVE = "ativa"
     DONE = "concluida"
     PAUSED = "pausada"
-

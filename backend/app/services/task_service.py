@@ -8,6 +8,7 @@ from app.models.category import Category
 from app.models.enums import TaskPriority, TaskStatus
 from app.models.family import FamilyMember
 from app.models.task import Task, TaskAssignee
+from app.models.user import User
 from app.schemas.task import TaskCreate, TaskUpdate
 from app.services.category_service import get_category_by_name
 from app.services.family_service import require_family_member
@@ -167,7 +168,24 @@ def list_tasks(
             .distinct()
         )
     if search:
-        query = query.filter(Task.title.ilike(f"%{search.strip()}%"))
+        needle = f"%{search.strip()}%"
+        query = (
+            query.outerjoin(Category, Category.id == Task.category_id)
+            .outerjoin(TaskAssignee, TaskAssignee.task_id == Task.id)
+            .outerjoin(User, or_(User.id == Task.assignee_id, User.id == TaskAssignee.user_id))
+            .filter(
+                or_(
+                    Task.title.ilike(needle),
+                    Task.description.ilike(needle),
+                    Task.priority.ilike(needle),
+                    Task.status.ilike(needle),
+                    Category.name.ilike(needle),
+                    User.name.ilike(needle),
+                    User.email.ilike(needle),
+                )
+            )
+            .distinct()
+        )
 
     return query.order_by(Task.status.asc(), Task.due_date.asc(), Task.created_at.desc()).all()
 

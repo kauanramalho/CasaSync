@@ -1,7 +1,9 @@
 from sqlalchemy.orm import Session
 
 from app.models.category import Category
-from app.schemas.category import CategoryCreate
+from fastapi import HTTPException, status
+
+from app.schemas.category import CategoryCreate, CategoryUpdate
 
 
 DEFAULT_CATEGORIES = [
@@ -61,10 +63,28 @@ def create_category(db: Session, family_id: str, payload: CategoryCreate) -> Cat
     return category
 
 
+def update_category(db: Session, family_id: str, category_id: str, payload: CategoryUpdate) -> Category:
+    category = db.query(Category).filter(Category.family_id == family_id, Category.id == category_id).first()
+    if not category:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Categoria nao encontrada.")
+
+    data = payload.model_dump(exclude_unset=True)
+    if "name" in data and data["name"]:
+        category.name = data["name"].strip()
+    if "color" in data and data["color"]:
+        category.color = data["color"]
+    if "icon" in data and data["icon"]:
+        category.icon = data["icon"]
+
+    db.add(category)
+    db.commit()
+    db.refresh(category)
+    return category
+
+
 def get_category_by_name(db: Session, family_id: str, name: str) -> Category | None:
     return (
         db.query(Category)
         .filter(Category.family_id == family_id, Category.name.ilike(name.strip()))
         .first()
     )
-

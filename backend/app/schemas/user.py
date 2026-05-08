@@ -19,6 +19,7 @@ class UserLogin(BaseModel):
 class UserRead(ORMModel):
     id: str
     name: str
+    username: str | None = None
     email: EmailStr
     avatar_url: str | None = None
     created_at: datetime
@@ -27,6 +28,18 @@ class UserRead(ORMModel):
 class UserSummary(ORMModel):
     id: str
     name: str
+    username: str | None = None
     email: EmailStr
     avatar_url: str | None = None
 
+
+class UserUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=120)
+    username: str | None = Field(default=None, min_length=2, max_length=80)
+    email: EmailStr | None = None
+    avatar_url: str | None = None
+
+
+class PasswordUpdate(BaseModel):
+    current_password: str = Field(min_length=8, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)

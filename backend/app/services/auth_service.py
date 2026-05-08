@@ -3,11 +3,15 @@ from sqlalchemy.orm import Session
 
 from app.core.security import hash_password, password_needs_rehash, verify_password
 from app.models.user import User
-from app.schemas.user import UserCreate
+from app.schemas.user import PasswordUpdate, UserCreate, UserUpdate
 
 
 def get_user_by_email(db: Session, email: str) -> User | None:
     return db.query(User).filter(User.email == email.lower()).first()
+
+
+def get_user_by_username(db: Session, username: str) -> User | None:
+    return db.query(User).filter(User.username == username.strip().lower()).first()
 
 
 def register_user(db: Session, payload: UserCreate) -> User:
@@ -27,6 +31,43 @@ def register_user(db: Session, payload: UserCreate) -> User:
     db.commit()
     db.refresh(user)
     return user
+
+
+def update_user_profile(db: Session, user: User, payload: UserUpdate) -> User:
+    data = payload.model_dump(exclude_unset=True)
+
+    if "email" in data and data["email"]:
+        next_email = data["email"].lower()
+        existing_email = get_user_by_email(db, next_email)
+        if existing_email and existing_email.id != user.id:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ja existe uma conta com este e-mail.")
+        user.email = next_email
+
+    if "username" in data:
+        next_username = (data["username"] or "").strip().lower() or None
+        if next_username:
+            existing_username = get_user_by_username(db, next_username)
+            if existing_username and existing_username.id != user.id:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Este username ja esta em uso.")
+        user.username = next_username
+
+    if "name" in data and data["name"]:
+        user.name = data["name"].strip()
+    if "avatar_url" in data:
+        user.avatar_url = data["avatar_url"] or None
+
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def change_user_password(db: Session, user: User, payload: PasswordUpdate) -> None:
+    if not verify_password(payload.current_password, user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Senha atual invalida.")
+    user.hashed_password = hash_password(payload.new_password)
+    db.add(user)
+    db.commit()
 
 
 def authenticate_user(db: Session, email: str, password: str) -> User:

@@ -1,7 +1,11 @@
 import { useState } from "react";
-import { Bell, CheckCheck, ChevronDown, Search, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Bell, CheckCheck, ChevronDown, LogOut, Settings, Trash2, UserRound } from "lucide-react";
 
 import Avatar from "./Avatar";
+import GlobalSearch from "./GlobalSearch";
+import ProfileModal from "./ProfileModal";
+import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
 
 const notificationTone = {
@@ -14,15 +18,24 @@ const notificationTone = {
 
 const notificationLabels = {
   task: "Tarefa",
-  done: "Concluída",
+  done: "Concluida",
   reopened: "Reaberta",
   couple: "Casal",
   info: "Info"
 };
 
 export default function PageHeader({ title, subtitle, action, user }) {
+  const navigate = useNavigate();
+  const { logout, updateUser } = useAuth();
   const [openNotifications, setOpenNotifications] = useState(false);
+  const [openUserMenu, setOpenUserMenu] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const { notifications, unreadCount, markAsRead, markAllAsRead, clearAll } = useNotifications();
+
+  function handleLogout() {
+    logout();
+    navigate("/login");
+  }
 
   return (
     <header className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -30,16 +43,18 @@ export default function PageHeader({ title, subtitle, action, user }) {
         <h1 className="page-title">{title}</h1>
         {subtitle && <p className="mt-2 text-sm text-muted">{subtitle}</p>}
       </div>
+
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[240px] flex-1 lg:w-80 lg:flex-none">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted" />
-          <input className="soft-input pl-12" placeholder="Buscar tarefas..." />
-        </div>
+        <GlobalSearch />
+
         <div className="relative">
           <button
-            onClick={() => setOpenNotifications((current) => !current)}
-            className="relative grid h-12 w-12 place-items-center rounded-2xl bg-white text-muted shadow-card hover:text-ink"
-            title="Notificações"
+            onClick={() => {
+              setOpenNotifications((current) => !current);
+              setOpenUserMenu(false);
+            }}
+            className="relative grid h-12 w-12 place-items-center rounded-2xl bg-white text-muted shadow-card transition hover:-translate-y-0.5 hover:text-ink hover:shadow-soft"
+            title="Notificacoes"
           >
             <Bell className="h-5 w-5" />
             {unreadCount > 0 && (
@@ -49,11 +64,11 @@ export default function PageHeader({ title, subtitle, action, user }) {
             )}
           </button>
           {openNotifications && (
-            <div className="absolute right-0 top-14 z-40 w-[min(360px,calc(100vw-2rem))] overflow-hidden rounded-[24px] border border-white/80 bg-white shadow-soft">
+            <div className="absolute right-0 top-14 z-50 w-[min(380px,calc(100vw-2rem))] overflow-hidden rounded-[26px] border border-white/80 bg-white/95 shadow-soft backdrop-blur-xl animate-in">
               <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
                 <div>
-                  <p className="font-bold text-ink">Notificações</p>
-                  <p className="text-xs text-muted">{unreadCount} não lida(s)</p>
+                  <p className="font-bold text-ink">Notificacoes</p>
+                  <p className="text-xs text-muted">{unreadCount} nao lida(s)</p>
                 </div>
                 <div className="flex gap-1">
                   <button onClick={markAllAsRead} className="grid h-9 w-9 place-items-center rounded-xl text-muted hover:bg-emerald-50 hover:text-emerald-600" title="Marcar como lidas">
@@ -94,23 +109,68 @@ export default function PageHeader({ title, subtitle, action, user }) {
                   <div className="px-4 py-8 text-center">
                     <Bell className="mx-auto h-8 w-8 text-rose-200" />
                     <p className="mt-3 font-semibold text-ink">Tudo tranquilo por aqui.</p>
-                    <p className="mt-1 text-sm text-muted">As novidades importantes vão aparecer neste cantinho.</p>
+                    <p className="mt-1 text-sm text-muted">As novidades importantes vao aparecer neste cantinho.</p>
                   </div>
                 )}
               </div>
             </div>
           )}
         </div>
-        <div className="flex items-center gap-3 rounded-2xl bg-white px-3 py-2 shadow-card">
-          <Avatar user={user} />
-          <div className="hidden sm:block">
-            <p className="text-sm font-bold text-ink">{user?.name || "Usuário"}</p>
-            <p className="text-xs text-muted">Ver perfil</p>
-          </div>
-          <ChevronDown className="h-4 w-4 text-muted" />
+
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => {
+              setOpenUserMenu((current) => !current);
+              setOpenNotifications(false);
+            }}
+            className="flex items-center gap-3 rounded-2xl bg-white px-3 py-2 shadow-card transition hover:-translate-y-0.5 hover:shadow-soft"
+          >
+            <Avatar user={user} />
+            <div className="hidden text-left sm:block">
+              <p className="text-sm font-bold text-ink">{user?.name || "Usuario"}</p>
+              <p className="text-xs text-muted">{user?.username ? `@${user.username}` : "Ver perfil"}</p>
+            </div>
+            <ChevronDown className={`h-4 w-4 text-muted transition ${openUserMenu ? "rotate-180 text-blush" : ""}`} />
+          </button>
+
+          {openUserMenu && (
+            <div className="absolute right-0 top-14 z-50 w-64 overflow-hidden rounded-[24px] border border-white/80 bg-white/95 p-2 shadow-soft backdrop-blur-xl animate-in">
+              <button
+                type="button"
+                onClick={() => {
+                  setProfileOpen(true);
+                  setOpenUserMenu(false);
+                }}
+                className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm font-bold text-ink transition hover:bg-rose-50 hover:text-blush"
+              >
+                <UserRound className="h-4 w-4" />
+                Ver perfil
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/configuracoes")}
+                className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm font-bold text-ink transition hover:bg-blue-50 hover:text-blue-600"
+              >
+                <Settings className="h-4 w-4" />
+                Configuracoes
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm font-bold text-rose-600 transition hover:bg-rose-50"
+              >
+                <LogOut className="h-4 w-4" />
+                Sair
+              </button>
+            </div>
+          )}
         </div>
+
         {action}
       </div>
+
+      {profileOpen && <ProfileModal user={user} onClose={() => setProfileOpen(false)} onSaved={updateUser} />}
     </header>
   );
 }

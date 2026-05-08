@@ -1,20 +1,45 @@
-import { useEffect, useState } from "react";
-import { Copy, Crown, DoorOpen, Plus, Users } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Activity, Camera, Copy, Crown, DoorOpen, ImagePlus, Plus, RefreshCcw, ShieldCheck, Trash2, Trophy, Users } from "lucide-react";
 
 import Avatar from "../components/Avatar";
 import Button from "../components/Button";
 import Card from "../components/Card";
 import PageHeader from "../components/PageHeader";
+import SelectMenu from "../components/SelectMenu";
 import { useAuth } from "../hooks/useAuth";
-import { familiesApi } from "../services/api";
+import { familiesApi, tasksApi } from "../services/api";
 import { normalizeApiError } from "../utils/formatters";
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function isAdminRole(role) {
+  return role === "owner" || role === "admin";
+}
+
+function roleLabel(role) {
+  return isAdminRole(role) ? "Administrador" : "Membro";
+}
+
+function dateKey(value) {
+  if (!value) return "";
+  return new Date(value).toISOString().slice(0, 10);
+}
 
 export default function Family() {
   const { user } = useAuth();
   const [families, setFamilies] = useState([]);
   const [members, setMembers] = useState([]);
+  const [tasks, setTasks] = useState([]);
   const [familyName, setFamilyName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [familyForm, setFamilyForm] = useState({ name: "", description: "", image_url: "" });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -24,9 +49,12 @@ export default function Family() {
       const familyRows = await familiesApi.list();
       setFamilies(familyRows);
       if (familyRows.length) {
-        setMembers(await familiesApi.members());
+        const [memberRows, taskRows] = await Promise.all([familiesApi.members(), tasksApi.list()]);
+        setMembers(memberRows);
+        setTasks(taskRows);
       } else {
         setMembers([]);
+        setTasks([]);
       }
     } catch (err) {
       setError(normalizeApiError(err));
@@ -37,6 +65,47 @@ export default function Family() {
     load();
   }, []);
 
+  const currentFamily = families[0];
+  const currentMember = members.find((member) => member.user_id === user?.id);
+  const canAdmin = isAdminRole(currentMember?.role);
+
+  useEffect(() => {
+    setFamilyForm({
+      name: currentFamily?.name || "",
+      description: currentFamily?.description || "",
+      image_url: currentFamily?.image_url || ""
+    });
+  }, [currentFamily]);
+
+  const stats = useMemo(() => {
+    const today = new Date();
+    const weekAgo = new Date(today);
+    weekAgo.setDate(today.getDate() - 6);
+    const completed = tasks.filter((task) => task.status === "concluida");
+    return {
+      totalPoints: members.reduce((sum, member) => sum + member.points, 0),
+      completed: completed.length,
+      active: tasks.filter((task) => ["pendente", "em_andamento"].includes(task.status)).length,
+      overdue: tasks.filter((task) => task.status === "atrasada").length,
+      weeklyCompleted: completed.filter((task) => {
+        const completedAt = task.completed_at ? new Date(task.completed_at) : null;
+        return completedAt && completedAt >= weekAgo;
+      }).length
+    };
+  }, [members, tasks]);
+
+  const recentActivity = useMemo(() => [...tasks].sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at)).slice(0, 5), [tasks]);
+  const weeklyBars = useMemo(() => {
+    const today = new Date();
+    return Array.from({ length: 7 }).map((_, index) => {
+      const date = new Date(today);
+      date.setDate(today.getDate() - (6 - index));
+      const key = date.toISOString().slice(0, 10);
+      const total = tasks.filter((task) => task.status === "concluida" && dateKey(task.completed_at) === key).length;
+      return { label: date.toLocaleDateString("pt-BR", { weekday: "short" }), total };
+    });
+  }, [tasks]);
+
   async function createFamily(event) {
     event.preventDefault();
     setMessage("");
@@ -44,7 +113,7 @@ export default function Family() {
     try {
       await familiesApi.create({ name: familyName });
       setFamilyName("");
-      setMessage("Família criada com sucesso.");
+      setMessage("Familia criada com sucesso.");
       load();
     } catch (err) {
       setError(normalizeApiError(err));
@@ -58,18 +127,65 @@ export default function Family() {
     try {
       await familiesApi.join({ invite_code: inviteCode });
       setInviteCode("");
-      setMessage("Você entrou na família.");
+      setMessage("Voce entrou na familia.");
       load();
     } catch (err) {
       setError(normalizeApiError(err));
     }
   }
 
-  const currentFamily = families[0];
+  async function updateFamily(event) {
+    event.preventDefault();
+    setMessage("");
+    setError("");
+    try {
+      await familiesApi.updateCurrent(familyForm);
+      setMessage("Configuracoes da familia atualizadas.");
+      load();
+    } catch (err) {
+      setError(normalizeApiError(err));
+    }
+  }
+
+  async function handleFamilyImage(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const dataUrl = await readFileAsDataUrl(file);
+    setFamilyForm((current) => ({ ...current, image_url: dataUrl }));
+  }
+
+  async function regenerateCode() {
+    const updated = await familiesApi.regenerateCode();
+    setFamilies([updated]);
+    setMessage("Novo codigo de convite gerado.");
+  }
+
+  async function copyInviteCode() {
+    if (!currentFamily?.invite_code) return;
+    await navigator.clipboard?.writeText(currentFamily.invite_code);
+    setMessage("Codigo copiado.");
+  }
+
+  async function updateMemberRole(member, role) {
+    await familiesApi.updateMember(member.id, { role });
+    load();
+  }
+
+  async function removeMember(member) {
+    await familiesApi.removeMember(member.id);
+    load();
+  }
+
+  async function deleteFamily() {
+    if (!window.confirm("Excluir esta familia e todos os dados vinculados?")) return;
+    await familiesApi.deleteCurrent();
+    setMessage("Familia excluida.");
+    load();
+  }
 
   return (
     <>
-      <PageHeader title="Família" subtitle="Gerencie membros, convites e o grupo principal do CasaSync." user={user} />
+      <PageHeader title="Familia" subtitle="Gerencie membros, convites e o grupo principal do CasaSync." user={user} />
 
       {(message || error) && (
         <p className={`mb-5 rounded-2xl px-4 py-3 text-sm font-semibold ${error ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"}`}>
@@ -77,15 +193,49 @@ export default function Family() {
         </p>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_1.2fr]">
+      {currentFamily && (
+        <Card className="mb-6 overflow-hidden bg-gradient-to-br from-white via-rose-50/40 to-blue-50/50">
+          <div className="grid gap-5 lg:grid-cols-[1fr_360px] lg:items-center">
+            <div className="flex items-center gap-4">
+              <div className="h-24 w-24 shrink-0 overflow-hidden rounded-[26px] bg-gradient-to-br from-rose-100 to-violet-100 shadow-card">
+                {currentFamily.image_url ? <img src={currentFamily.image_url} alt={currentFamily.name} className="h-full w-full object-cover" /> : <div className="grid h-full w-full place-items-center text-3xl font-bold text-blush">{currentFamily.name?.[0]}</div>}
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-2xl font-bold text-ink">{currentFamily.name}</h2>
+                  {canAdmin && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700"><ShieldCheck className="h-3 w-3" /> admin</span>}
+                </div>
+                <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">{currentFamily.description || "Casa organizada, rotina mais leve e um ranking para manter todo mundo junto."}</p>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button onClick={copyInviteCode} className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 text-left shadow-card transition hover:-translate-y-0.5 hover:bg-rose-50">
+                <span>
+                  <span className="block text-xs font-bold text-muted">Convite</span>
+                  <span className="font-bold text-blush">{currentFamily.invite_code}</span>
+                </span>
+                <Copy className="h-5 w-5 text-blush" />
+              </button>
+              {canAdmin && (
+                <button onClick={regenerateCode} className="flex items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-bold text-ink shadow-card transition hover:-translate-y-0.5 hover:bg-blue-50 hover:text-blue-600">
+                  <RefreshCcw className="h-4 w-4" />
+                  Novo codigo
+                </button>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
+
+      <div className="grid gap-6 xl:grid-cols-[0.85fr_1.25fr]">
         <div className="space-y-6">
           <Card>
-            <h2 className="section-title">Criar família</h2>
+            <h2 className="section-title">Criar familia</h2>
             <form onSubmit={createFamily} className="mt-5 space-y-4">
-              <input className="soft-input" placeholder="Nome da família" value={familyName} onChange={(event) => setFamilyName(event.target.value)} required />
+              <input className="soft-input" placeholder="Nome da familia" value={familyName} onChange={(event) => setFamilyName(event.target.value)} required />
               <Button type="submit" className="w-full">
                 <Plus className="h-5 w-5" />
-                Criar família
+                Criar familia
               </Button>
             </form>
           </Card>
@@ -93,53 +243,151 @@ export default function Family() {
           <Card>
             <h2 className="section-title">Entrar por convite</h2>
             <form onSubmit={joinFamily} className="mt-5 space-y-4">
-              <input className="soft-input uppercase" placeholder="Código de convite" value={inviteCode} onChange={(event) => setInviteCode(event.target.value.toUpperCase())} required />
+              <input className="soft-input uppercase" placeholder="CODIGO DE CONVITE" value={inviteCode} onChange={(event) => setInviteCode(event.target.value.toUpperCase())} required />
               <Button type="submit" variant="secondary" className="w-full">
                 <DoorOpen className="h-5 w-5" />
-                Entrar na família
+                Entrar na familia
               </Button>
             </form>
           </Card>
+
+          {currentFamily && (
+            <Card>
+              <h2 className="section-title">Configuracoes da familia</h2>
+              <form onSubmit={updateFamily} className="mt-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <label className={`flex h-16 w-16 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-2xl bg-rose-50 text-blush shadow-card ${!canAdmin ? "pointer-events-none opacity-60" : ""}`}>
+                    {familyForm.image_url ? <img src={familyForm.image_url} alt="" className="h-full w-full object-cover" /> : <Camera className="h-6 w-6" />}
+                    <input type="file" accept="image/*" className="hidden" onChange={handleFamilyImage} disabled={!canAdmin} />
+                  </label>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-ink">Imagem da familia</p>
+                    <p className="text-xs text-muted">Upload com preview antes de salvar.</p>
+                  </div>
+                </div>
+                <input className="soft-input" value={familyForm.name} onChange={(event) => setFamilyForm((current) => ({ ...current, name: event.target.value }))} disabled={!canAdmin} />
+                <textarea className="soft-input min-h-28 resize-none" placeholder="Descricao" value={familyForm.description} onChange={(event) => setFamilyForm((current) => ({ ...current, description: event.target.value }))} disabled={!canAdmin} />
+                <Button type="submit" className="w-full" disabled={!canAdmin}>
+                  <ImagePlus className="h-5 w-5" />
+                  Salvar configuracoes
+                </Button>
+                {canAdmin && (
+                  <Button type="button" variant="danger" className="w-full" onClick={deleteFamily}>
+                    <Trash2 className="h-5 w-5" />
+                    Excluir familia
+                  </Button>
+                )}
+              </form>
+            </Card>
+          )}
         </div>
 
-        <Card>
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="section-title">{currentFamily?.name || "Nenhuma família ativa"}</h2>
-              <p className="mt-2 text-sm text-muted">Usuários vinculados à família principal.</p>
-            </div>
-            {currentFamily && (
-              <button className="inline-flex items-center gap-2 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-bold text-blush">
-                <Copy className="h-4 w-4" />
-                {currentFamily.invite_code}
-              </button>
-            )}
+        <div className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <Card className="surface-hover">
+              <Users className="h-5 w-5 text-blush" />
+              <p className="mt-3 text-2xl font-bold text-ink">{members.length}</p>
+              <p className="text-xs font-bold text-muted">membros</p>
+            </Card>
+            <Card className="surface-hover">
+              <Trophy className="h-5 w-5 text-orange-500" />
+              <p className="mt-3 text-2xl font-bold text-ink">{stats.totalPoints}</p>
+              <p className="text-xs font-bold text-muted">pontos</p>
+            </Card>
+            <Card className="surface-hover">
+              <Activity className="h-5 w-5 text-emerald-500" />
+              <p className="mt-3 text-2xl font-bold text-ink">{stats.completed}</p>
+              <p className="text-xs font-bold text-muted">concluidas</p>
+            </Card>
+            <Card className="surface-hover">
+              <ShieldCheck className="h-5 w-5 text-violet-500" />
+              <p className="mt-3 text-2xl font-bold text-ink">{stats.weeklyCompleted}</p>
+              <p className="text-xs font-bold text-muted">na semana</p>
+            </Card>
           </div>
 
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            {members.map((member) => (
-              <div key={member.id} className="flex items-center justify-between rounded-[24px] bg-white/75 p-4">
-                <div className="flex items-center gap-3">
-                  <Avatar user={member.user} size="lg" />
-                  <div>
-                    <p className="font-bold text-ink">{member.user.name}</p>
-                    <p className="text-sm text-muted">{member.role === "owner" ? "Administrador" : "Membro"}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="flex items-center justify-end gap-1 text-orange-500">
-                    {member.role === "owner" ? <Crown className="h-4 w-4" /> : <Users className="h-4 w-4" />}
-                    <span className="text-sm font-bold">{member.points} pts</span>
-                  </div>
-                  <p className="mt-1 text-xs text-muted">ranking ativo</p>
-                </div>
+          <Card>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="section-title">{currentFamily?.name || "Nenhuma familia ativa"}</h2>
+                <p className="mt-2 text-sm text-muted">Membros, cargos e ranking familiar.</p>
               </div>
-            ))}
-            {!members.length && <p className="rounded-2xl bg-white/70 px-4 py-8 text-center text-sm text-muted md:col-span-2">Crie ou entre em uma família para ver os membros.</p>}
+              {currentFamily && <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-bold text-blush">{stats.active} tarefas ativas</span>}
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              {members.map((member, index) => (
+                <div key={member.id} className="rounded-[24px] bg-white/75 p-4 shadow-card transition hover:-translate-y-0.5 hover:shadow-soft">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <Avatar user={member.user} size="lg" />
+                      <div className="min-w-0">
+                        <p className="truncate font-bold text-ink">{member.user.name}</p>
+                        <p className="text-sm text-muted">{roleLabel(member.role)}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="flex items-center justify-end gap-1 text-orange-500">
+                        {isAdminRole(member.role) ? <Crown className="h-4 w-4" /> : <Users className="h-4 w-4" />}
+                        <span className="text-sm font-bold">{member.points} pts</span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted">#{index + 1} ranking</p>
+                    </div>
+                  </div>
+                  {canAdmin && member.role !== "owner" && member.user_id !== user?.id && (
+                    <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]">
+                      <SelectMenu
+                        value={member.role === "admin" ? "admin" : "member"}
+                        onChange={(role) => updateMemberRole(member, role)}
+                        options={[
+                          { value: "admin", label: "Admin", helper: "Pode gerenciar" },
+                          { value: "member", label: "Membro", helper: "Uso normal" }
+                        ]}
+                      />
+                      <button type="button" onClick={() => removeMember(member)} className="inline-flex items-center justify-center rounded-2xl bg-rose-50 px-3 text-rose-600 hover:bg-rose-100">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {!members.length && <p className="empty-state md:col-span-2">Crie ou entre em uma familia para ver os membros.</p>}
+            </div>
+          </Card>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <h2 className="section-title">Produtividade semanal</h2>
+              <div className="mt-5 flex h-44 items-end gap-3 rounded-[24px] bg-gradient-to-br from-rose-50/70 to-blue-50/70 p-4">
+                {weeklyBars.map((bar) => {
+                  const max = Math.max(1, ...weeklyBars.map((item) => item.total));
+                  return (
+                    <div key={bar.label} className="flex flex-1 flex-col items-center gap-2">
+                      <div className="flex h-28 w-full items-end rounded-full bg-white/80 p-1 shadow-inner">
+                        <div className="w-full rounded-full bg-gradient-to-t from-blush to-peach transition-all" style={{ height: `${Math.max(8, (bar.total / max) * 100)}%` }} />
+                      </div>
+                      <span className="text-[11px] font-bold uppercase text-muted">{bar.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+
+            <Card>
+              <h2 className="section-title">Atividade recente</h2>
+              <div className="mt-5 max-h-48 space-y-3 overflow-y-auto pr-1">
+                {recentActivity.map((task) => (
+                  <div key={task.id} className="rounded-2xl bg-white/80 px-4 py-3 shadow-card">
+                    <p className="truncate text-sm font-bold text-ink">{task.title}</p>
+                    <p className="mt-1 text-xs font-semibold text-muted">{task.status} - {task.category?.name || "sem categoria"}</p>
+                  </div>
+                ))}
+                {!recentActivity.length && <p className="empty-state">Sem atividade recente ainda.</p>}
+              </div>
+            </Card>
           </div>
-        </Card>
+        </div>
       </div>
     </>
   );
 }
-

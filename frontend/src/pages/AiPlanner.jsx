@@ -1,20 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Bot, CheckCircle2, Plus, Sparkles } from "lucide-react";
 
 import Button from "../components/Button";
 import Card from "../components/Card";
 import PageHeader from "../components/PageHeader";
+import SelectMenu from "../components/SelectMenu";
 import { CategoryBadge, PriorityBadge } from "../components/Badges";
 import { useAuth } from "../hooks/useAuth";
 import { familiesApi, plannerApi } from "../services/api";
 import { formatDate, normalizeApiError } from "../utils/formatters";
 
-const quickPrompts = [
-  "Crie uma rotina de estudos",
-  "Organize minha semana",
-  "Crie tarefas para casa",
-  "Monte uma rotina de igreja"
-];
+const quickPrompts = ["Crie uma rotina de estudos", "Organize minha semana", "Crie tarefas para casa", "Monte uma rotina de igreja"];
 
 export default function AiPlanner() {
   const { user } = useAuth();
@@ -29,6 +25,11 @@ export default function AiPlanner() {
   useEffect(() => {
     familiesApi.members().then(setMembers).catch(() => setMembers([]));
   }, []);
+
+  const memberOptions = useMemo(
+    () => [{ value: "", label: "Responsavel: eu" }, ...members.map((member) => ({ value: member.user_id, label: member.user.name, helper: `${member.points} pts` }))],
+    [members]
+  );
 
   async function suggest(event) {
     event.preventDefault();
@@ -59,7 +60,7 @@ export default function AiPlanner() {
 
   return (
     <>
-      <PageHeader title="Planejador IA" subtitle="Estrutura inicial com respostas simuladas e criação real de tarefas." user={user} />
+      <PageHeader title="Planejador IA" subtitle="Estrutura inicial com respostas simuladas e criacao real de tarefas." user={user} />
 
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <Card>
@@ -77,7 +78,7 @@ export default function AiPlanner() {
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
               <Sparkles className="h-5 w-5" />
-              {loading ? "Planejando..." : "Gerar sugestões"}
+              {loading ? "Planejando..." : "Gerar sugestoes"}
             </Button>
           </form>
         </Card>
@@ -85,24 +86,17 @@ export default function AiPlanner() {
         <Card>
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <h2 className="section-title">Sugestões</h2>
+              <h2 className="section-title">Sugestoes</h2>
               {message && <p className="mt-2 text-sm text-muted">{message}</p>}
             </div>
-            <select className="soft-input md:w-56" value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)}>
-              <option value="">Responsável: eu</option>
-              {members.map((member) => (
-                <option key={member.user_id} value={member.user_id}>
-                  {member.user.name}
-                </option>
-              ))}
-            </select>
+            <SelectMenu className="md:w-56" value={assigneeId} onChange={setAssigneeId} options={memberOptions} />
           </div>
 
           {error && <p className="mt-5 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</p>}
 
           <div className="mt-5 space-y-3">
             {suggestions.map((suggestion) => (
-              <div key={`${suggestion.title}-${suggestion.category_name}`} className="rounded-[24px] bg-white/75 p-4">
+              <div key={`${suggestion.title}-${suggestion.category_name}`} className="rounded-[24px] bg-white/75 p-4 shadow-card transition hover:-translate-y-0.5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="font-bold text-ink">{suggestion.title}</p>
                   <div className="flex gap-2">
@@ -126,7 +120,7 @@ export default function AiPlanner() {
           {!suggestions.length && (
             <div className="mt-6 rounded-[24px] bg-white/75 p-8 text-center">
               <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" />
-              <p className="mt-3 text-sm font-semibold text-muted">As próximas sugestões aparecerão aqui.</p>
+              <p className="mt-3 text-sm font-semibold text-muted">As proximas sugestoes aparecerao aqui.</p>
             </div>
           )}
         </Card>
@@ -134,4 +128,3 @@ export default function AiPlanner() {
     </>
   );
 }
-

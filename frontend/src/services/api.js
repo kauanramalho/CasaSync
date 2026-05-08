@@ -45,19 +45,27 @@ async function request(path, { method = "GET", body, auth = true } = {}) {
 export const authApi = {
   register: (payload) => request("/auth/register", { method: "POST", body: payload, auth: false }),
   login: (payload) => request("/auth/login", { method: "POST", body: payload, auth: false }),
-  me: () => request("/auth/me")
+  me: () => request("/auth/me"),
+  updateMe: (payload) => request("/auth/me", { method: "PATCH", body: payload }),
+  changePassword: (payload) => request("/auth/me/password", { method: "POST", body: payload })
 };
 
 export const familiesApi = {
   list: () => request("/families"),
   create: (payload) => request("/families", { method: "POST", body: payload }),
   join: (payload) => request("/families/join", { method: "POST", body: payload }),
-  members: () => request("/families/current/members")
+  members: () => request("/families/current/members"),
+  updateCurrent: (payload) => request("/families/current", { method: "PATCH", body: payload }),
+  regenerateCode: () => request("/families/current/regenerate-code", { method: "POST" }),
+  updateMember: (memberId, payload) => request(`/families/current/members/${memberId}`, { method: "PATCH", body: payload }),
+  removeMember: (memberId) => request(`/families/current/members/${memberId}`, { method: "DELETE" }),
+  deleteCurrent: () => request("/families/current", { method: "DELETE" })
 };
 
 export const categoriesApi = {
   list: () => request("/categories"),
-  create: (payload) => request("/categories", { method: "POST", body: payload })
+  create: (payload) => request("/categories", { method: "POST", body: payload }),
+  update: (id, payload) => request(`/categories/${id}`, { method: "PATCH", body: payload })
 };
 
 export const tasksApi = {
@@ -81,8 +89,14 @@ export const dashboardApi = {
 export const coupleApi = {
   get: () => request("/couple-space"),
   createGoal: (payload) => request("/couple-space/goals", { method: "POST", body: payload }),
+  updateGoal: (id, payload) => request(`/couple-space/goals/${id}`, { method: "PATCH", body: payload }),
+  deleteGoal: (id) => request(`/couple-space/goals/${id}`, { method: "DELETE" }),
   createDateIdea: (payload) => request("/couple-space/date-ideas", { method: "POST", body: payload }),
-  createNote: (payload) => request("/couple-space/notes", { method: "POST", body: payload })
+  updateDateIdea: (id, payload) => request(`/couple-space/date-ideas/${id}`, { method: "PATCH", body: payload }),
+  deleteDateIdea: (id) => request(`/couple-space/date-ideas/${id}`, { method: "DELETE" }),
+  createNote: (payload) => request("/couple-space/notes", { method: "POST", body: payload }),
+  updateNote: (id, payload) => request(`/couple-space/notes/${id}`, { method: "PATCH", body: payload }),
+  deleteNote: (id) => request(`/couple-space/notes/${id}`, { method: "DELETE" })
 };
 
 export const plannerApi = {
@@ -94,4 +108,3 @@ export const integrationsApi = {
   googleCalendarStatus: () => request("/integrations/google-calendar/status"),
   googleCalendarConnectUrl: () => request("/integrations/google-calendar/connect-url")
 };
-
