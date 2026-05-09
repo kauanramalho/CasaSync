@@ -52,6 +52,7 @@ export const authApi = {
 
 export const familiesApi = {
   list: () => request("/families"),
+  current: () => request("/families/current"),
   create: (payload) => request("/families", { method: "POST", body: payload }),
   join: (payload) => request("/families/join", { method: "POST", body: payload }),
   members: () => request("/families/current/members"),

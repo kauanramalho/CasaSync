@@ -36,12 +36,15 @@ def _upgrade_existing_tables() -> None:
 
         if "couple_goals" in existing_tables:
             _add_column_if_missing(connection, "couple_goals", "progress", "progress INTEGER DEFAULT 0 NOT NULL")
+            _add_column_if_missing(connection, "couple_goals", "pinned", "pinned BOOLEAN DEFAULT FALSE NOT NULL")
 
         if "date_ideas" in existing_tables:
             _add_column_if_missing(connection, "date_ideas", "location", "location VARCHAR(180)")
             _add_column_if_missing(connection, "date_ideas", "budget", "budget VARCHAR(80)")
             _add_column_if_missing(connection, "date_ideas", "external_url", "external_url TEXT")
             _add_column_if_missing(connection, "date_ideas", "image_url", "image_url TEXT")
+            _add_column_if_missing(connection, "date_ideas", "pinned", "pinned BOOLEAN DEFAULT FALSE NOT NULL")
 
         if "quick_notes" in existing_tables:
             _add_column_if_missing(connection, "quick_notes", "color", "color VARCHAR(40) DEFAULT 'rose' NOT NULL")
+            _add_column_if_missing(connection, "quick_notes", "pinned", "pinned BOOLEAN DEFAULT FALSE NOT NULL")

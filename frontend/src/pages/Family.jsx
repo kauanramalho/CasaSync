@@ -8,6 +8,7 @@ import PageHeader from "../components/PageHeader";
 import SelectMenu from "../components/SelectMenu";
 import { useAuth } from "../hooks/useAuth";
 import { familiesApi, tasksApi } from "../services/api";
+import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError } from "../utils/formatters";
 
 function readFileAsDataUrl(file) {
@@ -48,12 +49,13 @@ export default function Family() {
     setError("");
     try {
       const familyRows = await familiesApi.list();
-      setFamilies(familyRows);
       if (familyRows.length) {
-        const [memberRows, taskRows] = await Promise.all([familiesApi.members(), tasksApi.list()]);
+        const [currentFamily, memberRows, taskRows] = await Promise.all([familiesApi.current(), familiesApi.members(), tasksApi.list()]);
+        setFamilies([currentFamily, ...familyRows.filter((family) => family.id !== currentFamily.id)]);
         setMembers(memberRows);
         setTasks(taskRows);
       } else {
+        setFamilies([]);
         setMembers([]);
         setTasks([]);
       }
@@ -116,6 +118,7 @@ export default function Family() {
       await familiesApi.create({ name: familyName });
       setFamilyName("");
       setMessage("Familia criada com sucesso.");
+      emitAppDataChanged();
       load();
     } catch (err) {
       setError(normalizeApiError(err));
@@ -130,6 +133,7 @@ export default function Family() {
       await familiesApi.join({ invite_code: inviteCode });
       setInviteCode("");
       setMessage("Voce entrou na familia.");
+      emitAppDataChanged();
       load();
     } catch (err) {
       setError(normalizeApiError(err));
@@ -141,8 +145,10 @@ export default function Family() {
     setMessage("");
     setError("");
     try {
-      await familiesApi.updateCurrent(familyForm);
+      const updated = await familiesApi.updateCurrent({ ...familyForm, name: familyForm.name.trim() });
+      setFamilies((current) => [updated, ...current.filter((family) => family.id !== updated.id)]);
       setMessage("Configuracoes da familia atualizadas.");
+      emitAppDataChanged();
       load();
     } catch (err) {
       setError(normalizeApiError(err));
@@ -160,6 +166,7 @@ export default function Family() {
     const updated = await familiesApi.regenerateCode();
     setFamilies([updated]);
     setMessage("Novo codigo de convite gerado.");
+    emitAppDataChanged();
   }
 
   async function copyInviteCode() {
@@ -182,6 +189,7 @@ export default function Family() {
     if (!window.confirm("Excluir esta familia e todos os dados vinculados?")) return;
     await familiesApi.deleteCurrent();
     setMessage("Familia excluida.");
+    emitAppDataChanged();
     load();
   }
 

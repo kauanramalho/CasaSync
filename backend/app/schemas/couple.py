@@ -12,6 +12,7 @@ class CoupleGoalCreate(BaseModel):
     description: str | None = None
     target_date: datetime | None = None
     progress: int = Field(default=0, ge=0, le=100)
+    pinned: bool = False
 
 
 class CoupleGoalUpdate(BaseModel):
@@ -20,6 +21,7 @@ class CoupleGoalUpdate(BaseModel):
     target_date: datetime | None = None
     progress: int | None = Field(default=None, ge=0, le=100)
     status: GoalStatus | None = None
+    pinned: bool | None = None
 
 
 class CoupleGoalRead(ORMModel):
@@ -30,6 +32,7 @@ class CoupleGoalRead(ORMModel):
     target_date: datetime | None = None
     progress: int = 0
     status: GoalStatus
+    pinned: bool = False
     created_at: datetime
     created_by: UserSummary | None = None
 
@@ -43,6 +46,7 @@ class DateIdeaCreate(BaseModel):
     image_url: str | None = None
     suggested_date: datetime | None = None
     mood: str = "romantico"
+    pinned: bool = False
 
 
 class DateIdeaUpdate(BaseModel):
@@ -55,6 +59,7 @@ class DateIdeaUpdate(BaseModel):
     suggested_date: datetime | None = None
     mood: str | None = None
     is_done: bool | None = None
+    pinned: bool | None = None
 
 
 class DateIdeaRead(ORMModel):
@@ -69,6 +74,7 @@ class DateIdeaRead(ORMModel):
     suggested_date: datetime | None = None
     mood: str
     is_done: bool
+    pinned: bool = False
     created_at: datetime
     created_by: UserSummary | None = None
 
@@ -76,11 +82,13 @@ class DateIdeaRead(ORMModel):
 class QuickNoteCreate(BaseModel):
     message: str = Field(min_length=1, max_length=1200)
     color: str = "rose"
+    pinned: bool = False
 
 
 class QuickNoteUpdate(BaseModel):
     message: str | None = Field(default=None, min_length=1, max_length=1200)
     color: str | None = None
+    pinned: bool | None = None
 
 
 class QuickNoteRead(ORMModel):
@@ -88,6 +96,7 @@ class QuickNoteRead(ORMModel):
     family_id: str
     message: str
     color: str = "rose"
+    pinned: bool = False
     created_at: datetime
     created_by: UserSummary | None = None
 

@@ -15,13 +15,13 @@ export const staticChartTooltipProps = {
   offset: 0,
   position: { y: 8 },
   reverseDirection: { x: true, y: false },
-  wrapperStyle: { pointerEvents: "none", zIndex: 60, outline: "none" }
+  wrapperStyle: { pointerEvents: "auto", zIndex: 60, outline: "none" }
 };
 
-function TooltipShell({ children }) {
+function TooltipShell({ children, scrollable = false }) {
   return (
     <div
-      className="chart-tooltip-shell overflow-hidden rounded-[22px] border border-slate-200 bg-white/95 p-4 text-sm text-ink shadow-soft backdrop-blur-xl animate-in"
+      className={`chart-tooltip-shell overflow-hidden rounded-[22px] border border-slate-200 bg-white/95 text-sm text-ink shadow-soft backdrop-blur-xl animate-in ${scrollable ? "p-0" : "p-4"}`}
       onWheel={(event) => event.stopPropagation()}
     >
       {children}
@@ -29,9 +29,9 @@ function TooltipShell({ children }) {
   );
 }
 
-function TaskRows({ tasks = [], label = "Tarefas", tone = "neutral", showStatus = false }) {
+function TaskRows({ tasks = [], label = "Tarefas", tone = "neutral", showStatus = false, limit = 3 }) {
   if (!tasks.length) return null;
-  const visibleTasks = tasks.slice(0, 3);
+  const visibleTasks = limit ? tasks.slice(0, limit) : tasks;
   const hiddenCount = tasks.length - visibleTasks.length;
 
   return (
@@ -61,27 +61,31 @@ export function WeeklyTasksTooltip({ active, payload }) {
   const overdueTasks = point.overdueTasks || [];
 
   return (
-    <TooltipShell>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="font-bold text-ink">Data: {point.label}</p>
-          <p className="mt-1 text-sm font-semibold text-blush">{point.total || 0} tarefas no radar</p>
+    <TooltipShell scrollable>
+      <div className="sticky top-0 z-10 border-b border-slate-100 bg-white/95 p-4 backdrop-blur-xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="font-bold text-ink">Data: {point.label}</p>
+            <p className="mt-1 text-sm font-semibold text-blush">{point.total || 0} tarefas no radar</p>
+          </div>
+          <div className="rounded-2xl bg-blush/10 px-3 py-2 text-right text-xs font-bold text-blush shadow-card">
+            {point.done || point.total || 0} feitas
+          </div>
         </div>
-        <div className="rounded-2xl bg-blush/10 px-3 py-2 text-right text-xs font-bold text-blush shadow-card">
-          {point.done || point.total || 0} feitas
+        <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs font-bold">
+          <span className="rounded-2xl bg-emerald-50 px-2 py-2 text-emerald-700">{point.done || 0} concluidas</span>
+          <span className="rounded-2xl bg-amber-50 px-2 py-2 text-amber-700">{point.pending || 0} pendentes</span>
+          <span className="rounded-2xl bg-rose-50 px-2 py-2 text-rose-700">{point.overdue || 0} atrasadas</span>
         </div>
       </div>
-      <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs font-bold">
-        <span className="rounded-2xl bg-emerald-50 px-2 py-2 text-emerald-700">{point.done || 0} concluidas</span>
-        <span className="rounded-2xl bg-amber-50 px-2 py-2 text-amber-700">{point.pending || 0} pendentes</span>
-        <span className="rounded-2xl bg-rose-50 px-2 py-2 text-rose-700">{point.overdue || 0} atrasadas</span>
+      <div className="chart-tooltip-scroll max-h-[min(52vh,22rem)] overflow-y-auto px-4 pb-4 pt-1">
+        <TaskRows tasks={doneTasks} label="Concluidas" tone="done" limit={0} />
+        <TaskRows tasks={pendingTasks} label="Pendentes" tone="pending" limit={0} />
+        <TaskRows tasks={overdueTasks} label="Atrasadas" tone="overdue" limit={0} />
+        {!doneTasks.length && !pendingTasks.length && !overdueTasks.length && (
+          <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold text-muted">Nenhuma tarefa neste ponto.</p>
+        )}
       </div>
-      <TaskRows tasks={doneTasks} label="Concluidas" tone="done" />
-      <TaskRows tasks={pendingTasks} label="Pendentes" tone="pending" />
-      <TaskRows tasks={overdueTasks} label="Atrasadas" tone="overdue" />
-      {!doneTasks.length && !pendingTasks.length && !overdueTasks.length && (
-        <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold text-muted">Nenhuma tarefa neste ponto.</p>
-      )}
     </TooltipShell>
   );
 }

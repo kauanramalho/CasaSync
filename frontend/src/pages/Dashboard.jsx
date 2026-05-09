@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertCircle, CheckCircle2, Clock3, Plus, Star } from "lucide-react";
+import { AlertCircle, CalendarHeart, CheckCircle2, Clock3, Heart, MessageCircleHeart, Pin, Plus, Star, Target } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { CategoryBadge } from "../components/Badges";
@@ -13,9 +13,9 @@ import TaskEditorModal from "../components/TaskEditorModal";
 import TaskList from "../components/TaskList";
 import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
-import { categoriesApi, dashboardApi, familiesApi, tasksApi } from "../services/api";
+import { categoriesApi, coupleApi, dashboardApi, familiesApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
-import { normalizeApiError } from "../utils/formatters";
+import { formatDate, normalizeApiError } from "../utils/formatters";
 import { getHiddenRecentTaskIds, hideRecentTask } from "../utils/recentTasks";
 
 const statMeta = {
@@ -28,6 +28,148 @@ const statMeta = {
 function dateKey(value) {
   if (!value) return "";
   return new Date(value).toISOString().slice(0, 10);
+}
+
+function timestamp(value) {
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function formatTime(value) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+}
+
+function relativeDateLabel(value) {
+  if (!value) return "";
+  const now = new Date();
+  const target = new Date(value);
+  if (Number.isNaN(target.getTime())) return "";
+
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startTarget = new Date(target.getFullYear(), target.getMonth(), target.getDate());
+  const days = Math.round((startTarget - startToday) / 86400000);
+
+  if (days < 0) return "Ja passou";
+  if (days === 0) return "Hoje";
+  if (days === 1) return "Amanha";
+  return `Em ${days} dias`;
+}
+
+function buildCouplePreviewItems(space = {}) {
+  const goals = (space.goals || []).map((goal) => ({
+    id: `goal-${goal.id}`,
+    type: "goal",
+    pinned: Boolean(goal.pinned),
+    createdAt: goal.created_at,
+    title: goal.title,
+    description: goal.description,
+    progress: goal.progress || 0,
+    targetDate: goal.target_date
+  }));
+
+  const dates = (space.date_ideas || []).map((idea) => ({
+    id: `date-${idea.id}`,
+    type: "date",
+    pinned: Boolean(idea.pinned),
+    createdAt: idea.created_at,
+    title: idea.title,
+    description: idea.description,
+    date: idea.suggested_date,
+    done: idea.is_done
+  }));
+
+  const notes = (space.notes || []).map((note) => ({
+    id: `note-${note.id}`,
+    type: "note",
+    pinned: Boolean(note.pinned),
+    createdAt: note.created_at,
+    message: note.message,
+    author: note.created_by?.name,
+    color: note.color
+  }));
+
+  return [...goals, ...dates, ...notes]
+    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || timestamp(b.createdAt) - timestamp(a.createdAt))
+    .slice(0, 3);
+}
+
+function CouplePreviewItem({ item }) {
+  const pin = item.pinned ? (
+    <span className="inline-flex items-center gap-1 rounded-full bg-white/75 px-2 py-0.5 text-[10px] font-bold text-blush shadow-sm">
+      <Pin className="h-3 w-3" />
+      Fixado
+    </span>
+  ) : null;
+
+  if (item.type === "goal") {
+    const progress = Math.min(100, item.progress || 0);
+    return (
+      <div className="rounded-[22px] border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-rose-50 p-3 shadow-card">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-2">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white text-blush shadow-sm">
+              <Target className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold text-blush">Meta do mes</p>
+              <p className="line-clamp-1 font-bold text-ink">{item.title}</p>
+            </div>
+          </div>
+          {pin}
+        </div>
+        <div className="mt-3 flex items-center gap-3">
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-violet-100">
+            <div className="h-full rounded-full bg-gradient-to-r from-peach to-blush" style={{ width: `${progress}%` }} />
+          </div>
+          <span className="text-xs font-bold text-ink">{progress}%</span>
+        </div>
+        <p className="mt-2 text-xs font-semibold text-muted">{formatDate(item.targetDate, "Sem prazo")}</p>
+      </div>
+    );
+  }
+
+  if (item.type === "date") {
+    const badge = relativeDateLabel(item.date);
+    return (
+      <div className="rounded-[22px] border border-rose-100 bg-gradient-to-br from-rose-50 via-white to-orange-50 p-3 shadow-card">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-2">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white text-orange-500 shadow-sm">
+              <CalendarHeart className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold text-rose-500">Proximo date</p>
+              <p className="line-clamp-1 font-bold text-ink">{item.title}</p>
+            </div>
+          </div>
+          {pin}
+        </div>
+        {item.description && <p className="line-clamp-1 mt-2 text-xs font-semibold text-muted">{item.description}</p>}
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] font-bold text-muted">
+          <span>{formatDate(item.date, "Sem data")}</span>
+          {item.date && <span>{formatTime(item.date)}</span>}
+          {badge && <span className="rounded-full bg-blush/10 px-2 py-1 text-blush">{badge}</span>}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-[22px] border border-amber-100 bg-gradient-to-br from-amber-50 via-white to-rose-50 p-3 shadow-card">
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white text-blush shadow-sm">
+            <MessageCircleHeart className="h-4 w-4" />
+          </span>
+          <p className="text-[11px] font-bold text-amber-600">Recado</p>
+        </div>
+        {pin}
+      </div>
+      <p className="line-clamp-2 text-sm font-semibold leading-relaxed text-ink">{item.message}</p>
+      <p className="mt-2 text-[11px] font-bold text-muted">- {item.author || "CasaSync"}</p>
+    </div>
+  );
 }
 
 function buildProductivityView(productivity = [], tasks = []) {
@@ -56,6 +198,7 @@ export default function Dashboard() {
   const [dashboard, setDashboard] = useState(null);
   const [categoriesRows, setCategoriesRows] = useState([]);
   const [allTasks, setAllTasks] = useState([]);
+  const [coupleSpace, setCoupleSpace] = useState({ goals: [], date_ideas: [], notes: [] });
   const [members, setMembers] = useState([]);
   const [hiddenRecentIds, setHiddenRecentIds] = useState(() => getHiddenRecentTaskIds());
   const [editingTask, setEditingTask] = useState(null);
@@ -67,11 +210,12 @@ export default function Dashboard() {
     setLoading(true);
     setError("");
     try {
-      const [dashboardRows, categoryRows, memberRows, taskRows] = await Promise.all([dashboardApi.get(), categoriesApi.list(), familiesApi.members(), tasksApi.list()]);
+      const [dashboardRows, categoryRows, memberRows, taskRows, coupleRows] = await Promise.all([dashboardApi.get(), categoriesApi.list(), familiesApi.members(), tasksApi.list(), coupleApi.get()]);
       setDashboard(dashboardRows);
       setCategoriesRows(categoryRows);
       setMembers(memberRows);
       setAllTasks(taskRows);
+      setCoupleSpace(coupleRows);
     } catch (err) {
       setError(normalizeApiError(err));
     } finally {
@@ -132,6 +276,7 @@ export default function Dashboard() {
   const ranking = useMemo(() => dashboard?.ranking ?? [], [dashboard]);
   const recentTasks = (dashboard?.recent_tasks ?? []).filter((task) => !hiddenRecentIds.includes(task.id)).slice(0, 6);
   const productivityRows = useMemo(() => buildProductivityView(productivity, allTasks), [productivity, allTasks]);
+  const couplePreviewItems = useMemo(() => buildCouplePreviewItems(coupleSpace), [coupleSpace]);
 
   const greeting = useMemo(() => {
     const firstName = user?.name?.split(" ")[0] || "família";
@@ -232,19 +377,22 @@ export default function Dashboard() {
               Ver mais
             </Link>
           </div>
-          <div className="rounded-[24px] bg-gradient-to-br from-rose-50 via-white to-violet-50 p-4 shadow-card">
-            <p className="text-center font-semibold text-ink">Nosso cantinho especial</p>
-            <div className="mt-4 space-y-3 text-sm text-ink">
-              <p className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3 shadow-card transition hover:-translate-y-0.5">
-                <span className="font-bold text-blush">Próximo date</span> cinema em casa
-              </p>
-              <p className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3 shadow-card transition hover:-translate-y-0.5">
-                <span className="font-bold text-orange-500">Meta do mês</span> viajar juntos
-              </p>
-              <p className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3 shadow-card transition hover:-translate-y-0.5">
-                <span className="font-bold text-lavender">Mensagem</span> "Te amo!"
-              </p>
-            </div>
+          <div className="rounded-[24px] bg-gradient-to-br from-rose-50 via-white to-violet-50 p-3 shadow-card">
+            {couplePreviewItems.length ? (
+              <div className="grid gap-3">
+                {couplePreviewItems.map((item) => (
+                  <CouplePreviewItem key={item.id} item={item} />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-[22px] border border-dashed border-blush/20 bg-white/75 px-4 py-6 text-center">
+                <Heart className="mx-auto h-8 w-8 text-rose-200" />
+                <p className="mt-3 font-semibold text-ink">Nosso cantinho esta esperando novidades.</p>
+                <Link to="/espaco-do-casal" className="mt-2 inline-flex text-sm font-bold text-blush">
+                  Adicionar recado
+                </Link>
+              </div>
+            )}
           </div>
         </Card>
 

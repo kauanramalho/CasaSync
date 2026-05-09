@@ -22,6 +22,7 @@ import { useAppPreferences } from "../hooks/useAppPreferences";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 import { familiesApi, integrationsApi } from "../services/api";
+import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError } from "../utils/formatters";
 import { timezoneOptions, weekStartOptions } from "../utils/preferences";
 
@@ -50,14 +51,13 @@ export default function Settings() {
     let alive = true;
 
     async function loadSettings() {
-      const [calendarResult, familiesResult] = await Promise.allSettled([integrationsApi.googleCalendarStatus(), familiesApi.list()]);
+      const [calendarResult, familyResult] = await Promise.allSettled([integrationsApi.googleCalendarStatus(), familiesApi.current()]);
       if (!alive) return;
 
       if (calendarResult.status === "fulfilled") setCalendarStatus(calendarResult.value);
-      if (familiesResult.status === "fulfilled") {
-        const currentFamily = familiesResult.value?.[0] ?? null;
-        setFamily(currentFamily);
-        setFamilyForm({ name: currentFamily?.name || "" });
+      if (familyResult.status === "fulfilled") {
+        setFamily(familyResult.value);
+        setFamilyForm({ name: familyResult.value?.name || "" });
       }
       if (calendarResult.status === "rejected") setError(normalizeApiError(calendarResult.reason));
     }
@@ -82,12 +82,22 @@ export default function Settings() {
     setMessage("");
     setSavingFamily(true);
     try {
-      updatePreferences({ timezone: preferences.timezone });
-      if (family) {
-        const updated = await familiesApi.updateCurrent({ name: familyForm.name });
-        setFamily(updated);
-        setFamilyForm({ name: updated.name || "" });
+      const nextName = familyForm.name.trim();
+      if (!family) {
+        throw new Error("Crie ou entre em uma familia antes de salvar as configuracoes.");
       }
+      if (nextName.length < 2) {
+        throw new Error("Informe um nome de familia com pelo menos 2 caracteres.");
+      }
+
+      updatePreferences({ timezone: preferences.timezone });
+      const updated = await familiesApi.updateCurrent({ name: nextName });
+      if (!updated?.id || updated.name?.trim() !== nextName) {
+        throw new Error("Nao foi possivel confirmar o novo nome da familia.");
+      }
+      setFamily(updated);
+      setFamilyForm({ name: updated.name || "" });
+      emitAppDataChanged();
       setMessage("Alteracoes salvas com sucesso.");
     } catch (err) {
       setError(normalizeApiError(err));
@@ -165,7 +175,7 @@ export default function Settings() {
                 <span className="mb-2 block text-sm font-semibold text-muted">Fuso horario</span>
                 <SelectMenu value={preferences.timezone} onChange={(value) => updatePreference("timezone", value)} options={timezoneOptions} />
               </label>
-              <Button className="mx-auto flex w-full md:w-64" onClick={saveFamilySettings} disabled={savingFamily || (family && familyForm.name.trim().length < 2)}>
+              <Button className="mx-auto flex w-full md:w-64" onClick={saveFamilySettings} disabled={savingFamily || !family || familyForm.name.trim().length < 2}>
                 {savingFamily ? "Salvando..." : "Salvar alteracoes"}
               </Button>
             </div>

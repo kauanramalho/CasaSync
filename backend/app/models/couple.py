@@ -15,6 +15,7 @@ class CoupleGoal(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     target_date = Column(DateTime(timezone=True), nullable=True)
     progress = Column(Integer, default=0, nullable=False)
     status = Column(String(24), default=GoalStatus.ACTIVE.value, nullable=False)
+    pinned = Column(Boolean, default=False, nullable=False)
     created_by_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     family = relationship("Family", back_populates="goals")
@@ -34,6 +35,7 @@ class DateIdea(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     suggested_date = Column(DateTime(timezone=True), nullable=True)
     mood = Column(String(60), default="romântico", nullable=False)
     is_done = Column(Boolean, default=False, nullable=False)
+    pinned = Column(Boolean, default=False, nullable=False)
     created_by_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     family = relationship("Family", back_populates="date_ideas")
@@ -46,6 +48,7 @@ class QuickNote(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     family_id = Column(String(36), ForeignKey("families.id", ondelete="CASCADE"), nullable=False)
     message = Column(Text, nullable=False)
     color = Column(String(40), default="rose", nullable=False)
+    pinned = Column(Boolean, default=False, nullable=False)
     created_by_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     family = relationship("Family", back_populates="notes")

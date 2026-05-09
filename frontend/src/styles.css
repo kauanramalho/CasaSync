@@ -299,6 +299,25 @@
     max-width: calc(100% - 1rem);
   }
 
+  .chart-tooltip-scroll {
+    overscroll-behavior: contain;
+  }
+
+  .line-clamp-1,
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .line-clamp-1 {
+    -webkit-line-clamp: 1;
+  }
+
+  .line-clamp-2 {
+    -webkit-line-clamp: 2;
+  }
+
   .calendar-weekday-row {
     border-bottom: 1px solid rgb(var(--color-border) / 0.72);
     background: rgb(var(--color-surface-soft) / 0.34);

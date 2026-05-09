@@ -10,6 +10,7 @@ import {
   MapPin,
   MessageCircleHeart,
   PiggyBank,
+  Pin,
   Plus,
   Save,
   Sparkles,
@@ -175,6 +176,7 @@ export default function CoupleSpace() {
 
   async function removeGoal(goal) {
     await coupleApi.deleteGoal(goal.id);
+    emitAppDataChanged();
     load();
   }
 
@@ -194,11 +196,19 @@ export default function CoupleSpace() {
 
   async function toggleDateIdea(idea) {
     await coupleApi.updateDateIdea(idea.id, { is_done: !idea.is_done });
+    emitAppDataChanged();
+    load();
+  }
+
+  async function toggleDateIdeaPinned(idea) {
+    await coupleApi.updateDateIdea(idea.id, { pinned: !idea.pinned });
+    emitAppDataChanged();
     load();
   }
 
   async function removeDateIdea(idea) {
     await coupleApi.deleteDateIdea(idea.id);
+    emitAppDataChanged();
     load();
   }
 
@@ -222,12 +232,20 @@ export default function CoupleSpace() {
     await coupleApi.updateNote(editingNote.id, { message: editingNote.message, color: editingNote.color });
     persistNoteIcon(editingNote.id, editingNote.icon);
     setEditingNote(null);
+    emitAppDataChanged();
+    load();
+  }
+
+  async function toggleNotePinned(note) {
+    await coupleApi.updateNote(note.id, { pinned: !note.pinned });
+    emitAppDataChanged();
     load();
   }
 
   async function removeNote(note) {
     await coupleApi.deleteNote(note.id);
     removeStoredNoteIcon(note.id);
+    emitAppDataChanged();
     load();
   }
 
@@ -377,7 +395,19 @@ export default function CoupleSpace() {
                       <p className="font-bold text-ink">{goal.title}</p>
                       {goal.description && <p className="mt-2 text-sm leading-relaxed text-muted">{goal.description}</p>}
                     </div>
-                    <span className="shrink-0 rounded-full bg-rose-50 px-3 py-1 text-xs font-bold text-blush">{goal.status || "ativa"}</span>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => updateGoal(goal, { pinned: !goal.pinned })}
+                        className={`grid h-8 w-8 place-items-center rounded-full transition ${
+                          goal.pinned ? "bg-blush text-white shadow-card" : "bg-rose-50 text-muted hover:bg-rose-100 hover:text-blush"
+                        }`}
+                        title={goal.pinned ? "Desafixar meta" : "Fixar meta"}
+                      >
+                        <Pin className="h-4 w-4" />
+                      </button>
+                      <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-bold text-blush">{goal.status || "ativa"}</span>
+                    </div>
                   </div>
                   <div className="mt-4 h-3 overflow-hidden rounded-full bg-rose-100/80">
                     <div className="h-full rounded-full bg-gradient-to-r from-peach to-blush transition-all" style={{ width: `${Math.min(100, goal.progress || 0)}%` }} />
@@ -437,9 +467,21 @@ export default function CoupleSpace() {
                         <p className="font-bold text-ink">{idea.title}</p>
                         {idea.description && <p className="mt-1 text-sm text-muted">{idea.description}</p>}
                       </div>
-                      <button type="button" onClick={() => toggleDateIdea(idea)} className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${idea.is_done ? "bg-emerald-400 text-white" : "bg-slate-50 text-muted hover:bg-emerald-50 hover:text-emerald-600"}`}>
-                        <CheckCircle2 className="h-4 w-4" />
-                      </button>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleDateIdeaPinned(idea)}
+                          className={`grid h-8 w-8 place-items-center rounded-full transition ${
+                            idea.pinned ? "bg-blush text-white shadow-card" : "bg-rose-50 text-muted hover:bg-rose-100 hover:text-blush"
+                          }`}
+                          title={idea.pinned ? "Desafixar date" : "Fixar date"}
+                        >
+                          <Pin className="h-4 w-4" />
+                        </button>
+                        <button type="button" onClick={() => toggleDateIdea(idea)} className={`grid h-8 w-8 place-items-center rounded-full ${idea.is_done ? "bg-emerald-400 text-white" : "bg-slate-50 text-muted hover:bg-emerald-50 hover:text-emerald-600"}`}>
+                          <CheckCircle2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                     <div className="mt-4 space-y-2 text-xs font-bold text-muted">
                       {idea.location && (
@@ -505,6 +547,16 @@ export default function CoupleSpace() {
                         <NoteIcon className="h-4 w-4" />
                       </span>
                       <span className="text-xs font-bold uppercase tracking-wide opacity-75">{color?.label || "Nota"}</span>
+                      <button
+                        type="button"
+                        onClick={() => toggleNotePinned(note)}
+                        className={`ml-auto grid h-8 w-8 place-items-center rounded-full transition ${
+                          note.pinned ? "bg-blush text-white shadow-card" : "bg-white/80 text-muted hover:bg-rose-50 hover:text-blush"
+                        }`}
+                        title={note.pinned ? "Desafixar nota" : "Fixar nota"}
+                      >
+                        <Pin className="h-4 w-4" />
+                      </button>
                     </div>
                     {editing ? (
                       <div className="space-y-4">

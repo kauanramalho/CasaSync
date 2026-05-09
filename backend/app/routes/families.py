@@ -8,6 +8,7 @@ from app.schemas.family import FamilyCreate, FamilyJoin, FamilyMemberRead, Famil
 from app.services.family_service import (
     create_family,
     delete_family,
+    get_family,
     join_family,
     list_members,
     list_user_families,
@@ -24,6 +25,11 @@ router = APIRouter(prefix="/families", tags=["families"])
 @router.get("", response_model=list[FamilyRead])
 def list_my_families(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return list_user_families(db, current_user.id)
+
+
+@router.get("/current", response_model=FamilyRead)
+def current_family(family_id: str = Depends(get_family_id), db: Session = Depends(get_db)):
+    return get_family(db, family_id)
 
 
 @router.post("", response_model=FamilyRead, status_code=201)

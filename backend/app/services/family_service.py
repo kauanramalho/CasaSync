@@ -85,6 +85,13 @@ def get_primary_family(db: Session, user_id: str) -> Family | None:
     )
 
 
+def get_family(db: Session, family_id: str) -> Family:
+    family = db.query(Family).filter(Family.id == family_id).first()
+    if not family:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Familia nao encontrada.")
+    return family
+
+
 def require_family_member(db: Session, family_id: str, user_id: str) -> FamilyMember:
     member = (
         db.query(FamilyMember)
@@ -121,9 +128,7 @@ def list_members(db: Session, family_id: str) -> list[FamilyMember]:
 
 def update_family(db: Session, family_id: str, user_id: str, payload: FamilyUpdate) -> Family:
     require_family_admin(db, family_id, user_id)
-    family = db.query(Family).filter(Family.id == family_id).first()
-    if not family:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Familia nao encontrada.")
+    family = get_family(db, family_id)
 
     data = payload.model_dump(exclude_unset=True)
     if "name" in data and data["name"]:

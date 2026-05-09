@@ -42,9 +42,10 @@ export default function AppLayout() {
 
     async function loadSidebarData() {
       try {
-        const [families, dashboard] = await Promise.allSettled([familiesApi.list(), dashboardApi.get()]);
+        const [familyResult, dashboard] = await Promise.allSettled([familiesApi.current(), dashboardApi.get()]);
         if (!alive) return;
-        if (families.status === "fulfilled") setFamily(families.value[0]);
+        if (familyResult.status === "fulfilled") setFamily(familyResult.value);
+        if (familyResult.status === "rejected") setFamily(null);
         if (dashboard.status === "fulfilled") {
           const pointsStat = dashboard.value.stats.find((item) => item.key === "points");
           setPoints(pointsStat?.value ?? 0);

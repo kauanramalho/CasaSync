@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell, CheckCheck, ChevronDown, LogOut, Settings, Trash2, UserRound } from "lucide-react";
 
@@ -30,7 +30,20 @@ export default function PageHeader({ title, subtitle, action, user }) {
   const [openNotifications, setOpenNotifications] = useState(false);
   const [openUserMenu, setOpenUserMenu] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const notificationsRef = useRef(null);
   const { notifications, unreadCount, markAsRead, markAllAsRead, clearAll } = useNotifications();
+
+  useEffect(() => {
+    if (!openNotifications) return undefined;
+
+    function handlePointerDown(event) {
+      if (notificationsRef.current?.contains(event.target)) return;
+      setOpenNotifications(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [openNotifications]);
 
   function handleLogout() {
     logout();
@@ -47,7 +60,7 @@ export default function PageHeader({ title, subtitle, action, user }) {
       <div className="flex flex-wrap items-center gap-3">
         <GlobalSearch />
 
-        <div className="relative">
+        <div ref={notificationsRef} className="relative">
           <button
             onClick={() => {
               setOpenNotifications((current) => !current);
