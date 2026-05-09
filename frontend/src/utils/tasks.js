@@ -6,7 +6,7 @@ export const priorityPoints = {
   alta: 20
 };
 
-export const memberChartColors = ["#f85d8f", "#7aa5ff", "#63c982", "#9d7cf4", "#ffc77d", "#61c9d6"];
+export const memberChartColors = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"];
 
 export const categoryToneClasses = {
   rose: "bg-rose-50 text-rose-600 border-rose-100",

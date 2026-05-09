@@ -2,7 +2,6 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import AppLayout from "./layouts/AppLayout";
 import { useAuth } from "./hooks/useAuth";
-import AiPlanner from "./pages/AiPlanner";
 import Calendar from "./pages/Calendar";
 import Categories from "./pages/Categories";
 import CoupleSpace from "./pages/CoupleSpace";
@@ -47,7 +46,6 @@ export default function App() {
         <Route path="/familia" element={<Family />} />
         <Route path="/ranking" element={<Ranking />} />
         <Route path="/espaco-do-casal" element={<CoupleSpace />} />
-        <Route path="/planejador-ia" element={<AiPlanner />} />
         <Route path="/relatorios" element={<Reports />} />
         <Route path="/configuracoes" element={<Settings />} />
       </Route>
@@ -55,4 +53,3 @@ export default function App() {
     </Routes>
   );
 }
-

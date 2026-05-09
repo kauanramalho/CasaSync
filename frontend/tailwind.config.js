@@ -4,16 +4,16 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: "#12213b",
-        muted: "#687895",
-        blush: "#f85d8f",
-        peach: "#ff9b73",
-        lavender: "#9d7cf4",
-        cream: "#fff8f3"
+        ink: "rgb(var(--color-ink) / <alpha-value>)",
+        muted: "rgb(var(--color-muted) / <alpha-value>)",
+        blush: "rgb(var(--color-blush) / <alpha-value>)",
+        peach: "rgb(var(--color-peach) / <alpha-value>)",
+        lavender: "rgb(var(--color-lavender) / <alpha-value>)",
+        cream: "rgb(var(--color-cream) / <alpha-value>)"
       },
       boxShadow: {
-        soft: "0 24px 70px rgba(81, 99, 137, 0.14)",
-        card: "0 18px 45px rgba(111, 121, 145, 0.12)"
+        soft: "var(--shadow-soft)",
+        card: "var(--shadow-card)"
       },
       fontFamily: {
         sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"]
@@ -22,4 +22,3 @@ export default {
   },
   plugins: []
 };
-

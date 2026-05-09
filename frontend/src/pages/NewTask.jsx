@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CalendarClock, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 
 import AssigneePicker from "../components/AssigneePicker";
 import Button from "../components/Button";
 import Card from "../components/Card";
+import DateTimePicker from "../components/DateTimePicker";
 import PageHeader from "../components/PageHeader";
 import SelectMenu from "../components/SelectMenu";
 import { useAuth } from "../hooks/useAuth";
@@ -105,10 +106,7 @@ export default function NewTask() {
           </div>
           <div>
             <label className="mb-2 block text-sm font-semibold text-ink">Prazo</label>
-            <div className="relative">
-              <CalendarClock className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted" />
-              <input className="soft-input pl-12" type="datetime-local" value={form.due_date} onChange={(event) => updateField("due_date", event.target.value)} />
-            </div>
+            <DateTimePicker value={form.due_date} onChange={(value) => updateField("due_date", value)} />
           </div>
           <div>
             <label className="mb-2 block text-sm font-semibold text-ink">Prioridade</label>

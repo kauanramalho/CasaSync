@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, Save, X } from "lucide-react";
+import { Save, X } from "lucide-react";
 
 import AssigneePicker from "./AssigneePicker";
 import Button from "./Button";
+import DateTimePicker from "./DateTimePicker";
 import SelectMenu from "./SelectMenu";
 import { formatDateTimeLocal, toIsoOrNull } from "../utils/formatters";
 import { normalizeTaskForForm, priorityPoints } from "../utils/tasks";
@@ -108,10 +109,7 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
 
             <div>
               <label className="mb-2 block text-sm font-semibold text-ink">Prazo</label>
-              <div className="relative">
-                <CalendarClock className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted" />
-                <input className="soft-input pl-12" type="datetime-local" value={form.due_date} onChange={(event) => updateField("due_date", event.target.value)} />
-              </div>
+              <DateTimePicker value={form.due_date} onChange={(value) => updateField("due_date", value)} />
             </div>
 
             <div>

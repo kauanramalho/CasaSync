@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   BarChart3,
-  Bot,
   CalendarDays,
   CheckSquare,
   Folder,
@@ -28,7 +27,6 @@ const navItems = [
   { to: "/familia", label: "Membros", icon: Users },
   { to: "/ranking", label: "Ranking", icon: Medal },
   { to: "/espaco-do-casal", label: "Espaço do Casal", icon: Heart },
-  { to: "/planejador-ia", label: "Planejador IA", icon: Bot },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
   { to: "/configuracoes", label: "Configurações", icon: Settings }
 ];
@@ -82,7 +80,7 @@ export default function AppLayout() {
               to={item.to}
               className={({ isActive }) =>
                 `flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition ${
-                  isActive ? "bg-gradient-to-r from-orange-50 to-rose-50 text-orange-500" : "text-muted hover:bg-white hover:text-ink"
+                  isActive ? "bg-gradient-to-r from-peach/10 to-blush/10 text-blush" : "text-muted hover:bg-white hover:text-ink"
                 }`
               }
             >
@@ -113,13 +111,13 @@ export default function AppLayout() {
         <div className="sticky top-0 z-10 border-b border-white/70 bg-white/75 px-4 py-3 backdrop-blur-xl lg:hidden">
           <LogoMark />
           <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-            {navItems.slice(0, 8).map((item) => (
+            {navItems.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
                   `flex shrink-0 items-center gap-2 rounded-2xl px-3 py-2 text-xs font-semibold ${
-                    isActive ? "bg-rose-50 text-blush" : "bg-white text-muted"
+                    isActive ? "bg-blush/10 text-blush" : "bg-white text-muted"
                   }`
                 }
               >

@@ -3,7 +3,7 @@ import { HeartHandshake } from "lucide-react";
 export default function LogoMark({ compact = false }) {
   return (
     <div className="flex items-center gap-3">
-      <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-rose-200 via-white to-violet-200 shadow-lg shadow-rose-100">
+      <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-blush/25 via-white to-lavender/25 shadow-lg shadow-blush/10">
         <HeartHandshake className="h-6 w-6 text-blush" />
       </div>
       {!compact && (
@@ -18,4 +18,3 @@ export default function LogoMark({ compact = false }) {
     </div>
   );
 }
-

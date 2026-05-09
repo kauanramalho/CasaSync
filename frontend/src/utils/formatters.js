@@ -18,7 +18,9 @@ export function formatDate(value, fallback = "Sem prazo") {
 
 export function formatDateTimeLocal(value) {
   if (!value) return "";
-  return new Date(value).toISOString().slice(0, 16);
+  const date = new Date(value);
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 export function toIsoOrNull(value) {
@@ -37,4 +39,3 @@ export function initials(name = "") {
 export function normalizeApiError(error) {
   return error?.message || "Algo saiu do esperado.";
 }
-

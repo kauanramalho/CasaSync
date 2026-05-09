@@ -79,7 +79,7 @@ export default function SelectMenu({ value, options = [], onChange, placeholder 
         onClick={() => setOpen((current) => !current)}
         className={clsx(
           "soft-input flex min-h-[48px] items-center justify-between gap-3 text-left",
-          open && "border-rose-300 ring-4 ring-rose-100",
+          open && "border-blush/55 ring-4 ring-blush/10",
           buttonClassName
         )}
       >
@@ -111,7 +111,7 @@ export default function SelectMenu({ value, options = [], onChange, placeholder 
                 onClick={() => choose(option)}
                 className={clsx(
                   "flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-2.5 text-left text-sm font-semibold transition",
-                  active ? "bg-rose-50 text-blush" : "text-ink hover:bg-slate-50"
+                  active ? "bg-blush/10 text-blush" : "text-ink hover:bg-slate-50"
                 )}
               >
                 {hasCategoryVisual(option) ? (

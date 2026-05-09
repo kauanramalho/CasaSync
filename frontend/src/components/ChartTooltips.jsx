@@ -13,7 +13,7 @@ const statusTone = {
 function TooltipShell({ children }) {
   return (
     <div
-      className="max-w-[360px] rounded-[22px] border border-rose-100 bg-white/95 p-4 text-sm text-ink shadow-soft backdrop-blur-xl animate-in"
+      className="max-h-[min(420px,calc(100vh-2rem))] max-w-[min(360px,calc(100vw-2rem))] overflow-y-auto overflow-x-hidden rounded-[22px] border border-slate-200 bg-white/95 p-4 text-sm text-ink shadow-soft backdrop-blur-xl animate-in"
       onWheel={(event) => event.stopPropagation()}
     >
       {children}

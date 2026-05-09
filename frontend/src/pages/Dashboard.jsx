@@ -20,7 +20,7 @@ import { getHiddenRecentTaskIds, hideRecentTask } from "../utils/recentTasks";
 
 const chartTooltipProps = {
   allowEscapeViewBox: { x: true, y: true },
-  wrapperStyle: { pointerEvents: "auto", zIndex: 60 }
+  wrapperStyle: { pointerEvents: "auto", zIndex: 60, outline: "none" }
 };
 
 const statMeta = {
@@ -194,17 +194,17 @@ export default function Dashboard() {
               <span className="rounded-full bg-rose-50 px-2.5 py-1 text-rose-700">Atrasadas</span>
             </div>
           </div>
-          <div className="overflow-x-auto overflow-y-visible pb-2">
-            <div className="h-72 min-w-[560px] rounded-[24px] bg-gradient-to-br from-white via-rose-50/40 to-blue-50/40 p-3">
+          <div className="chart-frame">
+            <div className="chart-canvas">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={productivityRows} margin={{ top: 10, right: 12, left: -12, bottom: 0 }}>
-                  <CartesianGrid vertical={false} stroke="#e8eef7" strokeDasharray="4 6" />
-                  <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: "#687895", fontSize: 12 }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: "#687895", fontSize: 12 }} />
-                  <Tooltip cursor={{ fill: "rgba(255,241,244,0.65)" }} content={<WeeklyTasksTooltip />} {...chartTooltipProps} />
-                  <Bar dataKey="done" stackId="week" radius={[0, 0, 10, 10]} fill="#34d399" animationDuration={750} />
-                  <Bar dataKey="pending" stackId="week" fill="#fbbf24" animationDuration={900} />
-                  <Bar dataKey="overdue" stackId="week" radius={[12, 12, 0, 0]} fill="#fb7185" animationDuration={1050} />
+                <BarChart data={productivityRows} margin={{ top: 14, right: 18, left: 2, bottom: 8 }} barCategoryGap="24%" maxBarSize={58}>
+                  <CartesianGrid vertical={false} stroke="var(--chart-grid)" strokeDasharray="4 6" />
+                  <XAxis dataKey="label" interval={0} minTickGap={4} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
+                  <YAxis width={34} allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
+                  <Tooltip cursor={{ fill: "rgb(var(--color-blush) / 0.08)" }} content={<WeeklyTasksTooltip />} {...chartTooltipProps} />
+                  <Bar dataKey="done" stackId="week" radius={[0, 0, 10, 10]} fill="var(--chart-3)" animationDuration={750} />
+                  <Bar dataKey="pending" stackId="week" fill="var(--chart-4)" animationDuration={900} />
+                  <Bar dataKey="overdue" stackId="week" radius={[12, 12, 0, 0]} fill="var(--chart-5)" animationDuration={1050} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

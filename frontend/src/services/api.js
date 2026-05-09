@@ -99,11 +99,6 @@ export const coupleApi = {
   deleteNote: (id) => request(`/couple-space/notes/${id}`, { method: "DELETE" })
 };
 
-export const plannerApi = {
-  suggest: (prompt) => request("/planner/suggest", { method: "POST", body: { prompt } }),
-  createTasks: (payload) => request("/planner/create-tasks", { method: "POST", body: payload })
-};
-
 export const integrationsApi = {
   googleCalendarStatus: () => request("/integrations/google-calendar/status"),
   googleCalendarConnectUrl: () => request("/integrations/google-calendar/connect-url")

@@ -27,10 +27,10 @@ import { dashboardApi } from "../services/api";
 import { normalizeApiError } from "../utils/formatters";
 import { buildProductivityRows, getCategoryHex, getCategoryName, memberChartColors } from "../utils/tasks";
 
-const chartColors = ["#7aa5ff", "#f85d8f", "#63c982", "#ffc77d", "#9d7cf4", "#61c9d6"];
+const chartColors = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"];
 const chartTooltipProps = {
   allowEscapeViewBox: { x: true, y: true },
-  wrapperStyle: { pointerEvents: "auto", zIndex: 60 }
+  wrapperStyle: { pointerEvents: "auto", zIndex: 60, outline: "none" }
 };
 
 export default function Reports() {
@@ -99,12 +99,12 @@ export default function Reports() {
 
           {categoryRows.length ? (
             <>
-              <div className="relative mx-auto mt-4 h-52 max-w-[280px]">
+              <div className="relative mx-auto mt-4 h-56 w-full max-w-[300px] overflow-visible">
                 <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
+                  <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
                     <Pie data={categoryRows} dataKey="total" nameKey="name" innerRadius={58} outerRadius={88} paddingAngle={4} cornerRadius={8} animationDuration={850}>
                       {categoryRows.map((item) => (
-                        <Cell key={item.name} fill={item.colorHex} stroke="#fff" strokeWidth={4} />
+                        <Cell key={item.name} fill={item.colorHex} stroke="rgb(var(--color-surface))" strokeWidth={4} />
                       ))}
                     </Pie>
                     <Tooltip content={<CategoryTasksTooltip />} {...chartTooltipProps} />
@@ -136,17 +136,17 @@ export default function Reports() {
           )}
         </Card>
 
-        <Card>
+        <Card className="overflow-visible">
           <h2 className="section-title">Produtividade semanal</h2>
-          <div className="mt-5 overflow-x-auto overflow-y-visible pb-2">
-            <div className="h-64 min-w-[560px]">
+          <div className="chart-frame mt-5">
+            <div className="chart-canvas-sm">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={productivityRows} margin={{ top: 8, right: 18, left: -8, bottom: 0 }}>
-                  <CartesianGrid vertical={false} stroke="#edf1f7" />
-                  <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: "#687895", fontSize: 12 }} />
-                  <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "#687895", fontSize: 12 }} />
+                <LineChart data={productivityRows} margin={{ top: 12, right: 24, left: 2, bottom: 10 }}>
+                  <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
+                  <XAxis dataKey="label" interval={0} minTickGap={4} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
+                  <YAxis width={34} allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
                   <Tooltip content={<MemberProductivityTooltip />} {...chartTooltipProps} />
-                  <Legend verticalAlign="bottom" height={28} iconType="circle" />
+                  <Legend verticalAlign="bottom" height={32} iconType="circle" wrapperStyle={{ paddingTop: 8 }} />
                   {ranking.map((item, index) => (
                     <Line
                       key={item.user.id}
@@ -215,17 +215,17 @@ export default function Reports() {
         </div>
       </div>
 
-      <Card className="mt-6">
+      <Card className="mt-6 overflow-visible">
         <h2 className="section-title">Desempenho por dia da semana</h2>
-        <div className="mt-5 overflow-x-auto overflow-y-visible pb-2">
-          <div className="h-72 min-w-[640px]">
+        <div className="chart-frame mt-5">
+          <div className="chart-canvas">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={productivity} margin={{ top: 8, right: 18, left: -8, bottom: 0 }}>
-                <CartesianGrid vertical={false} stroke="#edf1f7" />
-                <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: "#687895", fontSize: 12 }} />
-                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "#687895", fontSize: 12 }} />
-                <Tooltip cursor={{ fill: "#fff1f4" }} content={<WeeklyTasksTooltip />} {...chartTooltipProps} />
-                <Bar dataKey="total" fill="#7aa5ff" radius={[12, 12, 0, 0]} />
+              <BarChart data={productivity} margin={{ top: 14, right: 24, left: 2, bottom: 8 }} barCategoryGap="24%" maxBarSize={64}>
+                <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
+                <XAxis dataKey="label" interval={0} minTickGap={4} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
+                <YAxis width={34} allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
+                <Tooltip cursor={{ fill: "rgb(var(--color-blush) / 0.08)" }} content={<WeeklyTasksTooltip />} {...chartTooltipProps} />
+                <Bar dataKey="total" fill="var(--chart-1)" radius={[12, 12, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
