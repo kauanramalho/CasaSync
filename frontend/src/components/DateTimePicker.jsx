@@ -3,7 +3,9 @@ import { createPortal } from "react-dom";
 import clsx from "clsx";
 import { CalendarClock, ChevronLeft, ChevronRight, Clock3, Minus, Plus, X } from "lucide-react";
 
-const weekdays = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom"];
+import { useAppPreferences } from "../hooks/useAppPreferences";
+import { buildMonthDays, getWeekdayLabels } from "../utils/preferences";
+
 const monthFormatter = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" });
 const displayFormatter = new Intl.DateTimeFormat("pt-BR", {
   day: "2-digit",
@@ -38,18 +40,6 @@ function sameDay(left, right) {
   );
 }
 
-function buildMonthDays(viewDate) {
-  const firstDay = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
-  const startOffset = (firstDay.getDay() + 6) % 7;
-  const start = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1 - startOffset);
-
-  return Array.from({ length: 42 }, (_, index) => {
-    const date = new Date(start);
-    date.setDate(start.getDate() + index);
-    return date;
-  });
-}
-
 function TimeSpinner({ label, value, onIncrement }) {
   return (
     <div className="rounded-[20px] border border-slate-100 bg-white/80 p-2 shadow-sm">
@@ -78,6 +68,7 @@ function TimeSpinner({ label, value, onIncrement }) {
 }
 
 export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/aaaa --:--" }) {
+  const { preferences } = useAppPreferences();
   const selectedDate = useMemo(() => parseLocalDateTime(value), [value]);
   const [open, setOpen] = useState(false);
   const [viewDate, setViewDate] = useState(() => selectedDate ?? new Date());
@@ -86,7 +77,8 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
   const buttonRef = useRef(null);
   const popoverRef = useRef(null);
   const today = useMemo(() => new Date(), []);
-  const days = useMemo(() => buildMonthDays(viewDate), [viewDate]);
+  const weekdays = useMemo(() => getWeekdayLabels(preferences.weekStart), [preferences.weekStart]);
+  const days = useMemo(() => buildMonthDays(viewDate, preferences.weekStart), [viewDate, preferences.weekStart]);
 
   useEffect(() => {
     if (selectedDate) setViewDate(selectedDate);

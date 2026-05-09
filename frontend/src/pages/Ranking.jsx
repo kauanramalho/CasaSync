@@ -21,6 +21,12 @@ export default function Ranking() {
   }, []);
 
   const maxPoints = Math.max(...ranking.map((item) => item.points), 1);
+  const totalPoints = ranking.reduce((sum, item) => sum + item.points, 0);
+  const levels = [
+    { name: "Base organizada", range: "0 a 150 pontos", min: 0, max: 150 },
+    { name: "Rotina sincronizada", range: "151 a 500 pontos", min: 151, max: 500 },
+    { name: "Casa em harmonia", range: "500+ pontos", min: 501, max: Infinity }
+  ];
 
   return (
     <>
@@ -58,22 +64,28 @@ export default function Ranking() {
           </div>
           <h2 className="mt-5 text-2xl font-bold text-ink">Níveis do casal</h2>
           <div className="mt-6 space-y-4">
-            <div className="rounded-2xl bg-white/75 p-4">
-              <p className="font-semibold text-ink">Base organizada</p>
-              <p className="mt-1 text-sm text-muted">0 a 150 pontos</p>
-            </div>
-            <div className="rounded-2xl bg-rose-50 p-4">
-              <p className="font-semibold text-ink">Rotina sincronizada</p>
-              <p className="mt-1 text-sm text-muted">151 a 500 pontos</p>
-            </div>
-            <div className="rounded-2xl bg-violet-50 p-4">
-              <p className="font-semibold text-ink">Casa em harmonia</p>
-              <p className="mt-1 text-sm text-muted">500+ pontos</p>
-            </div>
+            {levels.map((level) => {
+              const active = totalPoints >= level.min && totalPoints <= level.max;
+              return (
+                <div
+                  key={level.name}
+                  className={`rounded-2xl border p-4 transition ${
+                    active ? "border-blush/45 bg-gradient-to-r from-blush/20 to-peach/14 shadow-card" : "border-slate-100 bg-white/75"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-ink">{level.name}</p>
+                      <p className="mt-1 text-sm text-muted">{level.range}</p>
+                    </div>
+                    {active && <span className="rounded-full bg-blush/10 px-3 py-1 text-xs font-bold text-blush">Atual</span>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </Card>
       </div>
     </>
   );
 }
-

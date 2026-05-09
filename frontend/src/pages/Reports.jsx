@@ -20,7 +20,7 @@ import Avatar from "../components/Avatar";
 import { CategoryBadge } from "../components/Badges";
 import Button from "../components/Button";
 import Card from "../components/Card";
-import { CategoryTasksTooltip, MemberProductivityTooltip, WeeklyTasksTooltip } from "../components/ChartTooltips";
+import { CategoryTasksTooltip, MemberProductivityTooltip, staticChartTooltipProps, WeeklyTasksTooltip } from "../components/ChartTooltips";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../hooks/useAuth";
 import { dashboardApi } from "../services/api";
@@ -28,13 +28,6 @@ import { normalizeApiError } from "../utils/formatters";
 import { buildProductivityRows, getCategoryHex, getCategoryName, memberChartColors } from "../utils/tasks";
 
 const chartColors = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"];
-const chartTooltipProps = {
-  allowEscapeViewBox: { x: false, y: false },
-  offset: 12,
-  reverseDirection: { x: true, y: true },
-  wrapperStyle: { pointerEvents: "auto", zIndex: 60, outline: "none" }
-};
-
 export default function Reports() {
   const { user } = useAuth();
   const [dashboard, setDashboard] = useState(null);
@@ -109,7 +102,7 @@ export default function Reports() {
                         <Cell key={item.name} fill={item.colorHex} stroke="rgb(var(--color-surface))" strokeWidth={4} />
                       ))}
                     </Pie>
-                    <Tooltip content={<CategoryTasksTooltip />} {...chartTooltipProps} />
+                    <Tooltip content={<CategoryTasksTooltip />} {...staticChartTooltipProps} />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="pointer-events-none absolute inset-0 grid place-items-center">
@@ -147,7 +140,7 @@ export default function Reports() {
                   <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
                   <XAxis dataKey="label" interval={0} minTickGap={4} height={34} tickMargin={10} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
                   <YAxis width={34} tickMargin={8} allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
-                  <Tooltip content={<MemberProductivityTooltip />} {...chartTooltipProps} />
+                  <Tooltip content={<MemberProductivityTooltip />} {...staticChartTooltipProps} />
                   <Legend verticalAlign="bottom" height={32} iconType="circle" wrapperStyle={{ paddingTop: 8 }} />
                   {ranking.map((item, index) => (
                     <Line
@@ -226,8 +219,8 @@ export default function Reports() {
                 <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
                 <XAxis dataKey="label" interval={0} minTickGap={4} height={34} tickMargin={10} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
                 <YAxis width={34} tickMargin={8} allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
-                <Tooltip cursor={{ fill: "rgb(var(--color-blush) / 0.08)" }} content={<WeeklyTasksTooltip />} {...chartTooltipProps} />
-                <Bar dataKey="total" fill="var(--chart-1)" radius={[12, 12, 0, 0]} />
+                <Tooltip cursor={{ fill: "rgb(var(--color-blush) / 0.08)" }} content={<WeeklyTasksTooltip />} {...staticChartTooltipProps} />
+                <Bar dataKey="total" fill="var(--chart-1)" radius={[12, 12, 0, 0]} minPointSize={4} />
               </BarChart>
             </ResponsiveContainer>
           </div>

@@ -40,6 +40,7 @@ export default function Family() {
   const [familyName, setFamilyName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [familyForm, setFamilyForm] = useState({ name: "", description: "", image_url: "" });
+  const [activeWeeklyDay, setActiveWeeklyDay] = useState(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -102,9 +103,10 @@ export default function Family() {
       date.setDate(today.getDate() - (6 - index));
       const key = date.toISOString().slice(0, 10);
       const total = tasks.filter((task) => task.status === "concluida" && dateKey(task.completed_at) === key).length;
-      return { label: date.toLocaleDateString("pt-BR", { weekday: "short" }), total };
+      return { key, label: date.toLocaleDateString("pt-BR", { weekday: "short" }), date: date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), total };
     });
   }, [tasks]);
+  const weeklyMax = useMemo(() => Math.max(1, ...weeklyBars.map((item) => item.total)), [weeklyBars]);
 
   async function createFamily(event) {
     event.preventDefault();
@@ -358,16 +360,38 @@ export default function Family() {
           <div className="grid gap-6 lg:grid-cols-2">
             <Card>
               <h2 className="section-title">Produtividade semanal</h2>
-              <div className="mt-5 flex h-44 items-end gap-3 rounded-[24px] bg-gradient-to-br from-rose-50/70 to-blue-50/70 p-4">
-                {weeklyBars.map((bar) => {
-                  const max = Math.max(1, ...weeklyBars.map((item) => item.total));
+              <div className="chart-frame mt-5 flex h-52 items-end gap-3 p-4">
+                {weeklyBars.map((bar, index) => {
+                  const height = bar.total ? Math.max(14, (bar.total / weeklyMax) * 100) : 0;
+                  const active = activeWeeklyDay === bar.key;
                   return (
-                    <div key={bar.label} className="flex flex-1 flex-col items-center gap-2">
-                      <div className="flex h-28 w-full items-end rounded-full bg-white/80 p-1 shadow-inner">
-                        <div className="w-full rounded-full bg-gradient-to-t from-blush to-peach transition-all" style={{ height: `${Math.max(8, (bar.total / max) * 100)}%` }} />
-                      </div>
+                    <button
+                      key={bar.key}
+                      type="button"
+                      onMouseEnter={() => setActiveWeeklyDay(bar.key)}
+                      onMouseLeave={() => setActiveWeeklyDay(null)}
+                      onFocus={() => setActiveWeeklyDay(bar.key)}
+                      onBlur={() => setActiveWeeklyDay(null)}
+                      className="group relative flex min-w-0 flex-1 flex-col items-center gap-2 rounded-2xl focus-visible:outline-none"
+                    >
+                      {active && (
+                        <span
+                          className={`absolute -top-10 z-10 w-max max-w-[8rem] rounded-2xl border border-slate-100 bg-white/95 px-3 py-2 text-center text-xs font-bold text-ink shadow-card ${
+                            index === 0 ? "left-0" : index === weeklyBars.length - 1 ? "right-0" : "left-1/2 -translate-x-1/2"
+                          }`}
+                        >
+                          {bar.date}: {bar.total} concluidas
+                        </span>
+                      )}
+                      <span className="relative flex h-32 w-full items-end overflow-hidden rounded-[22px] border border-slate-100 bg-white/80 p-1.5 shadow-inner">
+                        <span className="absolute inset-x-0 top-2 text-center text-[11px] font-black tabular-nums text-muted">{bar.total}</span>
+                        <span
+                          className="w-full rounded-[18px] bg-gradient-to-t from-blush via-violet-400 to-peach shadow-card transition-all duration-300 group-hover:brightness-110"
+                          style={{ height: `${height}%`, opacity: bar.total ? 1 : 0 }}
+                        />
+                      </span>
                       <span className="text-[11px] font-bold uppercase text-muted">{bar.label}</span>
-                    </div>
+                    </button>
                   );
                 })}
               </div>

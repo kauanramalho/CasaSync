@@ -1,78 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  BookOpen,
-  Briefcase,
-  CalendarHeart,
-  Car,
-  ClipboardCheck,
-  Code2,
-  Coffee,
-  Dumbbell,
-  Film,
-  FolderPlus,
-  Gamepad2,
-  Gift,
-  GraduationCap,
-  Heart,
-  HeartPulse,
-  Home,
-  Landmark,
-  Laptop,
-  Leaf,
-  Music,
-  PawPrint,
-  Plane,
-  Plus,
-  Save,
-  Shirt,
-  ShoppingCart,
-  Smile,
-  Sparkles,
-  Utensils,
-  Wallet
-} from "lucide-react";
+import { useEffect, useState } from "react";
+import { FolderPlus, Plus, Save } from "lucide-react";
 
+import { categoryIconMap } from "../components/Badges";
 import Button from "../components/Button";
 import Card from "../components/Card";
+import CategoryStylePicker from "../components/CategoryStylePicker";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../hooks/useAuth";
 import { categoriesApi } from "../services/api";
-import { colorPalettes, findColor, iconOptions } from "../utils/categoryDesign";
+import { colorPalettes, findColor } from "../utils/categoryDesign";
 import { normalizeApiError } from "../utils/formatters";
 import { getCategoryTone } from "../utils/tasks";
-
-const iconMap = {
-  sparkles: Sparkles,
-  "book-open": BookOpen,
-  briefcase: Briefcase,
-  dumbbell: Dumbbell,
-  "code-2": Code2,
-  "heart-pulse": HeartPulse,
-  wallet: Wallet,
-  "shopping-cart": ShoppingCart,
-  "shopping-bag": ShoppingCart,
-  home: Home,
-  smile: Smile,
-  plane: Plane,
-  heart: Heart,
-  landmark: Landmark,
-  music: Music,
-  "gamepad-2": Gamepad2,
-  film: Film,
-  "paw-print": PawPrint,
-  utensils: Utensils,
-  "graduation-cap": GraduationCap,
-  car: Car,
-  coffee: Coffee,
-  "calendar-heart": CalendarHeart,
-  gift: Gift,
-  laptop: Laptop,
-  leaf: Leaf,
-  shirt: Shirt,
-  "clipboard-check": ClipboardCheck,
-  phone: HeartPulse,
-  book: BookOpen
-};
 
 const initialForm = { name: "", color: "rose", icon: "sparkles" };
 
@@ -97,10 +35,8 @@ export default function Categories() {
     load();
   }, []);
 
-  const SelectedIcon = iconMap[form.icon] ?? FolderPlus;
+  const SelectedIcon = categoryIconMap[form.icon] ?? FolderPlus;
   const selectedColor = findColor(form.color);
-  const palette = useMemo(() => colorPalettes.find((item) => item.id === activePalette) || colorPalettes[0], [activePalette]);
-
   function startEdit(category) {
     setEditing(category);
     setForm({ name: category.name, color: category.color || "rose", icon: category.icon || "sparkles" });
@@ -152,7 +88,7 @@ export default function Categories() {
           </div>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {categories.map((category) => {
-              const Icon = iconMap[category.icon] ?? FolderPlus;
+              const Icon = categoryIconMap[category.icon] ?? FolderPlus;
               const color = findColor(category.color);
               return (
                 <button
@@ -204,55 +140,14 @@ export default function Categories() {
           <form onSubmit={handleSubmit} className="mt-5 space-y-5">
             <input className="soft-input" placeholder="Nome" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} required />
 
-            <div>
-              <p className="mb-3 text-sm font-bold text-ink">Paleta</p>
-              <div className="flex flex-wrap gap-2">
-                {colorPalettes.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setActivePalette(item.id)}
-                    className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${activePalette === item.id ? "bg-rose-50 text-blush shadow-card" : "bg-white text-muted hover:bg-slate-50"}`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-3 grid grid-cols-5 gap-2">
-                {palette.colors.map((color) => (
-                  <button
-                    key={color.key}
-                    type="button"
-                    onClick={() => setForm((current) => ({ ...current, color: color.key }))}
-                    className={`group grid aspect-square place-items-center rounded-2xl border bg-white transition hover:-translate-y-0.5 ${form.color === color.key ? "border-rose-300 shadow-card ring-4 ring-rose-100" : "border-slate-100"}`}
-                    title={color.label}
-                  >
-                    <span className="h-7 w-7 rounded-full shadow-inner transition group-hover:scale-110" style={{ backgroundColor: color.hex }} />
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <p className="mb-3 text-sm font-bold text-ink">Icone</p>
-              <div className="grid max-h-64 grid-cols-5 gap-2 overflow-y-auto pr-1">
-                {iconOptions.map((option) => {
-                  const Icon = iconMap[option.key] ?? Sparkles;
-                  const active = form.icon === option.key;
-                  return (
-                    <button
-                      key={option.key}
-                      type="button"
-                      title={option.label}
-                      onClick={() => setForm((current) => ({ ...current, icon: option.key }))}
-                      className={`grid aspect-square place-items-center rounded-2xl border transition hover:-translate-y-0.5 ${active ? "border-rose-300 bg-rose-50 text-blush shadow-card" : "border-slate-100 bg-white text-muted hover:bg-slate-50 hover:text-ink"}`}
-                    >
-                      <Icon className="h-5 w-5" />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            <CategoryStylePicker
+              color={form.color}
+              icon={form.icon}
+              activePalette={activePalette}
+              onPaletteChange={setActivePalette}
+              onColorChange={(color) => setForm((current) => ({ ...current, color }))}
+              onIconChange={(icon) => setForm((current) => ({ ...current, icon }))}
+            />
 
             <Button type="submit" className="w-full">
               {editing ? <Save className="h-5 w-5" /> : <Plus className="h-5 w-5" />}

@@ -18,10 +18,12 @@ import Card from "../components/Card";
 import PageHeader from "../components/PageHeader";
 import ProfileModal from "../components/ProfileModal";
 import SelectMenu from "../components/SelectMenu";
+import { useAppPreferences } from "../hooks/useAppPreferences";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 import { familiesApi, integrationsApi } from "../services/api";
 import { normalizeApiError } from "../utils/formatters";
+import { timezoneOptions, weekStartOptions } from "../utils/preferences";
 
 const tabs = [
   { key: "general", label: "Gerais", icon: SettingsIcon },
@@ -32,17 +34,17 @@ const tabs = [
 
 export default function Settings() {
   const { user, updateUser } = useAuth();
+  const { preferences, updatePreference, updatePreferences } = useAppPreferences();
   const { paletteId, palettes, selectPalette } = useTheme();
   const [activeTab, setActiveTab] = useState("general");
   const [calendarStatus, setCalendarStatus] = useState(null);
   const [calendarMessage, setCalendarMessage] = useState("");
   const [family, setFamily] = useState(null);
+  const [familyForm, setFamilyForm] = useState({ name: "" });
   const [profileOpen, setProfileOpen] = useState(false);
   const [error, setError] = useState("");
-  const [language, setLanguage] = useState("pt-BR");
-  const [currency, setCurrency] = useState("BRL");
-  const [weekStart, setWeekStart] = useState("monday");
-  const [timezone, setTimezone] = useState("America/Sao_Paulo");
+  const [message, setMessage] = useState("");
+  const [savingFamily, setSavingFamily] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -52,7 +54,11 @@ export default function Settings() {
       if (!alive) return;
 
       if (calendarResult.status === "fulfilled") setCalendarStatus(calendarResult.value);
-      if (familiesResult.status === "fulfilled") setFamily(familiesResult.value?.[0] ?? null);
+      if (familiesResult.status === "fulfilled") {
+        const currentFamily = familiesResult.value?.[0] ?? null;
+        setFamily(currentFamily);
+        setFamilyForm({ name: currentFamily?.name || "" });
+      }
       if (calendarResult.status === "rejected") setError(normalizeApiError(calendarResult.reason));
     }
 
@@ -71,10 +77,30 @@ export default function Settings() {
     }
   }
 
+  async function saveFamilySettings() {
+    setError("");
+    setMessage("");
+    setSavingFamily(true);
+    try {
+      updatePreferences({ timezone: preferences.timezone });
+      if (family) {
+        const updated = await familiesApi.updateCurrent({ name: familyForm.name });
+        setFamily(updated);
+        setFamilyForm({ name: updated.name || "" });
+      }
+      setMessage("Alteracoes salvas com sucesso.");
+    } catch (err) {
+      setError(normalizeApiError(err));
+    } finally {
+      setSavingFamily(false);
+    }
+  }
+
   return (
     <>
       <PageHeader title="Configuracoes" user={user} />
       {error && <p className="mb-5 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</p>}
+      {message && <p className="mb-5 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-600">{message}</p>}
 
       <div className="mb-8 flex gap-3 overflow-x-auto border-b border-slate-200 pb-1">
         {tabs.map((tab) => {
@@ -102,15 +128,15 @@ export default function Settings() {
             <div className="mt-6 space-y-5">
               <div className="grid gap-3 md:grid-cols-[1fr_220px] md:items-center">
                 <p className="font-semibold text-muted">Idioma</p>
-                <SelectMenu value={language} onChange={setLanguage} options={[{ value: "pt-BR", label: "Portugues" }]} />
+                <SelectMenu value={preferences.language} onChange={(value) => updatePreference("language", value)} options={[{ value: "pt-BR", label: "Portugues" }]} />
               </div>
               <div className="grid gap-3 md:grid-cols-[1fr_220px] md:items-center">
                 <p className="font-semibold text-muted">Moeda</p>
-                <SelectMenu value={currency} onChange={setCurrency} options={[{ value: "BRL", label: "BRL (R$)" }]} />
+                <SelectMenu value={preferences.currency} onChange={(value) => updatePreference("currency", value)} options={[{ value: "BRL", label: "BRL (R$)" }]} />
               </div>
               <div className="grid gap-3 md:grid-cols-[1fr_220px] md:items-center">
                 <p className="font-semibold text-muted">Inicio da semana</p>
-                <SelectMenu value={weekStart} onChange={setWeekStart} options={[{ value: "monday", label: "Segunda-feira" }]} />
+                <SelectMenu value={preferences.weekStart} onChange={(value) => updatePreference("weekStart", value)} options={weekStartOptions} />
               </div>
               <div className="flex items-center justify-between rounded-2xl bg-white/75 px-4 py-3">
                 <div>
@@ -129,7 +155,7 @@ export default function Settings() {
             <div className="mt-6 space-y-5">
               <label className="block">
                 <span className="mb-2 block text-sm font-semibold text-muted">Nome da familia</span>
-                <input className="soft-input" defaultValue={family?.name || "Kauan & Bia"} />
+                <input className="soft-input" value={familyForm.name} onChange={(event) => setFamilyForm({ name: event.target.value })} placeholder="Nome da familia" />
               </label>
               <label className="block">
                 <span className="mb-2 block text-sm font-semibold text-muted">Codigo de convite</span>
@@ -137,9 +163,11 @@ export default function Settings() {
               </label>
               <label className="block">
                 <span className="mb-2 block text-sm font-semibold text-muted">Fuso horario</span>
-                <SelectMenu value={timezone} onChange={setTimezone} options={[{ value: "America/Sao_Paulo", label: "(GMT-03:00) Brasilia" }]} />
+                <SelectMenu value={preferences.timezone} onChange={(value) => updatePreference("timezone", value)} options={timezoneOptions} />
               </label>
-              <Button className="mx-auto flex w-full md:w-64">Salvar alteracoes</Button>
+              <Button className="mx-auto flex w-full md:w-64" onClick={saveFamilySettings} disabled={savingFamily || (family && familyForm.name.trim().length < 2)}>
+                {savingFamily ? "Salvando..." : "Salvar alteracoes"}
+              </Button>
             </div>
           </Card>
 

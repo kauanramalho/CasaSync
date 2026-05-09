@@ -1,3 +1,5 @@
+import { getStoredPreferences } from "./preferences";
+
 export const priorityLabels = {
   baixa: "Baixa",
   media: "Média",
@@ -13,7 +15,11 @@ export const statusLabels = {
 
 export function formatDate(value, fallback = "Sem prazo") {
   if (!value) return fallback;
-  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(new Date(value));
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "short",
+    timeZone: getStoredPreferences().timezone
+  }).format(new Date(value));
 }
 
 export function formatDateTimeLocal(value) {

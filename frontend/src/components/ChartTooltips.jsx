@@ -10,10 +10,18 @@ const statusTone = {
   neutral: "bg-slate-50 text-slate-600 border-slate-100"
 };
 
+export const staticChartTooltipProps = {
+  allowEscapeViewBox: { x: false, y: false },
+  offset: 0,
+  position: { y: 8 },
+  reverseDirection: { x: true, y: false },
+  wrapperStyle: { pointerEvents: "none", zIndex: 60, outline: "none" }
+};
+
 function TooltipShell({ children }) {
   return (
     <div
-      className="w-[min(18rem,calc(100vw-2rem))] overflow-hidden rounded-[22px] border border-slate-200 bg-white/95 p-4 text-sm text-ink shadow-soft backdrop-blur-xl animate-in"
+      className="chart-tooltip-shell overflow-hidden rounded-[22px] border border-slate-200 bg-white/95 p-4 text-sm text-ink shadow-soft backdrop-blur-xl animate-in"
       onWheel={(event) => event.stopPropagation()}
     >
       {children}

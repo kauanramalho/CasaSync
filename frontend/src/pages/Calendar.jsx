@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
+import clsx from "clsx";
 import { CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, Edit3, Plus, X } from "lucide-react";
 
 import AssigneeStack from "../components/AssigneeStack";
@@ -9,11 +10,13 @@ import Button from "../components/Button";
 import Card from "../components/Card";
 import PageHeader from "../components/PageHeader";
 import TaskEditorModal from "../components/TaskEditorModal";
+import { useAppPreferences } from "../hooks/useAppPreferences";
 import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
 import { categoriesApi, familiesApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { formatDate, normalizeApiError } from "../utils/formatters";
+import { buildMonthDays, getStoredPreferences, getWeekdayLabels, startOfWeek as getPreferenceStartOfWeek } from "../utils/preferences";
 import { getCategoryHex, getTaskPointLabel } from "../utils/tasks";
 
 const weekdays = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
@@ -29,28 +32,8 @@ const priorityDot = {
   baixa: "bg-emerald-400"
 };
 
-function startOfWeek(date) {
-  const base = new Date(date);
-  const mondayOffset = (base.getDay() + 6) % 7;
-  base.setDate(base.getDate() - mondayOffset);
-  base.setHours(0, 0, 0, 0);
-  return base;
-}
-
-function monthDays(baseDate) {
-  const year = baseDate.getFullYear();
-  const month = baseDate.getMonth();
-  const start = startOfWeek(new Date(year, month, 1));
-
-  return Array.from({ length: 42 }, (_, index) => {
-    const date = new Date(start);
-    date.setDate(start.getDate() + index);
-    return date;
-  });
-}
-
-function weekDays(baseDate) {
-  const start = startOfWeek(baseDate);
+function weekDays(baseDate, weekStart) {
+  const start = getPreferenceStartOfWeek(baseDate, weekStart);
   return Array.from({ length: 7 }, (_, index) => {
     const date = new Date(start);
     date.setDate(start.getDate() + index);
@@ -73,18 +56,23 @@ function taskDateKey(task) {
 
 function timeLabel(value) {
   if (!value) return "Sem horário";
-  return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+  return new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: getStoredPreferences().timezone
+  }).format(new Date(value));
 }
 
 function fullDateLabel(date) {
-  const datePart = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long" }).format(date);
-  const weekday = new Intl.DateTimeFormat("pt-BR", { weekday: "long" }).format(date);
+  const timezone = getStoredPreferences().timezone;
+  const datePart = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long", timeZone: timezone }).format(date);
+  const weekday = new Intl.DateTimeFormat("pt-BR", { weekday: "long", timeZone: timezone }).format(date);
   return `${datePart}, ${weekday}`;
 }
 
-function periodLabel(baseDate, viewMode) {
+function periodLabel(baseDate, viewMode, weekStart) {
   if (viewMode === "week") {
-    const days = weekDays(baseDate);
+    const days = weekDays(baseDate, weekStart);
     return `${formatDate(days[0])} a ${formatDate(days[6])}`;
   }
   return new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(baseDate);
@@ -263,6 +251,7 @@ function DayPanel({ date, tasks, onClose, onComplete, onCompleteAll, onEdit }) {
 
 export default function Calendar() {
   const { user } = useAuth();
+  const { preferences } = useAppPreferences();
   const { addNotification } = useNotifications();
   const [baseDate, setBaseDate] = useState(new Date());
   const [viewMode, setViewMode] = useState("month");
@@ -293,8 +282,9 @@ export default function Calendar() {
     return () => window.clearTimeout(previewTimer.current);
   }, []);
 
-  const days = useMemo(() => monthDays(baseDate), [baseDate]);
-  const week = useMemo(() => weekDays(baseDate), [baseDate]);
+  const weekdayLabels = useMemo(() => getWeekdayLabels(preferences.weekStart) || weekdays, [preferences.weekStart]);
+  const days = useMemo(() => buildMonthDays(baseDate, preferences.weekStart), [baseDate, preferences.weekStart]);
+  const week = useMemo(() => weekDays(baseDate, preferences.weekStart), [baseDate, preferences.weekStart]);
   const tasksByDay = useMemo(() => {
     return tasks.reduce((acc, task) => {
       const key = taskDateKey(task);
@@ -414,8 +404,8 @@ export default function Calendar() {
       <Card className="p-0">
         <div className="overflow-x-auto">
           <div className="min-w-[760px]">
-            <div className="grid grid-cols-7 border-b border-slate-100">
-              {weekdays.map((day) => (
+            <div className="calendar-weekday-row grid grid-cols-7">
+              {weekdayLabels.map((day) => (
                 <div key={day} className="px-3 py-4 text-center text-sm font-semibold text-muted">
                   {day}
                 </div>
@@ -440,11 +430,18 @@ export default function Calendar() {
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") openDay(day);
                     }}
-                    className={`min-h-[132px] cursor-pointer border-b border-r border-slate-100 p-3 transition hover:bg-rose-50/30 ${
-                      isSelected ? "bg-rose-50/50 ring-2 ring-inset ring-blush/50" : "bg-white/40"
-                    }`}
+                    className={clsx(
+                      "calendar-day-cell min-h-[132px] cursor-pointer border-b border-r p-3 transition",
+                      isCurrentMonth ? "calendar-day-current" : "calendar-day-outside",
+                      isSelected && "calendar-day-selected"
+                    )}
                   >
-                    <div className={`mb-3 grid h-8 w-8 place-items-center rounded-full text-sm font-semibold ${isToday ? "bg-blush text-white" : isCurrentMonth ? "text-ink" : "text-slate-300"}`}>
+                    <div
+                      className={clsx(
+                        "mb-3 grid h-8 w-8 place-items-center rounded-full text-sm font-semibold",
+                        isToday ? "bg-blush text-white shadow-card" : isCurrentMonth ? "text-ink" : "calendar-day-number-outside"
+                      )}
+                    >
                       {day.getDate()}
                     </div>
                     <div className="space-y-1.5">
@@ -472,13 +469,13 @@ export default function Calendar() {
       <Card className="p-0">
         <div className="overflow-x-auto">
           <div className="grid min-w-[860px] grid-cols-7 divide-x divide-slate-100">
-            {week.map((day) => {
+            {week.map((day, index) => {
               const key = dateKey(day);
               const dayTasks = tasksByDay[key] || [];
               return (
                 <div key={key} className="min-h-[520px] p-4">
                   <button type="button" onClick={() => openDay(day)} className="mb-4 w-full rounded-2xl bg-slate-50 px-3 py-3 text-left hover:bg-rose-50">
-                    <p className="text-xs font-bold uppercase text-muted">{weekdays[(day.getDay() + 6) % 7]}</p>
+                    <p className="text-xs font-bold uppercase text-muted">{weekdayLabels[index]}</p>
                     <p className="mt-1 text-xl font-bold text-ink">{day.getDate()}</p>
                     <p className="text-xs font-semibold text-muted">{dayTasks.length} tarefas</p>
                   </button>
@@ -559,7 +556,7 @@ export default function Calendar() {
           <button onClick={() => movePeriod(-1)} className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-muted shadow-card">
             <ChevronLeft className="h-5 w-5" />
           </button>
-          <h2 className="min-w-52 text-xl font-bold capitalize text-ink">{periodLabel(baseDate, viewMode)}</h2>
+          <h2 className="min-w-52 text-xl font-bold capitalize text-ink">{periodLabel(baseDate, viewMode, preferences.weekStart)}</h2>
           <button onClick={() => movePeriod(1)} className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-muted shadow-card">
             <ChevronRight className="h-5 w-5" />
           </button>

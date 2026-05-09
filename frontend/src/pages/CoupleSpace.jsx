@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarHeart,
   CheckCircle2,
@@ -20,25 +20,41 @@ import {
 
 import Button from "../components/Button";
 import Card from "../components/Card";
+import CategoryStylePicker, { getPaletteIdForColor } from "../components/CategoryStylePicker";
+import DateTimePicker from "../components/DateTimePicker";
 import PageHeader from "../components/PageHeader";
-import SelectMenu from "../components/SelectMenu";
+import { categoryIconMap } from "../components/Badges";
 import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
 import { coupleApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
+import { readFileAsDataUrl, validateImageFile } from "../utils/files";
 import { formatDate, normalizeApiError, toIsoOrNull } from "../utils/formatters";
+import { getStoredPreferences } from "../utils/preferences";
+import { findColor } from "../utils/categoryDesign";
+import { getCategoryTone } from "../utils/tasks";
 
 const initialGoal = { title: "", description: "", target_date: "", progress: 0 };
-const initialDate = { title: "", description: "", location: "", budget: "", external_url: "", image_url: "", mood: "romantico" };
-const initialNote = { message: "", color: "rose" };
+const initialDate = { title: "", description: "", location: "", budget: "", external_url: "", image_url: "", suggested_date: "", mood: "romantico" };
+const initialNote = { message: "", color: "rose", icon: "heart" };
 
-const noteColors = {
-  rose: "bg-rose-50 border-rose-100 text-rose-900",
-  peach: "bg-orange-50 border-orange-100 text-orange-900",
-  lavender: "bg-violet-50 border-violet-100 text-violet-900",
-  mint: "bg-emerald-50 border-emerald-100 text-emerald-900",
-  sky: "bg-blue-50 border-blue-100 text-blue-900"
-};
+const noteIconStorageKey = "casasync_quick_note_icons";
+
+function getStoredNoteIcons() {
+  try {
+    return JSON.parse(localStorage.getItem(noteIconStorageKey) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveStoredNoteIcons(nextIcons) {
+  localStorage.setItem(noteIconStorageKey, JSON.stringify(nextIcons));
+}
+
+function isDataImage(value) {
+  return typeof value === "string" && value.startsWith("data:image/");
+}
 
 function domainFromUrl(url) {
   if (!url) return "";
@@ -51,7 +67,11 @@ function domainFromUrl(url) {
 
 function formatTime(value) {
   if (!value) return "";
-  return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+  return new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: getStoredPreferences().timezone
+  }).format(new Date(value));
 }
 
 export default function CoupleSpace() {
@@ -61,8 +81,12 @@ export default function CoupleSpace() {
   const [goalForm, setGoalForm] = useState(initialGoal);
   const [dateForm, setDateForm] = useState(initialDate);
   const [noteForm, setNoteForm] = useState(initialNote);
+  const [dateImageError, setDateImageError] = useState("");
+  const [noteIcons, setNoteIcons] = useState(getStoredNoteIcons);
+  const [activeNotePalette, setActiveNotePalette] = useState("pastel");
   const [editingNote, setEditingNote] = useState(null);
   const [error, setError] = useState("");
+  const dateImageInputRef = useRef(null);
 
   async function load() {
     try {
@@ -75,6 +99,52 @@ export default function CoupleSpace() {
   useEffect(() => {
     load();
   }, []);
+
+  const notePreviewColor = useMemo(() => findColor(noteForm.color), [noteForm.color]);
+
+  function persistNoteIcon(noteId, icon) {
+    if (!noteId) return;
+    setNoteIcons((current) => {
+      const next = { ...current, [noteId]: icon || initialNote.icon };
+      saveStoredNoteIcons(next);
+      return next;
+    });
+  }
+
+  function removeStoredNoteIcon(noteId) {
+    setNoteIcons((current) => {
+      const next = { ...current };
+      delete next[noteId];
+      saveStoredNoteIcons(next);
+      return next;
+    });
+  }
+
+  async function handleDateImageFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const validationError = validateImageFile(file);
+    if (validationError) {
+      setDateImageError(validationError);
+      event.target.value = "";
+      return;
+    }
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setDateImageError("");
+      setDateForm((current) => ({ ...current, image_url: dataUrl }));
+    } catch {
+      setDateImageError("Nao foi possivel carregar a imagem.");
+    }
+  }
+
+  function clearDateImage() {
+    setDateImageError("");
+    setDateForm((current) => ({ ...current, image_url: "" }));
+    if (dateImageInputRef.current) dateImageInputRef.current.value = "";
+  }
 
   async function createGoal(event) {
     event.preventDefault();
@@ -111,9 +181,10 @@ export default function CoupleSpace() {
   async function createDateIdea(event) {
     event.preventDefault();
     try {
-      await coupleApi.createDateIdea({ ...dateForm, suggested_date: null });
+      await coupleApi.createDateIdea({ ...dateForm, suggested_date: toIsoOrNull(dateForm.suggested_date) });
       addNotification({ title: "Nova ideia de date", description: `${dateForm.title} foi adicionada para um momento especial.`, type: "couple", actor: user?.name });
       setDateForm(initialDate);
+      clearDateImage();
       emitAppDataChanged();
       load();
     } catch (err) {
@@ -134,9 +205,11 @@ export default function CoupleSpace() {
   async function createNote(event) {
     event.preventDefault();
     try {
-      await coupleApi.createNote(noteForm);
+      const created = await coupleApi.createNote({ message: noteForm.message, color: noteForm.color });
+      persistNoteIcon(created?.id, noteForm.icon);
       addNotification({ title: "Nova nota rapida", description: "Uma mensagem carinhosa foi guardada no Espaco do Casal.", type: "couple", actor: user?.name });
       setNoteForm(initialNote);
+      setActiveNotePalette(getPaletteIdForColor(initialNote.color));
       emitAppDataChanged();
       load();
     } catch (err) {
@@ -147,12 +220,14 @@ export default function CoupleSpace() {
   async function saveNote() {
     if (!editingNote) return;
     await coupleApi.updateNote(editingNote.id, { message: editingNote.message, color: editingNote.color });
+    persistNoteIcon(editingNote.id, editingNote.icon);
     setEditingNote(null);
     load();
   }
 
   async function removeNote(note) {
     await coupleApi.deleteNote(note.id);
+    removeStoredNoteIcon(note.id);
     load();
   }
 
@@ -195,7 +270,7 @@ export default function CoupleSpace() {
               <input className="soft-input" placeholder="Ex: viagem juntos" value={goalForm.title} onChange={(event) => setGoalForm((current) => ({ ...current, title: event.target.value }))} required />
               <textarea className="soft-input min-h-24 resize-none" placeholder="Descricao opcional" value={goalForm.description} onChange={(event) => setGoalForm((current) => ({ ...current, description: event.target.value }))} />
               <div className="grid gap-3 sm:grid-cols-2">
-                <input className="soft-input" type="date" value={goalForm.target_date} onChange={(event) => setGoalForm((current) => ({ ...current, target_date: event.target.value }))} />
+                <DateTimePicker value={goalForm.target_date} onChange={(value) => setGoalForm((current) => ({ ...current, target_date: value }))} placeholder="Data da meta" />
                 <input className="soft-input" type="number" min="0" max="100" placeholder="Progresso %" value={goalForm.progress} onChange={(event) => setGoalForm((current) => ({ ...current, progress: event.target.value }))} />
               </div>
               <Button type="submit" className="w-full">
@@ -210,6 +285,7 @@ export default function CoupleSpace() {
             <form onSubmit={createDateIdea} className="mt-5 space-y-3">
               <input className="soft-input" placeholder="Titulo do date" value={dateForm.title} onChange={(event) => setDateForm((current) => ({ ...current, title: event.target.value }))} required />
               <textarea className="soft-input min-h-20 resize-none" placeholder="Descricao" value={dateForm.description} onChange={(event) => setDateForm((current) => ({ ...current, description: event.target.value }))} />
+              <DateTimePicker value={dateForm.suggested_date} onChange={(value) => setDateForm((current) => ({ ...current, suggested_date: value }))} placeholder="Data sugerida do date" />
               <div className="grid gap-3 sm:grid-cols-2">
                 <input className="soft-input" placeholder="Local" value={dateForm.location} onChange={(event) => setDateForm((current) => ({ ...current, location: event.target.value }))} />
                 <input className="soft-input" placeholder="Orcamento" value={dateForm.budget} onChange={(event) => setDateForm((current) => ({ ...current, budget: event.target.value }))} />
@@ -220,7 +296,37 @@ export default function CoupleSpace() {
               </div>
               <div className="relative">
                 <ImagePlus className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-                <input className="soft-input pl-10" placeholder="Imagem opcional (URL)" value={dateForm.image_url} onChange={(event) => setDateForm((current) => ({ ...current, image_url: event.target.value }))} />
+                <input
+                  className="soft-input pl-10"
+                  placeholder={isDataImage(dateForm.image_url) ? "Imagem local selecionada" : "Imagem opcional (URL)"}
+                  value={isDataImage(dateForm.image_url) ? "" : dateForm.image_url}
+                  onChange={(event) => {
+                    setDateImageError("");
+                    setDateForm((current) => ({ ...current, image_url: event.target.value }));
+                  }}
+                />
+              </div>
+              <div className="rounded-[22px] border border-slate-100 bg-white/70 p-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-white px-4 py-2 text-sm font-bold text-muted shadow-card transition hover:text-blush">
+                    <ImagePlus className="h-4 w-4" />
+                    Escolher imagem
+                    <input ref={dateImageInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleDateImageFile} />
+                  </label>
+                  {dateForm.image_url && (
+                    <button type="button" onClick={clearDateImage} className="inline-flex items-center gap-2 rounded-2xl bg-rose-50 px-4 py-2 text-sm font-bold text-rose-600">
+                      <Trash2 className="h-4 w-4" />
+                      Remover
+                    </button>
+                  )}
+                  <span className="text-xs font-semibold text-muted">PNG, JPG ou WEBP ate 2 MB.</span>
+                </div>
+                {dateImageError && <p className="mt-3 rounded-2xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600">{dateImageError}</p>}
+                {dateForm.image_url && (
+                  <div className="mt-3 overflow-hidden rounded-[20px] border border-white/80 bg-slate-50">
+                    <img src={dateForm.image_url} alt="Preview do date" className="h-40 w-full object-cover" />
+                  </div>
+                )}
               </div>
               <Button type="submit" className="w-full">
                 <Plus className="h-5 w-5" />
@@ -233,16 +339,16 @@ export default function CoupleSpace() {
             <h2 className="section-title">Nota rapida</h2>
             <form onSubmit={createNote} className="mt-5 space-y-3">
               <textarea className="soft-input min-h-24 resize-none" placeholder="Escreva uma mensagem curta..." value={noteForm.message} onChange={(event) => setNoteForm((current) => ({ ...current, message: event.target.value }))} required />
-              <SelectMenu
-                value={noteForm.color}
-                onChange={(value) => setNoteForm((current) => ({ ...current, color: value }))}
-                options={[
-                  { value: "rose", label: "Rosa" },
-                  { value: "peach", label: "Pessego" },
-                  { value: "lavender", label: "Lavanda" },
-                  { value: "mint", label: "Menta" },
-                  { value: "sky", label: "Azul suave" }
-                ]}
+              <CategoryStylePicker
+                color={noteForm.color}
+                icon={noteForm.icon}
+                activePalette={activeNotePalette}
+                onPaletteChange={setActiveNotePalette}
+                onColorChange={(color) => setNoteForm((current) => ({ ...current, color }))}
+                onIconChange={(icon) => setNoteForm((current) => ({ ...current, icon }))}
+                previewTitle="Nota rapida"
+                previewHelper={notePreviewColor?.label}
+                showPreview
               />
               <Button type="submit" className="w-full">
                 <MessageCircleHeart className="h-5 w-5" />
@@ -348,6 +454,12 @@ export default function CoupleSpace() {
                           {idea.budget}
                         </p>
                       )}
+                      {idea.suggested_date && (
+                        <p className="inline-flex items-center gap-2">
+                          <CalendarHeart className="h-4 w-4 text-blue-500" />
+                          {formatDate(idea.suggested_date)}
+                        </p>
+                      )}
                       <p className="inline-flex items-center gap-2">
                         <Sparkles className="h-4 w-4 text-lavender" />
                         {idea.mood}
@@ -383,10 +495,29 @@ export default function CoupleSpace() {
             <div className="mt-5 grid gap-4 md:grid-cols-2">
               {space.notes.map((note) => {
                 const editing = editingNote?.id === note.id;
+                const icon = editing ? editingNote.icon : noteIcons[note.id] || initialNote.icon;
+                const NoteIcon = categoryIconMap[icon] || MessageCircleHeart;
+                const color = findColor(editing ? editingNote.color : note.color);
                 return (
-                  <div key={note.id} className={`rotate-[-0.5deg] rounded-[22px] border p-4 shadow-card transition hover:rotate-0 hover:-translate-y-0.5 ${noteColors[note.color] || noteColors.rose}`}>
+                  <div key={note.id} className={`rotate-[-0.5deg] rounded-[22px] border p-4 shadow-card transition hover:rotate-0 hover:-translate-y-0.5 ${getCategoryTone({ color: editing ? editingNote.color : note.color })}`}>
+                    <div className="mb-3 flex items-center gap-2">
+                      <span className="grid h-9 w-9 place-items-center rounded-2xl bg-white/80 shadow-card" style={{ color: color?.hex }}>
+                        <NoteIcon className="h-4 w-4" />
+                      </span>
+                      <span className="text-xs font-bold uppercase tracking-wide opacity-75">{color?.label || "Nota"}</span>
+                    </div>
                     {editing ? (
-                      <textarea className="soft-input min-h-28 resize-none bg-white/80" value={editingNote.message} onChange={(event) => setEditingNote((current) => ({ ...current, message: event.target.value }))} />
+                      <div className="space-y-4">
+                        <textarea className="soft-input min-h-28 resize-none bg-white/80" value={editingNote.message} onChange={(event) => setEditingNote((current) => ({ ...current, message: event.target.value }))} />
+                        <CategoryStylePicker
+                          color={editingNote.color}
+                          icon={editingNote.icon}
+                          activePalette={activeNotePalette}
+                          onPaletteChange={setActiveNotePalette}
+                          onColorChange={(nextColor) => setEditingNote((current) => ({ ...current, color: nextColor }))}
+                          onIconChange={(nextIcon) => setEditingNote((current) => ({ ...current, icon: nextIcon }))}
+                        />
+                      </div>
                     ) : (
                       <p className="text-sm font-semibold leading-relaxed">{note.message}</p>
                     )}
@@ -407,7 +538,14 @@ export default function CoupleSpace() {
                           Salvar
                         </button>
                       ) : (
-                        <button type="button" onClick={() => setEditingNote(note)} className="rounded-full bg-white px-3 py-1 text-xs font-bold text-muted shadow-card hover:text-blush">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingNote({ ...note, icon });
+                            setActiveNotePalette(getPaletteIdForColor(note.color));
+                          }}
+                          className="rounded-full bg-white px-3 py-1 text-xs font-bold text-muted shadow-card hover:text-blush"
+                        >
                           Editar
                         </button>
                       )}

@@ -294,6 +294,42 @@
     overflow: visible;
   }
 
+  .chart-tooltip-shell {
+    width: min(18rem, calc(100vw - 2rem));
+    max-width: calc(100% - 1rem);
+  }
+
+  .calendar-weekday-row {
+    border-bottom: 1px solid rgb(var(--color-border) / 0.72);
+    background: rgb(var(--color-surface-soft) / 0.34);
+  }
+
+  .calendar-day-cell {
+    border-color: rgb(var(--color-border) / 0.58);
+    background: linear-gradient(145deg, rgb(var(--color-surface) / 0.82), rgb(var(--color-surface-soft) / 0.48));
+  }
+
+  .calendar-day-cell:hover {
+    background: linear-gradient(145deg, rgb(var(--color-blush) / 0.13), rgb(var(--color-peach) / 0.1));
+  }
+
+  .calendar-day-current {
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18);
+  }
+
+  .calendar-day-outside {
+    background: rgb(var(--color-surface-soft) / 0.34);
+  }
+
+  .calendar-day-number-outside {
+    color: rgb(var(--color-muted) / 0.72);
+  }
+
+  .calendar-day-selected {
+    background: linear-gradient(145deg, rgb(var(--color-blush) / 0.18), rgb(var(--color-peach) / 0.12));
+    box-shadow: inset 0 0 0 2px rgb(var(--color-blush) / 0.42);
+  }
+
   .recharts-wrapper,
   .recharts-surface {
     overflow: visible !important;
