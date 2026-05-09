@@ -29,7 +29,9 @@ import { buildProductivityRows, getCategoryHex, getCategoryName, memberChartColo
 
 const chartColors = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"];
 const chartTooltipProps = {
-  allowEscapeViewBox: { x: true, y: true },
+  allowEscapeViewBox: { x: false, y: false },
+  offset: 12,
+  reverseDirection: { x: true, y: true },
   wrapperStyle: { pointerEvents: "auto", zIndex: 60, outline: "none" }
 };
 
@@ -87,8 +89,8 @@ export default function Reports() {
       />
       {error && <p className="mb-5 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</p>}
 
-      <div className="grid gap-6 xl:grid-cols-3">
-        <Card>
+      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.35fr_0.85fr]">
+        <Card className="overflow-visible">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="section-title">Tarefas por categoria</h2>
@@ -118,7 +120,7 @@ export default function Reports() {
                 </div>
               </div>
 
-              <div className="mt-4 max-h-36 space-y-2 overflow-y-auto pr-1">
+              <div className="mt-4 space-y-2">
                 {categoryRows.map((item) => (
                   <div key={item.name} className="flex items-center justify-between gap-3 rounded-2xl bg-white/75 px-3 py-2 shadow-sm">
                     <CategoryBadge category={item} className="max-w-[70%]" />
@@ -141,10 +143,10 @@ export default function Reports() {
           <div className="chart-frame mt-5">
             <div className="chart-canvas-sm">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={productivityRows} margin={{ top: 12, right: 24, left: 2, bottom: 10 }}>
+                <LineChart data={productivityRows} margin={{ top: 18, right: 24, left: 2, bottom: 18 }}>
                   <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
-                  <XAxis dataKey="label" interval={0} minTickGap={4} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
-                  <YAxis width={34} allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
+                  <XAxis dataKey="label" interval={0} minTickGap={4} height={34} tickMargin={10} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
+                  <YAxis width={34} tickMargin={8} allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
                   <Tooltip content={<MemberProductivityTooltip />} {...chartTooltipProps} />
                   <Legend verticalAlign="bottom" height={32} iconType="circle" wrapperStyle={{ paddingTop: 8 }} />
                   {ranking.map((item, index) => (
@@ -220,10 +222,10 @@ export default function Reports() {
         <div className="chart-frame mt-5">
           <div className="chart-canvas">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={productivity} margin={{ top: 14, right: 24, left: 2, bottom: 8 }} barCategoryGap="24%" maxBarSize={64}>
+              <BarChart data={productivity} margin={{ top: 18, right: 24, left: 2, bottom: 16 }} barCategoryGap="24%" maxBarSize={64}>
                 <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
-                <XAxis dataKey="label" interval={0} minTickGap={4} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
-                <YAxis width={34} allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
+                <XAxis dataKey="label" interval={0} minTickGap={4} height={34} tickMargin={10} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
+                <YAxis width={34} tickMargin={8} allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
                 <Tooltip cursor={{ fill: "rgb(var(--color-blush) / 0.08)" }} content={<WeeklyTasksTooltip />} {...chartTooltipProps} />
                 <Bar dataKey="total" fill="var(--chart-1)" radius={[12, 12, 0, 0]} />
               </BarChart>

@@ -19,7 +19,9 @@ import { normalizeApiError } from "../utils/formatters";
 import { getHiddenRecentTaskIds, hideRecentTask } from "../utils/recentTasks";
 
 const chartTooltipProps = {
-  allowEscapeViewBox: { x: true, y: true },
+  allowEscapeViewBox: { x: false, y: false },
+  offset: 12,
+  reverseDirection: { x: true, y: true },
   wrapperStyle: { pointerEvents: "auto", zIndex: 60, outline: "none" }
 };
 
@@ -174,7 +176,7 @@ export default function Dashboard() {
         })}
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[1.4fr_0.95fr]">
+      <div className="mt-6 grid gap-6 xl:grid-cols-[1.15fr_1fr]">
         <Card>
           <div className="mb-5 flex items-center justify-between">
             <h2 className="section-title">Tarefas recentes</h2>
@@ -197,10 +199,10 @@ export default function Dashboard() {
           <div className="chart-frame">
             <div className="chart-canvas">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={productivityRows} margin={{ top: 14, right: 18, left: 2, bottom: 8 }} barCategoryGap="24%" maxBarSize={58}>
+                <BarChart data={productivityRows} margin={{ top: 18, right: 18, left: 2, bottom: 16 }} barCategoryGap="24%" maxBarSize={58}>
                   <CartesianGrid vertical={false} stroke="var(--chart-grid)" strokeDasharray="4 6" />
-                  <XAxis dataKey="label" interval={0} minTickGap={4} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
-                  <YAxis width={34} allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
+                  <XAxis dataKey="label" interval={0} minTickGap={4} height={34} tickMargin={10} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
+                  <YAxis width={34} tickMargin={8} allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
                   <Tooltip cursor={{ fill: "rgb(var(--color-blush) / 0.08)" }} content={<WeeklyTasksTooltip />} {...chartTooltipProps} />
                   <Bar dataKey="done" stackId="week" radius={[0, 0, 10, 10]} fill="var(--chart-3)" animationDuration={750} />
                   <Bar dataKey="pending" stackId="week" fill="var(--chart-4)" animationDuration={900} />

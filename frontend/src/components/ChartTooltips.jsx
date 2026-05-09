@@ -13,7 +13,7 @@ const statusTone = {
 function TooltipShell({ children }) {
   return (
     <div
-      className="max-h-[min(420px,calc(100vh-2rem))] max-w-[min(360px,calc(100vw-2rem))] overflow-y-auto overflow-x-hidden rounded-[22px] border border-slate-200 bg-white/95 p-4 text-sm text-ink shadow-soft backdrop-blur-xl animate-in"
+      className="w-[min(18rem,calc(100vw-2rem))] overflow-hidden rounded-[22px] border border-slate-200 bg-white/95 p-4 text-sm text-ink shadow-soft backdrop-blur-xl animate-in"
       onWheel={(event) => event.stopPropagation()}
     >
       {children}
@@ -23,20 +23,23 @@ function TooltipShell({ children }) {
 
 function TaskRows({ tasks = [], label = "Tarefas", tone = "neutral", showStatus = false }) {
   if (!tasks.length) return null;
+  const visibleTasks = tasks.slice(0, 3);
+  const hiddenCount = tasks.length - visibleTasks.length;
 
   return (
     <div className="mt-3">
       <p className="text-[11px] font-bold uppercase tracking-wide text-muted">{label}</p>
-      <div className="mt-2 max-h-44 space-y-2 overflow-y-auto pr-1">
-        {tasks.map((task) => (
+      <div className="mt-2 space-y-2">
+        {visibleTasks.map((task) => (
           <div key={task.id} className={`rounded-2xl border px-3 py-2 ${statusTone[tone] || statusTone.neutral}`}>
-            <p className="font-semibold text-ink">{task.title}</p>
+            <p className="truncate font-semibold text-ink">{task.title}</p>
             <p className="mt-1 text-xs opacity-80">
               {getAssigneeNames(task)} - {getTaskPointLabel(task)}
               {showStatus ? ` - ${statusLabels[task.status] || task.status}` : ""}
             </p>
           </div>
         ))}
+        {hiddenCount > 0 && <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs font-bold text-muted">+{hiddenCount} tarefa(s) nesta lista</p>}
       </div>
     </div>
   );
@@ -56,7 +59,7 @@ export function WeeklyTasksTooltip({ active, payload }) {
           <p className="font-bold text-ink">Data: {point.label}</p>
           <p className="mt-1 text-sm font-semibold text-blush">{point.total || 0} tarefas no radar</p>
         </div>
-        <div className="rounded-2xl bg-rose-50 px-3 py-2 text-right text-xs font-bold text-blush shadow-card">
+        <div className="rounded-2xl bg-blush/10 px-3 py-2 text-right text-xs font-bold text-blush shadow-card">
           {point.done || point.total || 0} feitas
         </div>
       </div>
@@ -85,7 +88,7 @@ export function CategoryTasksTooltip({ active, payload }) {
         <CategoryBadge category={category} />
         <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-600">{percent}%</span>
       </div>
-      <p className="mt-3 text-sm font-semibold text-blue-500">{category.total} tarefas nesta categoria</p>
+      <p className="mt-3 text-sm font-semibold text-blush">{category.total} tarefas nesta categoria</p>
       <TaskRows tasks={category.tasks} label="Lista" tone="neutral" showStatus />
     </TooltipShell>
   );
@@ -100,9 +103,9 @@ export function MemberProductivityTooltip({ active, payload }) {
     <TooltipShell>
       <p className="font-bold text-ink">Data: {point.label}</p>
       <p className="mt-1 text-sm font-semibold text-blush">Total: {point.total} tarefas</p>
-      <div className="mt-3 max-h-60 space-y-3 overflow-y-auto pr-1">
+      <div className="mt-3 space-y-3">
         {members.length ? (
-          members.map((memberPoint) => (
+          members.slice(0, 3).map((memberPoint) => (
             <div key={memberPoint.user.id} className="rounded-2xl bg-slate-50/90 p-3">
               <div className="flex items-center gap-2">
                 <Avatar user={memberPoint.user} size="sm" />
@@ -119,6 +122,7 @@ export function MemberProductivityTooltip({ active, payload }) {
         ) : (
           <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold text-muted">Nenhum membro pontuou nesta data.</p>
         )}
+        {members.length > 3 && <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs font-bold text-muted">+{members.length - 3} membro(s) com atividade</p>}
       </div>
     </TooltipShell>
   );

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import clsx from "clsx";
-import { CalendarClock, ChevronLeft, ChevronRight, Clock3, X } from "lucide-react";
+import { CalendarClock, ChevronLeft, ChevronRight, Clock3, Minus, Plus, X } from "lucide-react";
 
 const weekdays = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom"];
 const monthFormatter = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" });
@@ -15,10 +15,6 @@ const displayFormatter = new Intl.DateTimeFormat("pt-BR", {
 
 function pad(value) {
   return String(value).padStart(2, "0");
-}
-
-function clamp(number, min, max) {
-  return Math.min(max, Math.max(min, number));
 }
 
 function parseLocalDateTime(value) {
@@ -52,6 +48,33 @@ function buildMonthDays(viewDate) {
     date.setDate(start.getDate() + index);
     return date;
   });
+}
+
+function TimeSpinner({ label, value, onIncrement }) {
+  return (
+    <div className="rounded-[20px] border border-slate-100 bg-white/80 p-2 shadow-sm">
+      <span className="mb-1 block text-center text-[11px] font-bold uppercase tracking-wide text-muted">{label}</span>
+      <div className="grid grid-cols-[32px_1fr_32px] items-center gap-1">
+        <button
+          type="button"
+          onClick={() => onIncrement(-1)}
+          className="grid h-8 w-8 place-items-center rounded-xl text-muted transition hover:bg-blush/10 hover:text-blush"
+          aria-label={`Diminuir ${label.toLowerCase()}`}
+        >
+          <Minus className="h-4 w-4" />
+        </button>
+        <span className="grid h-10 place-items-center rounded-2xl bg-blush/10 text-lg font-black tabular-nums text-blush">{pad(value)}</span>
+        <button
+          type="button"
+          onClick={() => onIncrement(1)}
+          className="grid h-8 w-8 place-items-center rounded-xl text-muted transition hover:bg-blush/10 hover:text-blush"
+          aria-label={`Aumentar ${label.toLowerCase()}`}
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/aaaa --:--" }) {
@@ -99,7 +122,14 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
       const openAbove = roomBelow < 430 && roomAbove > roomBelow;
       const maxHeight = Math.max(360, Math.min(520, openAbove ? roomAbove - gap : roomBelow - gap));
       const top = openAbove ? Math.max(viewportPadding, rect.top - maxHeight - gap) : rect.bottom + gap;
-      setPopoverStyle({ left, top, width, maxHeight });
+      setPopoverStyle({
+        left,
+        top,
+        width,
+        maxHeight,
+        overflowX: "hidden",
+        overflowY: maxHeight < 470 ? "auto" : "visible"
+      });
     }
 
     updatePosition();
@@ -117,14 +147,12 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
     onChange?.(formatLocalDateTime(nextDate));
   }
 
-  function changeTime(part, rawValue) {
+  function incrementTime(part, amount) {
     const base = selectedDate ?? new Date();
     const nextDate = new Date(base);
     if (!selectedDate) nextDate.setHours(9, 0, 0, 0);
-    const numeric = Number.parseInt(rawValue, 10);
-    const safeValue = Number.isFinite(numeric) ? numeric : 0;
-    if (part === "hour") nextDate.setHours(clamp(safeValue, 0, 23));
-    if (part === "minute") nextDate.setMinutes(clamp(safeValue, 0, 59));
+    if (part === "hour") nextDate.setHours((nextDate.getHours() + amount + 24) % 24);
+    if (part === "minute") nextDate.setMinutes((nextDate.getMinutes() + amount + 60) % 60);
     onChange?.(formatLocalDateTime(nextDate));
   }
 
@@ -140,41 +168,32 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
 
   return (
     <div ref={wrapperRef} className="relative">
-      <button
-        ref={buttonRef}
-        type="button"
-        onClick={() => setOpen((current) => !current)}
+      <div
         className={clsx(
-          "soft-input flex min-h-[48px] items-center gap-3 pl-4 text-left",
+          "soft-input flex min-h-[48px] items-center gap-1 p-0",
           open && "border-blush/60 ring-4 ring-blush/10"
         )}
       >
-        <CalendarClock className="h-5 w-5 shrink-0 text-muted" />
-        <span className={clsx("min-w-0 flex-1 truncate font-semibold", selectedDate ? "text-ink" : "text-muted")}>
-          {selectedDate ? displayFormatter.format(selectedDate) : placeholder}
-        </span>
+        <button ref={buttonRef} type="button" onClick={() => setOpen((current) => !current)} className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left">
+          <CalendarClock className="h-5 w-5 shrink-0 text-muted" />
+          <span className={clsx("min-w-0 flex-1 truncate font-semibold", selectedDate ? "text-ink" : "text-muted")}>
+            {selectedDate ? displayFormatter.format(selectedDate) : placeholder}
+          </span>
+        </button>
         {selectedDate && (
-          <span
-            role="button"
-            tabIndex={0}
+          <button
+            type="button"
             onClick={(event) => {
               event.stopPropagation();
               onChange?.("");
             }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                event.stopPropagation();
-                onChange?.("");
-              }
-            }}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-muted hover:bg-blush/10 hover:text-blush"
+            className="mr-2 grid h-8 w-8 shrink-0 place-items-center rounded-xl text-muted transition hover:bg-blush/10 hover:text-blush"
             aria-label="Limpar prazo"
           >
             <X className="h-4 w-4" />
-          </span>
+          </button>
         )}
-      </button>
+      </div>
 
       {open &&
         popoverStyle &&
@@ -182,7 +201,7 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
           <div
             ref={popoverRef}
             style={popoverStyle}
-            className="fixed z-[110] overflow-y-auto rounded-[26px] border border-white/80 bg-white/95 p-4 shadow-soft backdrop-blur-xl animate-in"
+            className="fixed z-[110] rounded-[26px] border border-white/80 bg-white/95 p-4 shadow-soft backdrop-blur-xl animate-in"
           >
             <div className="flex items-center justify-between gap-3">
               <button
@@ -242,25 +261,9 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
                 Horario
               </div>
               <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                <label className="block">
-                  <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted">Hora</span>
-                  <input
-                    className="soft-input text-center text-base font-bold"
-                    inputMode="numeric"
-                    value={pad((selectedDate ?? new Date(0, 0, 1, 9)).getHours())}
-                    onChange={(event) => changeTime("hour", event.target.value)}
-                  />
-                </label>
-                <span className="pt-5 text-xl font-bold text-muted">:</span>
-                <label className="block">
-                  <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted">Minuto</span>
-                  <input
-                    className="soft-input text-center text-base font-bold"
-                    inputMode="numeric"
-                    value={pad((selectedDate ?? new Date(0, 0, 1, 9)).getMinutes())}
-                    onChange={(event) => changeTime("minute", event.target.value)}
-                  />
-                </label>
+                <TimeSpinner label="Hora" value={(selectedDate ?? new Date(0, 0, 1, 9)).getHours()} onIncrement={(amount) => incrementTime("hour", amount)} />
+                <span className="pt-6 text-xl font-bold text-muted">:</span>
+                <TimeSpinner label="Minuto" value={(selectedDate ?? new Date(0, 0, 1, 9)).getMinutes()} onIncrement={(amount) => incrementTime("minute", amount)} />
               </div>
             </div>
 
