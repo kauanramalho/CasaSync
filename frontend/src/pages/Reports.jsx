@@ -194,7 +194,7 @@ export default function Reports() {
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <Card>
-          <h2 className="section-title">Ranking geral</h2>
+          <h2 className="section-title">Ranking do mes</h2>
           <div className="mt-5 space-y-4">
             {ranking.map((item) => (
               <div key={item.user.id} className="flex items-center justify-between gap-4 rounded-[24px] bg-white/75 p-4">

@@ -67,6 +67,7 @@ class TaskRead(ORMModel):
     created_at: datetime
     updated_at: datetime
     completed_at: datetime | None = None
+    archived_at: datetime | None = None
     points_awarded: int
     reminder_enabled: bool
     reminder_value: int | None = None

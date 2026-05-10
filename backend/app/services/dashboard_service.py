@@ -10,9 +10,11 @@ from app.schemas.dashboard import (
     DashboardRead,
     DashboardStat,
     MemberProductivityPoint,
+    MonthlyWinnerRead,
     RankingItem,
 )
 from app.services.family_service import list_members
+from app.services.ranking_service import get_current_scores_by_user, get_previous_month_winner, sort_members_by_monthly_score
 from app.services.task_metrics import get_task_assignee_ids, get_task_points_by_user, is_task_completed_on
 from app.services.task_service import list_tasks, refresh_overdue_tasks
 
@@ -46,19 +48,16 @@ def get_dashboard(db: Session, family_id: str) -> DashboardRead:
         stat.total += 1
         stat.tasks.append(task)
 
-    completed_by_user: dict[str, int] = {}
-    for task in completed:
-        for user_id in get_task_assignee_ids(task):
-            completed_by_user[user_id] = completed_by_user.get(user_id, 0) + 1
-
+    monthly_scores = get_current_scores_by_user(db, family_id)
+    ranked_members = sort_members_by_monthly_score(members, monthly_scores)
     ranking = [
         RankingItem(
             user=member.user,
-            points=member.points,
-            completed_tasks=completed_by_user.get(member.user_id, 0),
+            points=monthly_scores.get(member.user_id).points if monthly_scores.get(member.user_id) else 0,
+            completed_tasks=monthly_scores.get(member.user_id).completed_tasks if monthly_scores.get(member.user_id) else 0,
             position=index + 1,
         )
-        for index, member in enumerate(members)
+        for index, member in enumerate(ranked_members)
     ]
 
     today = datetime.now(timezone.utc).date()
@@ -94,20 +93,35 @@ def get_dashboard(db: Session, family_id: str) -> DashboardRead:
     recent_tasks = (
         _recent_task_query(db)
         .filter(Task.family_id == family_id)
+        .filter(Task.archived_at.is_(None))
         .order_by(Task.created_at.desc())
         .limit(8)
         .all()
     )
+    previous_winner = get_previous_month_winner(db, family_id)
 
     return DashboardRead(
         stats=[
             DashboardStat(key="done", label="Concluidas", value=len(completed), hint="+ pontos para o casal"),
             DashboardStat(key="pending", label="Pendentes", value=len(pending), hint="tarefas em aberto"),
             DashboardStat(key="overdue", label="Atrasadas", value=len(overdue), hint="precisam de carinho hoje"),
-            DashboardStat(key="points", label="Pontos do casal", value=sum(member.points for member in members), hint="gamificacao ativa"),
+            DashboardStat(key="points", label="Pontos do mes", value=sum(item.points for item in monthly_scores.values()), hint="ranking mensal"),
         ],
         tasks_by_category=sorted(category_map.values(), key=lambda item: item.total, reverse=True),
         ranking=ranking,
+        previous_month_winner=(
+            MonthlyWinnerRead(
+                period_year=previous_winner.period_year,
+                period_month=previous_winner.period_month,
+                winner_user_id=previous_winner.winner_user_id,
+                winner_name=previous_winner.winner_name,
+                points=previous_winner.points,
+                completed_tasks=previous_winner.completed_tasks,
+                closed_at=previous_winner.closed_at,
+            )
+            if previous_winner
+            else None
+        ),
         weekly_productivity=weekly_points,
         recent_tasks=recent_tasks,
     )

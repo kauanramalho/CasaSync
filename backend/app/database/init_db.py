@@ -3,7 +3,7 @@ from app.database.session import engine
 from sqlalchemy import inspect, text
 
 # Importing models here registers them in SQLAlchemy metadata.
-from app.models import category, couple, family, integration, task, user  # noqa: F401
+from app.models import category, couple, family, integration, ranking, task, user  # noqa: F401
 
 
 def create_database_tables() -> None:
@@ -67,6 +67,8 @@ def _upgrade_existing_tables() -> None:
             _add_column_if_missing(connection, "quick_notes", "pinned", "pinned BOOLEAN DEFAULT FALSE NOT NULL")
 
         if "tasks" in existing_tables:
+            _add_column_if_missing(connection, "tasks", "archived_at", f"archived_at {_timestamp_with_timezone_type()}")
+            _add_column_if_missing(connection, "tasks", "score_recorded_at", f"score_recorded_at {_timestamp_with_timezone_type()}")
             _add_column_if_missing(connection, "tasks", "reminder_enabled", "reminder_enabled BOOLEAN DEFAULT FALSE NOT NULL")
             _add_column_if_missing(connection, "tasks", "reminder_value", "reminder_value INTEGER")
             _add_column_if_missing(connection, "tasks", "reminder_unit", "reminder_unit VARCHAR(16)")

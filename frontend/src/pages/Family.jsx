@@ -24,7 +24,7 @@ import Card from "../components/Card";
 import PageHeader from "../components/PageHeader";
 import SelectMenu from "../components/SelectMenu";
 import { useAuth } from "../hooks/useAuth";
-import { familiesApi, tasksApi } from "../services/api";
+import { dashboardApi, familiesApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError } from "../utils/formatters";
 
@@ -56,6 +56,7 @@ export default function Family() {
   const navigate = useNavigate();
   const [families, setFamilies] = useState([]);
   const [members, setMembers] = useState([]);
+  const [monthlyRanking, setMonthlyRanking] = useState([]);
   const [joinRequests, setJoinRequests] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [familyName, setFamilyName] = useState("");
@@ -73,16 +74,18 @@ export default function Family() {
     try {
       const familyRows = await familiesApi.list();
       if (familyRows.length) {
-        const [currentFamily, memberRows, taskRows] = await Promise.all([familiesApi.current(), familiesApi.members(), tasksApi.list()]);
+        const [currentFamily, memberRows, taskRows, dashboardRows] = await Promise.all([familiesApi.current(), familiesApi.members(), tasksApi.list(), dashboardApi.get()]);
         const activeMember = memberRows.find((member) => member.user_id === user?.id);
         const requestRows = isAdminRole(activeMember?.role) ? await familiesApi.joinRequests() : [];
         setFamilies([currentFamily, ...familyRows.filter((family) => family.id !== currentFamily.id)]);
         setMembers(memberRows);
+        setMonthlyRanking(dashboardRows.ranking || []);
         setJoinRequests(requestRows);
         setTasks(taskRows);
       } else {
         setFamilies([]);
         setMembers([]);
+        setMonthlyRanking([]);
         setJoinRequests([]);
         setTasks([]);
       }
@@ -114,7 +117,7 @@ export default function Family() {
     weekAgo.setDate(today.getDate() - 6);
     const completed = tasks.filter((task) => task.status === "concluida");
     return {
-      totalPoints: members.reduce((sum, member) => sum + member.points, 0),
+      totalPoints: monthlyRanking.reduce((sum, member) => sum + member.points, 0),
       completed: completed.length,
       active: tasks.filter((task) => ["pendente", "em_andamento"].includes(task.status)).length,
       overdue: tasks.filter((task) => task.status === "atrasada").length,
@@ -123,7 +126,13 @@ export default function Family() {
         return completedAt && completedAt >= weekAgo;
       }).length
     };
-  }, [members, tasks]);
+  }, [monthlyRanking, tasks]);
+  const rankingByUser = useMemo(() => {
+    return monthlyRanking.reduce((acc, item) => {
+      acc[item.user.id] = item;
+      return acc;
+    }, {});
+  }, [monthlyRanking]);
 
   const recentActivity = useMemo(() => [...tasks].sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at)).slice(0, 5), [tasks]);
   const weeklyBars = useMemo(() => {
@@ -458,7 +467,7 @@ export default function Family() {
             <Card className="surface-hover">
               <Trophy className="h-5 w-5 text-orange-500" />
               <p className="mt-3 text-2xl font-bold text-ink">{stats.totalPoints}</p>
-              <p className="text-xs font-bold text-muted">pontos</p>
+              <p className="text-xs font-bold text-muted">pontos no mes</p>
             </Card>
             <Card className="surface-hover">
               <Activity className="h-5 w-5 text-emerald-500" />
@@ -503,9 +512,9 @@ export default function Family() {
                     <div className="text-right">
                       <div className="flex items-center justify-end gap-1 text-orange-500">
                         {isAdminRole(member.role) ? <Crown className="h-4 w-4" /> : <Users className="h-4 w-4" />}
-                        <span className="text-sm font-bold">{member.points} pts</span>
+                        <span className="text-sm font-bold">{rankingByUser[member.user_id]?.points ?? 0} pts</span>
                       </div>
-                      <p className="mt-1 text-xs text-muted">#{index + 1} ranking</p>
+                      <p className="mt-1 text-xs text-muted">#{rankingByUser[member.user_id]?.position ?? index + 1} no mes</p>
                     </div>
                   </div>
                   {canAdmin && member.role !== "owner" && member.user_id !== user?.id && (canOwner || member.role === "member") && (

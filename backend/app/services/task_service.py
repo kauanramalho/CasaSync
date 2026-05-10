@@ -12,6 +12,8 @@ from app.models.user import User
 from app.schemas.task import TaskCreate, TaskUpdate
 from app.services.category_service import get_category_by_name
 from app.services.family_service import require_family_member
+from app.services.ranking_service import record_task_score, revoke_task_score
+from app.services.retention_service import maintain_task_retention
 from app.services.task_metrics import get_task_assignee_ids, split_points, unique_user_ids
 
 
@@ -173,13 +175,17 @@ def _award_task_points(db: Session, task: Task) -> None:
     if task.assignee_links:
         for user_id, points in points_by_user.items():
             _apply_member_points(db, task.family_id, user_id, points)
+        record_task_score(db, task)
         return
 
     for user_id, points in points_by_user.items():
         _apply_member_points(db, task.family_id, user_id, points)
 
+    record_task_score(db, task)
+
 
 def _revoke_task_points(db: Session, task: Task) -> None:
+    revoke_task_score(db, task)
     if task.assignee_links:
         for link in task.assignee_links:
             if link.points_awarded:
@@ -191,13 +197,19 @@ def _revoke_task_points(db: Session, task: Task) -> None:
 
     task.points_awarded = 0
     task.completed_at = None
+    task.archived_at = None
 
 
 def _complete_task_without_commit(db: Session, task: Task, completed_at: datetime | None = None) -> None:
     if task.status == TaskStatus.DONE.value and task.points_awarded:
+        if not task.completed_at:
+            task.completed_at = completed_at or datetime.now(timezone.utc)
+        task.archived_at = None
+        record_task_score(db, task)
         return
     task.status = TaskStatus.DONE.value
-    task.completed_at = completed_at or datetime.now(timezone.utc)
+    task.completed_at = task.completed_at or completed_at or datetime.now(timezone.utc)
+    task.archived_at = None
     _award_task_points(db, task)
 
 
@@ -215,9 +227,13 @@ def list_tasks(
     category_id: str | None = None,
     assignee_id: str | None = None,
     search: str | None = None,
+    include_archived: bool = False,
 ) -> list[Task]:
     refresh_overdue_tasks(db, family_id)
+    maintain_task_retention(db, family_id)
     query = _task_query(db).filter(Task.family_id == family_id)
+    if not include_archived:
+        query = query.filter(Task.archived_at.is_(None))
 
     if status_filter:
         query = query.filter(Task.status == status_filter)
@@ -253,6 +269,7 @@ def list_tasks(
 
 
 def get_task(db: Session, family_id: str, task_id: str) -> Task:
+    maintain_task_retention(db, family_id)
     task = _task_query(db).filter(Task.id == task_id, Task.family_id == family_id).first()
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tarefa nao encontrada.")

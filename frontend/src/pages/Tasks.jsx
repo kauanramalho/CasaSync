@@ -105,7 +105,7 @@ export default function Tasks() {
   );
 
   const memberOptions = useMemo(
-    () => [{ value: "", label: "Responsavel" }, ...members.map((member) => ({ value: member.user_id, label: member.user.name, helper: `${member.points} pts` }))],
+    () => [{ value: "", label: "Responsavel" }, ...members.map((member) => ({ value: member.user_id, label: member.user.name, helper: "Membro da familia" }))],
     [members]
   );
 

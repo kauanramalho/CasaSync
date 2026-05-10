@@ -398,7 +398,7 @@ export default function Dashboard() {
 
         <Card>
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="section-title">Ranking da semana</h2>
+            <h2 className="section-title">Ranking do mes</h2>
             <Link to="/ranking" className="text-sm font-semibold text-muted">
               Histórico
             </Link>

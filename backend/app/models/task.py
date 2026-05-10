@@ -31,6 +31,8 @@ class Task(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     priority = Column(String(16), default=TaskPriority.MEDIUM.value, nullable=False)
     status = Column(String(24), default=TaskStatus.PENDING.value, nullable=False)
     completed_at = Column(DateTime(timezone=True), nullable=True)
+    archived_at = Column(DateTime(timezone=True), nullable=True)
+    score_recorded_at = Column(DateTime(timezone=True), nullable=True)
     points_awarded = Column(Integer, default=0, nullable=False)
     reminder_enabled = Column(Boolean, default=False, nullable=False)
     reminder_value = Column(Integer, nullable=True)

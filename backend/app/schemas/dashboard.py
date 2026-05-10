@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 from app.schemas.task import TaskRead
@@ -25,6 +27,16 @@ class RankingItem(BaseModel):
     position: int
 
 
+class MonthlyWinnerRead(BaseModel):
+    period_year: int
+    period_month: int
+    winner_user_id: str | None = None
+    winner_name: str | None = None
+    points: int
+    completed_tasks: int
+    closed_at: datetime
+
+
 class ProductivityPoint(BaseModel):
     label: str
     date: str
@@ -47,5 +59,6 @@ class DashboardRead(BaseModel):
     stats: list[DashboardStat]
     tasks_by_category: list[CategoryStat]
     ranking: list[RankingItem]
+    previous_month_winner: MonthlyWinnerRead | None = None
     weekly_productivity: list[DailyProductivityPoint]
     recent_tasks: list[TaskRead]
