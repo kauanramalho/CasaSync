@@ -1,6 +1,7 @@
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
 const TOKEN_KEY = "casasync_token";
 const AUTH_SESSION_CHANGED_EVENT = "casasync:auth-session-changed";
+const pendingGetRequests = new Map();
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
@@ -15,6 +16,24 @@ export function clearToken() {
 }
 
 async function request(path, { method = "GET", body, auth = true } = {}) {
+  const cacheKey = method === "GET" ? `${auth ? getToken() || "anon" : "public"}:${path}` : "";
+  if (cacheKey && pendingGetRequests.has(cacheKey)) {
+    return pendingGetRequests.get(cacheKey);
+  }
+
+  const requestPromise = performRequest(path, { method, body, auth });
+  if (cacheKey) {
+    pendingGetRequests.set(cacheKey, requestPromise);
+    requestPromise.then(
+      () => pendingGetRequests.delete(cacheKey),
+      () => pendingGetRequests.delete(cacheKey)
+    );
+  }
+
+  return requestPromise;
+}
+
+async function performRequest(path, { method = "GET", body, auth = true } = {}) {
   const headers = {};
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
@@ -92,7 +111,8 @@ export const tasksApi = {
   create: (payload) => request("/tasks", { method: "POST", body: payload }),
   update: (id, payload) => request(`/tasks/${id}`, { method: "PATCH", body: payload }),
   complete: (id) => request(`/tasks/${id}/complete`, { method: "POST" }),
-  delete: (id) => request(`/tasks/${id}`, { method: "DELETE" })
+  delete: (id) => request(`/tasks/${id}`, { method: "DELETE" }),
+  remindersDue: () => request("/tasks/reminders/due")
 };
 
 export const dashboardApi = {

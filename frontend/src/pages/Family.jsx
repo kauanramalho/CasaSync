@@ -24,7 +24,7 @@ import Card from "../components/Card";
 import PageHeader from "../components/PageHeader";
 import SelectMenu from "../components/SelectMenu";
 import { useAuth } from "../hooks/useAuth";
-import { dashboardApi, familiesApi, tasksApi } from "../services/api";
+import { dashboardApi, familiesApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError } from "../utils/formatters";
 
@@ -57,6 +57,8 @@ export default function Family() {
   const [families, setFamilies] = useState([]);
   const [members, setMembers] = useState([]);
   const [monthlyRanking, setMonthlyRanking] = useState([]);
+  const [dashboardStats, setDashboardStats] = useState([]);
+  const [weeklyProductivity, setWeeklyProductivity] = useState([]);
   const [joinRequests, setJoinRequests] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [familyName, setFamilyName] = useState("");
@@ -74,18 +76,22 @@ export default function Family() {
     try {
       const familyRows = await familiesApi.list();
       if (familyRows.length) {
-        const [currentFamily, memberRows, taskRows, dashboardRows] = await Promise.all([familiesApi.current(), familiesApi.members(), tasksApi.list(), dashboardApi.get()]);
+        const [currentFamily, memberRows, dashboardRows] = await Promise.all([familiesApi.current(), familiesApi.members(), dashboardApi.get()]);
         const activeMember = memberRows.find((member) => member.user_id === user?.id);
         const requestRows = isAdminRole(activeMember?.role) ? await familiesApi.joinRequests() : [];
         setFamilies([currentFamily, ...familyRows.filter((family) => family.id !== currentFamily.id)]);
         setMembers(memberRows);
         setMonthlyRanking(dashboardRows.ranking || []);
+        setDashboardStats(dashboardRows.stats || []);
+        setWeeklyProductivity(dashboardRows.weekly_productivity || []);
         setJoinRequests(requestRows);
-        setTasks(taskRows);
+        setTasks(dashboardRows.recent_tasks || []);
       } else {
         setFamilies([]);
         setMembers([]);
         setMonthlyRanking([]);
+        setDashboardStats([]);
+        setWeeklyProductivity([]);
         setJoinRequests([]);
         setTasks([]);
       }
@@ -112,21 +118,15 @@ export default function Family() {
   }, [currentFamily]);
 
   const stats = useMemo(() => {
-    const today = new Date();
-    const weekAgo = new Date(today);
-    weekAgo.setDate(today.getDate() - 6);
     const completed = tasks.filter((task) => task.status === "concluida");
     return {
       totalPoints: monthlyRanking.reduce((sum, member) => sum + member.points, 0),
-      completed: completed.length,
-      active: tasks.filter((task) => ["pendente", "em_andamento"].includes(task.status)).length,
-      overdue: tasks.filter((task) => task.status === "atrasada").length,
-      weeklyCompleted: completed.filter((task) => {
-        const completedAt = task.completed_at ? new Date(task.completed_at) : null;
-        return completedAt && completedAt >= weekAgo;
-      }).length
+      completed: dashboardStats.find((item) => item.key === "done")?.value ?? completed.length,
+      active: dashboardStats.find((item) => item.key === "pending")?.value ?? tasks.filter((task) => ["pendente", "em_andamento"].includes(task.status)).length,
+      overdue: dashboardStats.find((item) => item.key === "overdue")?.value ?? tasks.filter((task) => task.status === "atrasada").length,
+      weeklyCompleted: weeklyProductivity.length ? weeklyProductivity.reduce((sum, item) => sum + (item.done ?? item.tasks?.length ?? 0), 0) : completed.length
     };
-  }, [monthlyRanking, tasks]);
+  }, [dashboardStats, monthlyRanking, tasks, weeklyProductivity]);
   const rankingByUser = useMemo(() => {
     return monthlyRanking.reduce((acc, item) => {
       acc[item.user.id] = item;
@@ -136,6 +136,14 @@ export default function Family() {
 
   const recentActivity = useMemo(() => [...tasks].sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at)).slice(0, 5), [tasks]);
   const weeklyBars = useMemo(() => {
+    if (weeklyProductivity.length) {
+      return weeklyProductivity.map((item) => ({
+        key: item.date,
+        label: item.label,
+        date: item.label,
+        total: item.done ?? item.tasks?.length ?? 0
+      }));
+    }
     const today = new Date();
     return Array.from({ length: 7 }).map((_, index) => {
       const date = new Date(today);
@@ -144,7 +152,7 @@ export default function Family() {
       const total = tasks.filter((task) => task.status === "concluida" && dateKey(task.completed_at) === key).length;
       return { key, label: date.toLocaleDateString("pt-BR", { weekday: "short" }), date: date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), total };
     });
-  }, [tasks]);
+  }, [tasks, weeklyProductivity]);
   const weeklyMax = useMemo(() => Math.max(1, ...weeklyBars.map((item) => item.total)), [weeklyBars]);
 
   async function createFamily(event) {

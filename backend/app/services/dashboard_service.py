@@ -46,7 +46,8 @@ def get_dashboard(db: Session, family_id: str) -> DashboardRead:
             CategoryStat(category=task.category.name, total=0, color=task.category.color, tasks=[]),
         )
         stat.total += 1
-        stat.tasks.append(task)
+        if len(stat.tasks) < 12:
+            stat.tasks.append(task)
 
     monthly_scores = get_current_scores_by_user(db, family_id)
     ranked_members = sort_members_by_monthly_score(members, monthly_scores)
@@ -65,6 +66,9 @@ def get_dashboard(db: Session, family_id: str) -> DashboardRead:
     for offset in range(6, -1, -1):
         day = today - timedelta(days=offset)
         day_tasks = [task for task in completed if is_task_completed_on(task, day)]
+        due_tasks = [task for task in tasks if task.due_date and task.due_date.date() == day]
+        pending_tasks = [task for task in due_tasks if task.status in [TaskStatus.PENDING.value, TaskStatus.IN_PROGRESS.value]]
+        overdue_tasks = [task for task in due_tasks if task.status == TaskStatus.OVERDUE.value]
         member_points = []
         for member in members:
             member_tasks = [
@@ -84,8 +88,13 @@ def get_dashboard(db: Session, family_id: str) -> DashboardRead:
             DailyProductivityPoint(
                 label=day.strftime("%d/%m"),
                 date=day.isoformat(),
-                total=len(day_tasks),
+                total=len(day_tasks) + len(pending_tasks) + len(overdue_tasks),
+                done=len(day_tasks),
+                pending=len(pending_tasks),
+                overdue=len(overdue_tasks),
                 tasks=day_tasks,
+                pending_tasks=pending_tasks,
+                overdue_tasks=overdue_tasks,
                 members=member_points,
             )
         )

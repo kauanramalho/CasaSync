@@ -268,6 +268,27 @@ def list_tasks(
     return query.order_by(Task.status.asc(), Task.due_date.asc(), Task.created_at.desc()).all()
 
 
+def list_due_reminder_tasks(db: Session, family_id: str) -> list[Task]:
+    refresh_overdue_tasks(db, family_id)
+    maintain_task_retention(db, family_id)
+    now = datetime.now(timezone.utc)
+    return (
+        _task_query(db)
+        .filter(
+            Task.family_id == family_id,
+            Task.archived_at.is_(None),
+            Task.reminder_enabled.is_(True),
+            Task.reminder_sent.is_(False),
+            Task.reminder_at.isnot(None),
+            Task.reminder_at <= now,
+            Task.status.in_([TaskStatus.PENDING.value, TaskStatus.IN_PROGRESS.value]),
+        )
+        .order_by(Task.reminder_at.asc())
+        .limit(50)
+        .all()
+    )
+
+
 def get_task(db: Session, family_id: str, task_id: str) -> Task:
     maintain_task_retention(db, family_id)
     task = _task_query(db).filter(Task.id == task_id, Task.family_id == family_id).first()

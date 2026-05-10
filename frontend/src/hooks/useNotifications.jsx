@@ -112,7 +112,7 @@ export function NotificationsProvider({ children }) {
 
     async function checkTaskReminders() {
       try {
-        const tasks = await tasksApi.list();
+        const tasks = await tasksApi.remindersDue();
         if (!alive) return;
         const now = Date.now();
 

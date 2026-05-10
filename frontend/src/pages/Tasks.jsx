@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AlertCircle, CheckCircle2, Clock3, ListFilter, Plus, Rows3, Search } from "lucide-react";
 
@@ -59,7 +59,7 @@ export default function Tasks() {
   const [editingTask, setEditingTask] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
 
-  async function load() {
+  const load = useCallback(async function load() {
     setError("");
     try {
       const [taskRows, categoryRows, memberRows] = await Promise.all([tasksApi.list(), categoriesApi.list(), familiesApi.members()]);
@@ -69,11 +69,11 @@ export default function Tasks() {
     } catch (err) {
       setError(normalizeApiError(err));
     }
-  }
+  }, []);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   useEffect(() => {
     const nextSearch = searchParams.get("search") || "";
@@ -82,22 +82,36 @@ export default function Tasks() {
     setStatus(nextStatus);
   }, [searchParams]);
 
+  const deferredSearch = useDeferredValue(search);
+  const indexedTasks = useMemo(() => tasks.map((task) => ({ task, searchText: taskSearchText(task) })), [tasks]);
+
   const filteredTasks = useMemo(() => {
-    return tasks.filter((task) => {
+    const normalizedSearch = deferredSearch.trim().toLowerCase();
+    return indexedTasks.reduce((acc, item) => {
+      const task = item.task;
       const matchesStatus = status === "all" || (status === "pendente" ? ["pendente", "em_andamento"].includes(task.status) : task.status === status);
       const matchesCategory = !category || task.category_id === category;
       const matchesAssignee = !assignee || getTaskAssigneeIds(task).includes(assignee);
-      const matchesSearch = !search || taskSearchText(task).includes(search.toLowerCase());
-      return matchesStatus && matchesCategory && matchesAssignee && matchesSearch;
-    });
-  }, [tasks, status, category, assignee, search]);
+      const matchesSearch = !normalizedSearch || item.searchText.includes(normalizedSearch);
+      if (matchesStatus && matchesCategory && matchesAssignee && matchesSearch) acc.push(task);
+      return acc;
+    }, []);
+  }, [indexedTasks, status, category, assignee, deferredSearch]);
 
-  const counts = {
-    all: tasks.length,
-    pendente: tasks.filter((task) => task.status === "pendente" || task.status === "em_andamento").length,
-    concluida: tasks.filter((task) => task.status === "concluida").length,
-    atrasada: tasks.filter((task) => task.status === "atrasada").length
-  };
+  const counts = useMemo(
+    () =>
+      tasks.reduce(
+        (acc, task) => {
+          acc.all += 1;
+          if (task.status === "pendente" || task.status === "em_andamento") acc.pendente += 1;
+          if (task.status === "concluida") acc.concluida += 1;
+          if (task.status === "atrasada") acc.atrasada += 1;
+          return acc;
+        },
+        { all: 0, pendente: 0, concluida: 0, atrasada: 0 }
+      ),
+    [tasks]
+  );
 
   const categoryOptions = useMemo(
     () => [{ value: "", label: "Categoria" }, ...categories.map((item) => ({ value: item.id, label: item.name, category: item, helper: item.is_default ? "Padrao da familia" : "Personalizada" }))],
@@ -109,8 +123,9 @@ export default function Tasks() {
     [members]
   );
 
-  async function handleComplete(task) {
+  const handleComplete = useCallback(async function handleComplete(task) {
     const updated = await tasksApi.complete(task.id);
+    setTasks((current) => current.map((item) => (item.id === updated.id ? updated : item)));
     addNotification({
       title: updated.status === "concluida" ? "Tarefa concluida" : "Tarefa reaberta",
       description: updated.status === "concluida" ? `${updated.title} gerou pontos para os responsaveis.` : `${updated.title} voltou para pendente e os pontos foram removidos.`,
@@ -118,10 +133,9 @@ export default function Tasks() {
       actor: user?.name
     });
     emitAppDataChanged();
-    load();
-  }
+  }, [addNotification, user?.name]);
 
-  async function handleSaveEdit(payload) {
+  const handleSaveEdit = useCallback(async function handleSaveEdit(payload) {
     if (!editingTask) return;
     setSavingEdit(true);
     setEditError("");
@@ -148,15 +162,14 @@ export default function Tasks() {
       setSuccess(message);
       setEditingTask(null);
       emitAppDataChanged();
-      load();
     } catch (err) {
       setEditError(normalizeApiError(err));
     } finally {
       setSavingEdit(false);
     }
-  }
+  }, [addNotification, editingTask, user?.name]);
 
-  async function handleDelete(task) {
+  const handleDelete = useCallback(async function handleDelete(task) {
     const confirmed = window.confirm(`Excluir a tarefa "${task.title}"? Essa acao tambem cancela o lembrete associado.`);
     if (!confirmed) return;
     try {
@@ -167,20 +180,25 @@ export default function Tasks() {
         type: "task",
         actor: user?.name
       });
+      setTasks((current) => current.filter((item) => item.id !== task.id));
       emitAppDataChanged();
-      load();
     } catch (err) {
       setError(normalizeApiError(err));
     }
-  }
+  }, [addNotification, user?.name]);
 
-  function clearFilters() {
+  const clearFilters = useCallback(function clearFilters() {
     setCategory("");
     setAssignee("");
     setSearch("");
     setStatus("all");
     setSearchParams({});
-  }
+  }, [setSearchParams]);
+
+  const openEditor = useCallback(function openEditor(task) {
+    setEditError("");
+    setEditingTask(task);
+  }, []);
 
   return (
     <>
@@ -236,10 +254,7 @@ export default function Tasks() {
         <TaskList
           tasks={filteredTasks}
           onComplete={handleComplete}
-          onEdit={(task) => {
-            setEditError("");
-            setEditingTask(task);
-          }}
+          onEdit={openEditor}
           onDelete={handleDelete}
         />
       </Card>

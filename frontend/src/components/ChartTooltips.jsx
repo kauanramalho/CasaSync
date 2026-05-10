@@ -57,8 +57,12 @@ export function WeeklyTasksTooltip({ active, payload }) {
   if (!active || !payload?.length) return null;
   const point = payload[0].payload;
   const doneTasks = point.doneTasks || point.tasks || [];
-  const pendingTasks = point.pendingTasks || [];
-  const overdueTasks = point.overdueTasks || [];
+  const pendingTasks = point.pendingTasks || point.pending_tasks || [];
+  const overdueTasks = point.overdueTasks || point.overdue_tasks || [];
+  const doneCount = point.done ?? doneTasks.length;
+  const pendingCount = point.pending ?? pendingTasks.length;
+  const overdueCount = point.overdue ?? overdueTasks.length;
+  const totalCount = point.total ?? doneCount + pendingCount + overdueCount;
 
   return (
     <TooltipShell scrollable>
@@ -66,16 +70,16 @@ export function WeeklyTasksTooltip({ active, payload }) {
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="font-bold text-ink">Data: {point.label}</p>
-            <p className="mt-1 text-sm font-semibold text-blush">{point.total || 0} tarefas no radar</p>
+            <p className="mt-1 text-sm font-semibold text-blush">{totalCount} tarefas no radar</p>
           </div>
           <div className="rounded-2xl bg-blush/10 px-3 py-2 text-right text-xs font-bold text-blush shadow-card">
-            {point.done || point.total || 0} feitas
+            {doneCount} feitas
           </div>
         </div>
         <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs font-bold">
-          <span className="rounded-2xl bg-emerald-50 px-2 py-2 text-emerald-700">{point.done || 0} concluidas</span>
-          <span className="rounded-2xl bg-amber-50 px-2 py-2 text-amber-700">{point.pending || 0} pendentes</span>
-          <span className="rounded-2xl bg-rose-50 px-2 py-2 text-rose-700">{point.overdue || 0} atrasadas</span>
+          <span className="rounded-2xl bg-emerald-50 px-2 py-2 text-emerald-700">{doneCount} concluidas</span>
+          <span className="rounded-2xl bg-amber-50 px-2 py-2 text-amber-700">{pendingCount} pendentes</span>
+          <span className="rounded-2xl bg-rose-50 px-2 py-2 text-rose-700">{overdueCount} atrasadas</span>
         </div>
       </div>
       <div className="chart-tooltip-scroll max-h-[min(52vh,22rem)] overflow-y-auto px-4 pb-4 pt-1">

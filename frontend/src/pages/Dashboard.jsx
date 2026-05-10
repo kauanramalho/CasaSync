@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertCircle, CalendarHeart, CheckCircle2, Clock3, Heart, MessageCircleHeart, Pin, Plus, Star, Target } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -24,11 +24,6 @@ const statMeta = {
   overdue: { icon: AlertCircle, tone: "rose" },
   points: { icon: Star, tone: "violet" }
 };
-
-function dateKey(value) {
-  if (!value) return "";
-  return new Date(value).toISOString().slice(0, 10);
-}
 
 function timestamp(value) {
   const time = value ? new Date(value).getTime() : 0;
@@ -172,19 +167,18 @@ function CouplePreviewItem({ item }) {
   );
 }
 
-function buildProductivityView(productivity = [], tasks = []) {
+function buildProductivityView(productivity = []) {
   return productivity.map((point) => {
-    const doneTasks = point.tasks?.length ? point.tasks : tasks.filter((task) => task.status === "concluida" && dateKey(task.completed_at) === point.date);
-    const dueTasks = tasks.filter((task) => dateKey(task.due_date) === point.date);
-    const pendingTasks = dueTasks.filter((task) => ["pendente", "em_andamento"].includes(task.status));
-    const overdueTasks = dueTasks.filter((task) => task.status === "atrasada");
+    const doneTasks = point.tasks || [];
+    const pendingTasks = point.pending_tasks || [];
+    const overdueTasks = point.overdue_tasks || [];
 
     return {
       ...point,
-      done: doneTasks.length,
-      pending: pendingTasks.length,
-      overdue: overdueTasks.length,
-      total: doneTasks.length + pendingTasks.length + overdueTasks.length,
+      done: point.done ?? doneTasks.length,
+      pending: point.pending ?? pendingTasks.length,
+      overdue: point.overdue ?? overdueTasks.length,
+      total: point.total ?? doneTasks.length + pendingTasks.length + overdueTasks.length,
       doneTasks,
       pendingTasks,
       overdueTasks
@@ -197,7 +191,6 @@ export default function Dashboard() {
   const { addNotification } = useNotifications();
   const [dashboard, setDashboard] = useState(null);
   const [categoriesRows, setCategoriesRows] = useState([]);
-  const [allTasks, setAllTasks] = useState([]);
   const [coupleSpace, setCoupleSpace] = useState({ goals: [], date_ideas: [], notes: [] });
   const [members, setMembers] = useState([]);
   const [hiddenRecentIds, setHiddenRecentIds] = useState(() => getHiddenRecentTaskIds());
@@ -206,28 +199,27 @@ export default function Dashboard() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
-  async function load() {
+  const load = useCallback(async function load() {
     setLoading(true);
     setError("");
     try {
-      const [dashboardRows, categoryRows, memberRows, taskRows, coupleRows] = await Promise.all([dashboardApi.get(), categoriesApi.list(), familiesApi.members(), tasksApi.list(), coupleApi.get()]);
+      const [dashboardRows, categoryRows, memberRows, coupleRows] = await Promise.all([dashboardApi.get(), categoriesApi.list(), familiesApi.members(), coupleApi.get()]);
       setDashboard(dashboardRows);
       setCategoriesRows(categoryRows);
       setMembers(memberRows);
-      setAllTasks(taskRows);
       setCoupleSpace(coupleRows);
     } catch (err) {
       setError(normalizeApiError(err));
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
-  async function handleComplete(task) {
+  const handleComplete = useCallback(async function handleComplete(task) {
     const updated = await tasksApi.complete(task.id);
     addNotification({
       title: updated.status === "concluida" ? "Tarefa concluída" : "Tarefa reaberta",
@@ -237,9 +229,9 @@ export default function Dashboard() {
     });
     emitAppDataChanged();
     load();
-  }
+  }, [addNotification, load, user?.name]);
 
-  async function handleSaveEdit(payload) {
+  const handleSaveEdit = useCallback(async function handleSaveEdit(payload) {
     if (!editingTask) return;
     setSavingEdit(true);
     try {
@@ -258,9 +250,9 @@ export default function Dashboard() {
     } finally {
       setSavingEdit(false);
     }
-  }
+  }, [addNotification, editingTask, load, user?.name]);
 
-  function handleRemoveRecent(task) {
+  const handleRemoveRecent = useCallback(function handleRemoveRecent(task) {
     setHiddenRecentIds(hideRecentTask(task.id));
     addNotification({
       title: "Tarefa removida das recentes",
@@ -268,14 +260,17 @@ export default function Dashboard() {
       type: "task",
       actor: user?.name
     });
-  }
+  }, [addNotification, user?.name]);
 
   const stats = useMemo(() => dashboard?.stats ?? [], [dashboard]);
   const productivity = useMemo(() => dashboard?.weekly_productivity ?? [], [dashboard]);
   const categories = useMemo(() => dashboard?.tasks_by_category ?? [], [dashboard]);
   const ranking = useMemo(() => dashboard?.ranking ?? [], [dashboard]);
-  const recentTasks = (dashboard?.recent_tasks ?? []).filter((task) => !hiddenRecentIds.includes(task.id)).slice(0, 6);
-  const productivityRows = useMemo(() => buildProductivityView(productivity, allTasks), [productivity, allTasks]);
+  const recentTasks = useMemo(() => {
+    const hidden = new Set(hiddenRecentIds);
+    return (dashboard?.recent_tasks ?? []).filter((task) => !hidden.has(task.id)).slice(0, 6);
+  }, [dashboard, hiddenRecentIds]);
+  const productivityRows = useMemo(() => buildProductivityView(productivity), [productivity]);
   const couplePreviewItems = useMemo(() => buildCouplePreviewItems(coupleSpace), [coupleSpace]);
 
   const greeting = useMemo(() => {

@@ -5,7 +5,7 @@ from app.core.deps import get_current_user, get_family_id
 from app.database.session import get_db
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskRead, TaskUpdate
-from app.services.task_service import complete_task, create_task, delete_task, get_task, list_tasks, update_task
+from app.services.task_service import complete_task, create_task, delete_task, get_task, list_due_reminder_tasks, list_tasks, update_task
 
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -31,6 +31,11 @@ def create(
     db: Session = Depends(get_db),
 ):
     return create_task(db, family_id, current_user.id, payload)
+
+
+@router.get("/reminders/due", response_model=list[TaskRead])
+def due_reminders(family_id: str = Depends(get_family_id), db: Session = Depends(get_db)):
+    return list_due_reminder_tasks(db, family_id)
 
 
 @router.get("/{task_id}", response_model=TaskRead)

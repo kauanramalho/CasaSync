@@ -1,19 +1,25 @@
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import AppLayout from "./layouts/AppLayout";
 import { useAuth } from "./hooks/useAuth";
-import Calendar from "./pages/Calendar";
-import Categories from "./pages/Categories";
-import CoupleSpace from "./pages/CoupleSpace";
-import Dashboard from "./pages/Dashboard";
-import Family from "./pages/Family";
-import Login from "./pages/Login";
-import NewTask from "./pages/NewTask";
-import Ranking from "./pages/Ranking";
-import Register from "./pages/Register";
-import Reports from "./pages/Reports";
-import Settings from "./pages/Settings";
-import Tasks from "./pages/Tasks";
+
+const Calendar = lazy(() => import("./pages/Calendar"));
+const Categories = lazy(() => import("./pages/Categories"));
+const CoupleSpace = lazy(() => import("./pages/CoupleSpace"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Family = lazy(() => import("./pages/Family"));
+const Login = lazy(() => import("./pages/Login"));
+const NewTask = lazy(() => import("./pages/NewTask"));
+const Ranking = lazy(() => import("./pages/Ranking"));
+const Register = lazy(() => import("./pages/Register"));
+const Reports = lazy(() => import("./pages/Reports"));
+const Settings = lazy(() => import("./pages/Settings"));
+const Tasks = lazy(() => import("./pages/Tasks"));
+
+function PageLoader() {
+  return <div className="grid min-h-[40vh] place-items-center text-sm font-semibold text-muted">Carregando CasaSync...</div>;
+}
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -28,28 +34,30 @@ function ProtectedRoute({ children }) {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/cadastro" element={<Register />} />
-      <Route
-        element={
-          <ProtectedRoute>
-            <AppLayout />
-          </ProtectedRoute>
-        }
-      >
-        <Route index element={<Dashboard />} />
-        <Route path="/tarefas" element={<Tasks />} />
-        <Route path="/tarefas/nova" element={<NewTask />} />
-        <Route path="/calendario" element={<Calendar />} />
-        <Route path="/categorias" element={<Categories />} />
-        <Route path="/familia" element={<Family />} />
-        <Route path="/ranking" element={<Ranking />} />
-        <Route path="/espaco-do-casal" element={<CoupleSpace />} />
-        <Route path="/relatorios" element={<Reports />} />
-        <Route path="/configuracoes" element={<Settings />} />
-      </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/cadastro" element={<Register />} />
+        <Route
+          element={
+            <ProtectedRoute>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<Dashboard />} />
+          <Route path="/tarefas" element={<Tasks />} />
+          <Route path="/tarefas/nova" element={<NewTask />} />
+          <Route path="/calendario" element={<Calendar />} />
+          <Route path="/categorias" element={<Categories />} />
+          <Route path="/familia" element={<Family />} />
+          <Route path="/ranking" element={<Ranking />} />
+          <Route path="/espaco-do-casal" element={<CoupleSpace />} />
+          <Route path="/relatorios" element={<Reports />} />
+          <Route path="/configuracoes" element={<Settings />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   );
 }

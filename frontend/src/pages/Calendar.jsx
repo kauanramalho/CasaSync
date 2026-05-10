@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import clsx from "clsx";
@@ -265,7 +265,7 @@ export default function Calendar() {
   const [error, setError] = useState("");
   const previewTimer = useRef(null);
 
-  async function load() {
+  const load = useCallback(async function load() {
     setError("");
     try {
       const [taskRows, categoryRows, memberRows] = await Promise.all([tasksApi.list(), categoriesApi.list(), familiesApi.members()]);
@@ -275,23 +275,28 @@ export default function Calendar() {
     } catch (err) {
       setError(normalizeApiError(err));
     }
-  }
+  }, []);
 
   useEffect(() => {
     load();
     return () => window.clearTimeout(previewTimer.current);
-  }, []);
+  }, [load]);
 
   const weekdayLabels = useMemo(() => getWeekdayLabels(preferences.weekStart) || weekdays, [preferences.weekStart]);
   const days = useMemo(() => buildMonthDays(baseDate, preferences.weekStart), [baseDate, preferences.weekStart]);
   const week = useMemo(() => weekDays(baseDate, preferences.weekStart), [baseDate, preferences.weekStart]);
   const tasksByDay = useMemo(() => {
-    return tasks.reduce((acc, task) => {
+    const buckets = tasks.reduce((acc, task) => {
       const key = taskDateKey(task);
       if (!key) return acc;
-      acc[key] = sortCalendarTasks([...(acc[key] || []), task]);
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(task);
       return acc;
     }, {});
+    Object.keys(buckets).forEach((key) => {
+      buckets[key] = sortCalendarTasks(buckets[key]);
+    });
+    return buckets;
   }, [tasks]);
 
   const upcoming = useMemo(
@@ -323,7 +328,7 @@ export default function Calendar() {
 
   const selectedTasks = selectedDate ? tasksByDay[dateKey(selectedDate)] || [] : [];
 
-  function movePeriod(amount) {
+  const movePeriod = useCallback(function movePeriod(amount) {
     setBaseDate((current) => {
       if (viewMode === "week") {
         const next = new Date(current);
@@ -332,28 +337,29 @@ export default function Calendar() {
       }
       return new Date(current.getFullYear(), current.getMonth() + amount, 1);
     });
-  }
+  }, [viewMode]);
 
-  function openDay(day) {
+  const openDay = useCallback(function openDay(day) {
     setSelectedDate(new Date(day));
-  }
+  }, []);
 
-  function showPreview(task, event) {
+  const showPreview = useCallback(function showPreview(task, event) {
     window.clearTimeout(previewTimer.current);
     setPreview({ task, rect: event.currentTarget.getBoundingClientRect() });
-  }
+  }, []);
 
-  function schedulePreviewClose() {
+  const schedulePreviewClose = useCallback(function schedulePreviewClose() {
     window.clearTimeout(previewTimer.current);
     previewTimer.current = window.setTimeout(() => setPreview(null), 120);
-  }
+  }, []);
 
-  function openTaskPreview(task, event) {
+  const openTaskPreview = useCallback(function openTaskPreview(task, event) {
     showPreview(task, event);
-  }
+  }, [showPreview]);
 
-  async function handleComplete(task) {
+  const handleComplete = useCallback(async function handleComplete(task) {
     const updated = await tasksApi.complete(task.id);
+    setTasks((current) => current.map((item) => (item.id === updated.id ? updated : item)));
     addNotification({
       title: updated.status === "concluida" ? "Tarefa concluída" : "Tarefa reaberta",
       description: updated.status === "concluida" ? `${updated.title} somou pontos no calendário.` : `${updated.title} voltou para pendente.`,
@@ -361,13 +367,14 @@ export default function Calendar() {
       actor: user?.name
     });
     emitAppDataChanged();
-    load();
-  }
+  }, [addNotification, user?.name]);
 
-  async function handleCompleteAll(dayTasks) {
+  const handleCompleteAll = useCallback(async function handleCompleteAll(dayTasks) {
     const openTasks = dayTasks.filter((task) => task.status !== "concluida");
     if (!openTasks.length) return;
-    await Promise.all(openTasks.map((task) => tasksApi.complete(task.id)));
+    const updatedTasks = await Promise.all(openTasks.map((task) => tasksApi.complete(task.id)));
+    const updatedById = new Map(updatedTasks.map((task) => [task.id, task]));
+    setTasks((current) => current.map((task) => updatedById.get(task.id) || task));
     addNotification({
       title: "Tarefas do dia concluídas",
       description: `${openTasks.length} tarefas foram marcadas como concluídas.`,
@@ -375,10 +382,9 @@ export default function Calendar() {
       actor: user?.name
     });
     emitAppDataChanged();
-    load();
-  }
+  }, [addNotification, user?.name]);
 
-  async function handleSaveEdit(payload) {
+  const handleSaveEdit = useCallback(async function handleSaveEdit(payload) {
     if (!editingTask) return;
     setSavingEdit(true);
     try {
@@ -389,15 +395,15 @@ export default function Calendar() {
         type: "task",
         actor: user?.name
       });
+      setTasks((current) => current.map((task) => (task.id === updated.id ? updated : task)));
       setEditingTask(null);
       emitAppDataChanged();
-      load();
     } catch (err) {
       setError(normalizeApiError(err));
     } finally {
       setSavingEdit(false);
     }
-  }
+  }, [addNotification, editingTask, user?.name]);
 
   function renderMonthView() {
     return (

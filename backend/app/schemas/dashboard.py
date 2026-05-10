@@ -42,6 +42,11 @@ class ProductivityPoint(BaseModel):
     date: str
     total: int
     tasks: list[TaskRead] = Field(default_factory=list)
+    done: int = 0
+    pending: int = 0
+    overdue: int = 0
+    pending_tasks: list[TaskRead] = Field(default_factory=list)
+    overdue_tasks: list[TaskRead] = Field(default_factory=list)
 
 
 class MemberProductivityPoint(BaseModel):
