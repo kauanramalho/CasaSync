@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import or_
@@ -19,6 +19,12 @@ PRIORITY_POINTS = {
     TaskPriority.LOW.value: 5,
     TaskPriority.MEDIUM.value: 10,
     TaskPriority.HIGH.value: 20,
+}
+
+REMINDER_DELTAS = {
+    "minutes": lambda value: timedelta(minutes=value),
+    "hours": lambda value: timedelta(hours=value),
+    "days": lambda value: timedelta(days=value),
 }
 
 
@@ -87,6 +93,62 @@ def _set_task_assignees(db: Session, task: Task, assignee_ids: list[str]) -> Non
     for user_id in resolved_ids:
         if user_id not in current_by_user:
             task.assignee_links.append(TaskAssignee(task_id=task.id, user_id=user_id, points_awarded=0))
+
+
+def _as_aware_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _clear_task_reminder(task: Task) -> None:
+    task.reminder_enabled = False
+    task.reminder_value = None
+    task.reminder_unit = None
+    task.reminder_at = None
+    task.reminder_sent = False
+
+
+def _configure_task_reminder(
+    task: Task,
+    *,
+    enabled: bool | None,
+    reminder_value: int | None,
+    reminder_unit: str | None,
+    due_date_changed: bool = False,
+) -> None:
+    if enabled is False:
+        _clear_task_reminder(task)
+        return
+
+    if due_date_changed and task.due_date is None and enabled is None:
+        _clear_task_reminder(task)
+        return
+
+    should_enable = enabled if enabled is not None else task.reminder_enabled
+    if not should_enable:
+        return
+
+    value = reminder_value if reminder_value is not None else task.reminder_value
+    unit = reminder_unit if reminder_unit is not None else task.reminder_unit
+
+    if task.due_date is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Defina um prazo para ativar lembrete na tarefa.")
+    if value is None or unit not in REMINDER_DELTAS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Escolha quando o lembrete deve acontecer.")
+
+    reminder_at = _as_aware_utc(task.due_date) - REMINDER_DELTAS[unit](value)
+    if reminder_at <= datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Esse lembrete ja ficou no passado. Escolha um prazo maior ou uma antecedencia menor.",
+        )
+
+    task.reminder_enabled = True
+    task.reminder_value = value
+    task.reminder_unit = unit
+    task.reminder_at = reminder_at
+    task.reminder_sent = False
 
 
 def _apply_member_points(db: Session, family_id: str, user_id: str, points: int) -> None:
@@ -216,6 +278,12 @@ def create_task(db: Session, family_id: str, creator_id: str, payload: TaskCreat
         priority=payload.priority.value,
         status=TaskStatus.PENDING.value,
     )
+    _configure_task_reminder(
+        task,
+        enabled=payload.reminder_enabled,
+        reminder_value=payload.reminder_value,
+        reminder_unit=payload.reminder_unit,
+    )
     db.add(task)
     db.flush()
     _set_task_assignees(db, task, assignee_ids)
@@ -234,6 +302,7 @@ def update_task(db: Session, family_id: str, task_id: str, payload: TaskUpdate) 
     data = payload.model_dump(exclude_unset=True)
     was_done = task.status == TaskStatus.DONE.value
     previous_completed_at = task.completed_at
+    due_date_changed = "due_date" in data
 
     if "assignee_ids" in data:
         assignee_ids = _payload_assignee_ids(payload, task.creator_id)
@@ -253,11 +322,32 @@ def update_task(db: Session, family_id: str, task_id: str, payload: TaskUpdate) 
 
     status_value = data.pop("status", None)
     priority_value = data.pop("priority", None)
+    reminder_enabled = data.pop("reminder_enabled", None)
+    reminder_value = data.pop("reminder_value", None)
+    reminder_unit = data.pop("reminder_unit", None)
+    reminder_sent = data.pop("reminder_sent", None)
     data.pop("assignee_ids", None)
     data.pop("assignee_id", None)
 
     for field, value in data.items():
         setattr(task, field, value)
+
+    next_status_done = status_value in (TaskStatus.DONE, TaskStatus.DONE.value)
+    if next_status_done:
+        if reminder_enabled is False:
+            _clear_task_reminder(task)
+        elif task.reminder_enabled or reminder_enabled:
+            task.reminder_sent = True
+    else:
+        _configure_task_reminder(
+            task,
+            enabled=reminder_enabled,
+            reminder_value=reminder_value,
+            reminder_unit=reminder_unit,
+            due_date_changed=due_date_changed,
+        )
+        if reminder_sent is not None and reminder_enabled is None and reminder_value is None and reminder_unit is None:
+            task.reminder_sent = reminder_sent
 
     if assignee_ids is not None:
         _set_task_assignees(db, task, assignee_ids)
@@ -281,6 +371,15 @@ def complete_task(db: Session, family_id: str, task_id: str) -> Task:
         _reopen_task_without_commit(db, task)
     else:
         _complete_task_without_commit(db, task)
+        task.reminder_sent = True
 
     db.commit()
     return get_task(db, family_id, task.id)
+
+
+def delete_task(db: Session, family_id: str, task_id: str) -> None:
+    task = get_task(db, family_id, task_id)
+    if task.status == TaskStatus.DONE.value or task.points_awarded:
+        _revoke_task_points(db, task)
+    db.delete(task)
+    db.commit()

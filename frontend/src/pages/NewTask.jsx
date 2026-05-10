@@ -8,11 +8,13 @@ import Card from "../components/Card";
 import DateTimePicker from "../components/DateTimePicker";
 import PageHeader from "../components/PageHeader";
 import SelectMenu from "../components/SelectMenu";
+import TaskReminderFields from "../components/TaskReminderFields";
 import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
 import { categoriesApi, familiesApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError, toIsoOrNull } from "../utils/formatters";
+import { getReminderPayload } from "../utils/taskReminders";
 
 export default function NewTask() {
   const { user } = useAuth();
@@ -28,7 +30,10 @@ export default function NewTask() {
     category_id: "",
     due_date: "",
     priority: "media",
-    status: "pendente"
+    status: "pendente",
+    reminder_enabled: false,
+    reminder_value: null,
+    reminder_unit: null
   });
 
   useEffect(() => {
@@ -54,7 +59,19 @@ export default function NewTask() {
   );
 
   function updateField(field, value) {
-    setForm((current) => ({ ...current, [field]: value }));
+    setForm((current) => {
+      const next = { ...current, [field]: value };
+      if (field === "due_date" && !value) {
+        next.reminder_enabled = false;
+        next.reminder_value = null;
+        next.reminder_unit = null;
+      }
+      return next;
+    });
+  }
+
+  function updateReminder(values) {
+    setForm((current) => ({ ...current, ...values }));
   }
 
   async function handleSubmit(event) {
@@ -66,7 +83,8 @@ export default function NewTask() {
         assignee_id: form.assignee_ids[0] || undefined,
         assignee_ids: form.assignee_ids,
         category_id: form.category_id || undefined,
-        due_date: toIsoOrNull(form.due_date)
+        due_date: toIsoOrNull(form.due_date),
+        ...getReminderPayload(form)
       });
       addNotification({
         title: "Nova tarefa criada",
@@ -108,6 +126,7 @@ export default function NewTask() {
             <label className="mb-2 block text-sm font-semibold text-ink">Prazo</label>
             <DateTimePicker value={form.due_date} onChange={(value) => updateField("due_date", value)} />
           </div>
+          <TaskReminderFields form={form} onChange={updateReminder} />
           <div>
             <label className="mb-2 block text-sm font-semibold text-ink">Prioridade</label>
             <SelectMenu

@@ -139,6 +139,24 @@ export default function Tasks() {
     }
   }
 
+  async function handleDelete(task) {
+    const confirmed = window.confirm(`Excluir a tarefa "${task.title}"? Essa acao tambem cancela o lembrete associado.`);
+    if (!confirmed) return;
+    try {
+      await tasksApi.delete(task.id);
+      addNotification({
+        title: "Tarefa excluida",
+        description: `${task.title} saiu da lista da casa.`,
+        type: "task",
+        actor: user?.name
+      });
+      emitAppDataChanged();
+      load();
+    } catch (err) {
+      setError(normalizeApiError(err));
+    }
+  }
+
   function clearFilters() {
     setCategory("");
     setAssignee("");
@@ -197,7 +215,7 @@ export default function Tasks() {
             </Button>
           </div>
         </div>
-        <TaskList tasks={filteredTasks} onComplete={handleComplete} onEdit={setEditingTask} />
+        <TaskList tasks={filteredTasks} onComplete={handleComplete} onEdit={setEditingTask} onDelete={handleDelete} />
       </Card>
 
       <TaskEditorModal

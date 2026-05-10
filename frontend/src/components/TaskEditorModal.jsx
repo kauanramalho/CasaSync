@@ -5,7 +5,9 @@ import AssigneePicker from "./AssigneePicker";
 import Button from "./Button";
 import DateTimePicker from "./DateTimePicker";
 import SelectMenu from "./SelectMenu";
+import TaskReminderFields from "./TaskReminderFields";
 import { formatDateTimeLocal, toIsoOrNull } from "../utils/formatters";
+import { getReminderPayload } from "../utils/taskReminders";
 import { normalizeTaskForForm, priorityPoints } from "../utils/tasks";
 
 export default function TaskEditorModal({ task, categories = [], members = [], onClose, onSave, saving = false }) {
@@ -39,7 +41,19 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
   if (!task) return null;
 
   function updateField(field, value) {
-    setForm((current) => ({ ...current, [field]: value }));
+    setForm((current) => {
+      const next = { ...current, [field]: value };
+      if (field === "due_date" && !value) {
+        next.reminder_enabled = false;
+        next.reminder_value = null;
+        next.reminder_unit = null;
+      }
+      return next;
+    });
+  }
+
+  function updateReminder(values) {
+    setForm((current) => ({ ...current, ...values }));
   }
 
   function handleSubmit(event) {
@@ -52,7 +66,8 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
       category_id: form.category_id || null,
       due_date: toIsoOrNull(form.due_date),
       priority: form.priority,
-      status: form.status
+      status: form.status,
+      ...getReminderPayload(form)
     });
   }
 
@@ -111,6 +126,8 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
               <label className="mb-2 block text-sm font-semibold text-ink">Prazo</label>
               <DateTimePicker value={form.due_date} onChange={(value) => updateField("due_date", value)} />
             </div>
+
+            <TaskReminderFields form={form} onChange={updateReminder} />
 
             <div>
               <label className="mb-2 block text-sm font-semibold text-ink">Status</label>

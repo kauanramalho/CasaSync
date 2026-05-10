@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Check, Edit3, MoreHorizontal, RotateCcw, Trash2 } from "lucide-react";
+import { BellRing, Check, Edit3, MoreHorizontal, RotateCcw, Trash2 } from "lucide-react";
 
 import AssigneeStack from "./AssigneeStack";
 import { CategoryBadge, PriorityBadge, StatusBadge } from "./Badges";
 import { formatDate } from "../utils/formatters";
+import { formatReminderLead } from "../utils/taskReminders";
 
-export default function TaskList({ tasks = [], onComplete, onEdit, onRemoveRecent, compact = false }) {
+export default function TaskList({ tasks = [], onComplete, onEdit, onDelete, onRemoveRecent, compact = false }) {
   const [openMenuId, setOpenMenuId] = useState(null);
 
   function toggleMenu(taskId) {
@@ -51,6 +52,12 @@ export default function TaskList({ tasks = [], onComplete, onEdit, onRemoveRecen
                   Criado por {task.creator?.name || "CasaSync"} · {task.status === "concluida" ? "Concluída" : "Prazo"}: {formatDate(task.due_date)}
                 </p>
               )}
+              {task.reminder_enabled && task.reminder_value && task.reminder_unit && (
+                <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-600">
+                  <BellRing className="h-3 w-3" />
+                  Lembrete: {formatReminderLead(task.reminder_value, task.reminder_unit)}
+                </span>
+              )}
             </div>
             <CategoryBadge category={task.category} className="w-full justify-start" />
             <AssigneeStack task={task} />
@@ -81,6 +88,12 @@ export default function TaskList({ tasks = [], onComplete, onEdit, onRemoveRecen
                     <button onClick={() => runAction(onRemoveRecent, task)} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-rose-600 hover:bg-rose-50">
                       <Trash2 className="h-4 w-4" />
                       Remover das recentes
+                    </button>
+                  )}
+                  {onDelete && (
+                    <button onClick={() => runAction(onDelete, task)} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-rose-600 hover:bg-rose-50">
+                      <Trash2 className="h-4 w-4" />
+                      Excluir tarefa
                     </button>
                   )}
                 </div>

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.database.base import Base
@@ -32,6 +32,11 @@ class Task(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     status = Column(String(24), default=TaskStatus.PENDING.value, nullable=False)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     points_awarded = Column(Integer, default=0, nullable=False)
+    reminder_enabled = Column(Boolean, default=False, nullable=False)
+    reminder_value = Column(Integer, nullable=True)
+    reminder_unit = Column(String(16), nullable=True)
+    reminder_at = Column(DateTime(timezone=True), nullable=True)
+    reminder_sent = Column(Boolean, default=False, nullable=False)
 
     family = relationship("Family", back_populates="tasks")
     assignee = relationship("User", back_populates="assigned_tasks", foreign_keys=[assignee_id])

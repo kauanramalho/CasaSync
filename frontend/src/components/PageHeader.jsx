@@ -14,6 +14,7 @@ const notificationTone = {
   task: "bg-blue-50 text-blue-600",
   done: "bg-emerald-50 text-emerald-600",
   reopened: "bg-orange-50 text-orange-600",
+  reminder: "bg-blue-50 text-blue-600",
   couple: "bg-rose-50 text-blush",
   info: "bg-slate-100 text-muted"
 };
@@ -22,6 +23,7 @@ const notificationLabels = {
   task: "Tarefa",
   done: "Concluida",
   reopened: "Reaberta",
+  reminder: "Lembrete",
   couple: "Casal",
   info: "Info"
 };

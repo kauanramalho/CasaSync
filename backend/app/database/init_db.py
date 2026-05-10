@@ -48,3 +48,10 @@ def _upgrade_existing_tables() -> None:
         if "quick_notes" in existing_tables:
             _add_column_if_missing(connection, "quick_notes", "color", "color VARCHAR(40) DEFAULT 'rose' NOT NULL")
             _add_column_if_missing(connection, "quick_notes", "pinned", "pinned BOOLEAN DEFAULT FALSE NOT NULL")
+
+        if "tasks" in existing_tables:
+            _add_column_if_missing(connection, "tasks", "reminder_enabled", "reminder_enabled BOOLEAN DEFAULT FALSE NOT NULL")
+            _add_column_if_missing(connection, "tasks", "reminder_value", "reminder_value INTEGER")
+            _add_column_if_missing(connection, "tasks", "reminder_unit", "reminder_unit VARCHAR(16)")
+            _add_column_if_missing(connection, "tasks", "reminder_at", "reminder_at DATETIME")
+            _add_column_if_missing(connection, "tasks", "reminder_sent", "reminder_sent BOOLEAN DEFAULT FALSE NOT NULL")

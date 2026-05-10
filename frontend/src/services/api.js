@@ -84,7 +84,8 @@ export const tasksApi = {
   },
   create: (payload) => request("/tasks", { method: "POST", body: payload }),
   update: (id, payload) => request(`/tasks/${id}`, { method: "PATCH", body: payload }),
-  complete: (id) => request(`/tasks/${id}/complete`, { method: "POST" })
+  complete: (id) => request(`/tasks/${id}/complete`, { method: "POST" }),
+  delete: (id) => request(`/tasks/${id}`, { method: "DELETE" })
 };
 
 export const dashboardApi = {

@@ -1,5 +1,7 @@
 from datetime import datetime
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from app.models.enums import TaskPriority, TaskStatus
@@ -18,6 +20,9 @@ class TaskCreate(BaseModel):
     due_date: datetime | None = None
     priority: TaskPriority = TaskPriority.MEDIUM
     status: TaskStatus = TaskStatus.PENDING
+    reminder_enabled: bool = False
+    reminder_value: int | None = Field(default=None, gt=0)
+    reminder_unit: Literal["minutes", "hours", "days"] | None = None
 
 
 class TaskUpdate(BaseModel):
@@ -29,6 +34,10 @@ class TaskUpdate(BaseModel):
     due_date: datetime | None = None
     priority: TaskPriority | None = None
     status: TaskStatus | None = None
+    reminder_enabled: bool | None = None
+    reminder_value: int | None = Field(default=None, gt=0)
+    reminder_unit: Literal["minutes", "hours", "days"] | None = None
+    reminder_sent: bool | None = None
 
 
 class TaskAssigneeAwardRead(BaseModel):
@@ -52,6 +61,11 @@ class TaskRead(ORMModel):
     updated_at: datetime
     completed_at: datetime | None = None
     points_awarded: int
+    reminder_enabled: bool
+    reminder_value: int | None = None
+    reminder_unit: Literal["minutes", "hours", "days"] | None = None
+    reminder_at: datetime | None = None
+    reminder_sent: bool
     assignee: UserSummary | None = None
     assignee_ids: list[str] = []
     assignees: list[UserSummary] = []
