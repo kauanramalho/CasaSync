@@ -1,8 +1,20 @@
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
+function getApiUrl() {
+  const apiUrl = import.meta.env.VITE_API_URL;
+  if (!apiUrl) {
+    throw new Error("VITE_API_URL precisa estar configurada para o frontend acessar a API.");
+  }
+  return apiUrl.replace(/\/+$/, "");
+}
+
+const API_URL = getApiUrl();
 const TOKEN_KEY = "casasync_token";
 const PENDING_TWO_FACTOR_KEY = "casasync_pending_2fa";
 const AUTH_SESSION_CHANGED_EVENT = "casasync:auth-session-changed";
 const pendingGetRequests = new Map();
+
+function apiPath(path) {
+  return path.startsWith("/") ? path : `/${path}`;
+}
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
@@ -64,7 +76,7 @@ async function performRequest(path, { method = "GET", body, auth = true } = {}) 
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${API_URL}${apiPath(path)}`, {
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined

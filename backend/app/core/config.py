@@ -4,6 +4,16 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def default_cors_origins() -> list[str]:
+    return [
+        "https://casa-sync.vercel.app",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+    ]
+
+
 class Settings(BaseSettings):
     app_name: str = "CasaSync"
     api_v1_prefix: str = "/api"
@@ -32,12 +42,8 @@ class Settings(BaseSettings):
     email_from: str = "CasaSync <no-reply@casasync.app>"
     email_dev_mode: bool = True
 
-    cors_origins: list[str] = Field(
-        default_factory=lambda: [
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-        ]
-    )
+    cors_origins: list[str] = Field(default_factory=default_cors_origins)
+    cors_origin_regex: str | None = r"^https://casa-sync(?:-[a-z0-9-]+)*\.vercel\.app$"
 
     google_client_id: str | None = None
     google_client_secret: str | None = None
@@ -47,6 +53,10 @@ class Settings(BaseSettings):
     ai_api_key: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @property
+    def allowed_cors_origins(self) -> list[str]:
+        return sorted(set(default_cors_origins()) | set(self.cors_origins))
 
 
 @lru_cache
