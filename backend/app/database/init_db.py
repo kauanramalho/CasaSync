@@ -20,6 +20,12 @@ def _add_column_if_missing(connection, table_name: str, column_name: str, defini
         connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {definition}"))
 
 
+def _timestamp_with_timezone_type() -> str:
+    if engine.dialect.name == "postgresql":
+        return "TIMESTAMP WITH TIME ZONE"
+    return "DATETIME"
+
+
 def _upgrade_existing_tables() -> None:
     # create_all does not alter existing MVP databases. These additive upgrades keep
     # local/dev installs compatible without requiring Alembic for this project.
@@ -53,5 +59,5 @@ def _upgrade_existing_tables() -> None:
             _add_column_if_missing(connection, "tasks", "reminder_enabled", "reminder_enabled BOOLEAN DEFAULT FALSE NOT NULL")
             _add_column_if_missing(connection, "tasks", "reminder_value", "reminder_value INTEGER")
             _add_column_if_missing(connection, "tasks", "reminder_unit", "reminder_unit VARCHAR(16)")
-            _add_column_if_missing(connection, "tasks", "reminder_at", "reminder_at DATETIME")
+            _add_column_if_missing(connection, "tasks", "reminder_at", f"reminder_at {_timestamp_with_timezone_type()}")
             _add_column_if_missing(connection, "tasks", "reminder_sent", "reminder_sent BOOLEAN DEFAULT FALSE NOT NULL")
