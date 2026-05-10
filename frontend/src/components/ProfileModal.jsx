@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { AtSign, Camera, ImagePlus, LockKeyhole, Mail, Save, Trash2, UserRound, X } from "lucide-react";
 
 import Button from "./Button";
+import { useAuth } from "../hooks/useAuth";
 import { authApi, clearToken } from "../services/api";
 import { emitAuthSessionChanged } from "../utils/events";
 import { normalizeApiError } from "../utils/formatters";
@@ -38,6 +40,8 @@ function cropAvatar(dataUrl, crop) {
 }
 
 export default function ProfileModal({ user, onClose, onSaved }) {
+  const navigate = useNavigate();
+  const { beginTwoFactor } = useAuth();
   const [form, setForm] = useState({ name: "", email: "", username: "" });
   const [passwordForm, setPasswordForm] = useState({ current_password: "", new_password: "", confirm_password: "" });
   const [avatarDraft, setAvatarDraft] = useState("");
@@ -102,6 +106,12 @@ export default function ProfileModal({ user, onClose, onSaved }) {
         username: form.username || null,
         avatar_url: avatarUrl
       });
+
+      if (updated.requires_two_factor) {
+        beginTwoFactor(updated);
+        navigate("/verificacao", { replace: true });
+        return;
+      }
 
       if (passwordForm.new_password || passwordForm.current_password || passwordForm.confirm_password) {
         if (passwordForm.new_password !== passwordForm.confirm_password) {

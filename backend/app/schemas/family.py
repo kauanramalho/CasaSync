@@ -11,7 +11,7 @@ class FamilyCreate(BaseModel):
 
 
 class FamilyJoin(BaseModel):
-    invite_code: str = Field(min_length=4, max_length=16)
+    invite_code: str = Field(min_length=4, max_length=16, pattern="^[A-Za-z0-9]+$")
 
 
 class FamilyRead(ORMModel):
@@ -27,7 +27,7 @@ class FamilyRead(ORMModel):
 class FamilyUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=140)
     description: str | None = Field(default=None, max_length=1200)
-    image_url: str | None = None
+    image_url: str | None = Field(default=None, max_length=2048)
 
 
 class FamilyMemberUpdate(BaseModel):

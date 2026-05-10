@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.database.base import Base
@@ -15,6 +15,11 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     avatar_url = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     token_version = Column(Integer, default=0, nullable=False)
+    email_verified = Column(Boolean, default=True, nullable=False)
+    email_verified_at = Column(DateTime(timezone=True), nullable=True)
+    two_factor_enabled = Column(Boolean, default=True, nullable=False)
+    last_login_at = Column(DateTime(timezone=True), nullable=True)
+    last_2fa_verified_at = Column(DateTime(timezone=True), nullable=True)
 
     memberships = relationship("FamilyMember", back_populates="user", cascade="all, delete-orphan")
     created_tasks = relationship("Task", back_populates="creator", foreign_keys="Task.creator_id")

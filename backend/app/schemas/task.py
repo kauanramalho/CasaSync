@@ -20,11 +20,11 @@ class TaskReminderInput(BaseModel):
 
 class TaskCreate(TaskReminderInput):
     title: str = Field(min_length=2, max_length=180)
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=1200)
     assignee_id: str | None = None
-    assignee_ids: list[str] | None = None
+    assignee_ids: list[str] | None = Field(default=None, max_length=20)
     category_id: str | None = None
-    category_name: str | None = None
+    category_name: str | None = Field(default=None, max_length=80)
     due_date: datetime | None = None
     priority: TaskPriority = TaskPriority.MEDIUM
     status: TaskStatus = TaskStatus.PENDING
@@ -34,9 +34,9 @@ class TaskUpdate(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     title: str | None = Field(default=None, min_length=2, max_length=180)
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=1200)
     assignee_id: str | None = None
-    assignee_ids: list[str] | None = None
+    assignee_ids: list[str] | None = Field(default=None, max_length=20)
     category_id: str | None = None
     due_date: datetime | None = None
     priority: TaskPriority | None = None

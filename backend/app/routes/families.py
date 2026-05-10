@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
+from app.core.rate_limit import check_rate_limit, client_identifier
 from app.core.deps import get_current_user, get_family_id
 from app.database.session import get_db
 from app.models.user import User
@@ -41,7 +42,12 @@ def create(payload: FamilyCreate, current_user: User = Depends(get_current_user)
 
 
 @router.post("/join", response_model=FamilyJoinRequestRead)
-def join(payload: FamilyJoin, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def join(payload: FamilyJoin, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    check_rate_limit(
+        f"families:join:{client_identifier(request)}:{current_user.id}",
+        limit=8,
+        window_seconds=600,
+    )
     return request_join_family(db, payload.invite_code, current_user.id)
 
 

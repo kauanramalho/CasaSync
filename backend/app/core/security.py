@@ -35,10 +35,37 @@ def password_needs_rehash(hashed_password: str) -> bool:
     return not hashed_password.startswith(PASSWORD_HASH_PREFIX)
 
 
-def create_access_token(subject: str, expires_delta: timedelta | None = None, token_version: int = 0) -> str:
+def create_access_token(
+    subject: str,
+    expires_delta: timedelta | None = None,
+    token_version: int = 0,
+    extra_claims: dict | None = None,
+) -> str:
     settings = get_settings()
     expires_at = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=settings.access_token_expire_minutes)
     )
-    payload = {"sub": subject, "exp": expires_at, "ver": token_version}
+    payload = {"sub": str(subject), "exp": expires_at, "ver": token_version, "typ": "access"}
+    if extra_claims:
+        payload.update(extra_claims)
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+
+def create_pending_two_factor_token(
+    subject: str,
+    challenge_id: str,
+    purpose: str,
+    token_version: int = 0,
+) -> str:
+    settings = get_settings()
+    return create_access_token(
+        subject,
+        expires_delta=timedelta(minutes=settings.two_factor_pending_token_expire_minutes),
+        token_version=token_version,
+        extra_claims={"typ": "2fa", "challenge_id": challenge_id, "purpose": purpose},
+    )
+
+
+def decode_token(token: str) -> dict:
+    settings = get_settings()
+    return jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])

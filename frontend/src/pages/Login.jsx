@@ -10,7 +10,7 @@ import { normalizeApiError } from "../utils/formatters";
 export default function Login() {
   const navigate = useNavigate();
   const { login, user } = useAuth();
-  const [form, setForm] = useState({ email: "kauan@casasync.app", password: "12345678" });
+  const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -21,7 +21,11 @@ export default function Login() {
     setLoading(true);
     setError("");
     try {
-      await login(form);
+      const response = await login(form);
+      if (response?.requires_two_factor) {
+        navigate("/verificacao", { replace: true });
+        return;
+      }
       navigate("/");
     } catch (err) {
       setError(normalizeApiError(err));

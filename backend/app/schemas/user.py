@@ -13,7 +13,7 @@ class UserCreate(BaseModel):
 
 class UserLogin(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(min_length=8, max_length=128)
 
 
 class UserRead(ORMModel):
@@ -22,6 +22,8 @@ class UserRead(ORMModel):
     username: str | None = None
     email: EmailStr
     avatar_url: str | None = None
+    email_verified: bool
+    two_factor_enabled: bool
     created_at: datetime
 
 
@@ -37,7 +39,7 @@ class UserUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=120)
     username: str | None = Field(default=None, min_length=2, max_length=80)
     email: EmailStr | None = None
-    avatar_url: str | None = None
+    avatar_url: str | None = Field(default=None, max_length=300000)
 
 
 class PasswordUpdate(BaseModel):

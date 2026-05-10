@@ -1,5 +1,6 @@
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
 const TOKEN_KEY = "casasync_token";
+const PENDING_TWO_FACTOR_KEY = "casasync_pending_2fa";
 const AUTH_SESSION_CHANGED_EVENT = "casasync:auth-session-changed";
 const pendingGetRequests = new Map();
 
@@ -13,6 +14,25 @@ export function setToken(token) {
 
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
+}
+
+export function getPendingTwoFactor() {
+  const raw = sessionStorage.getItem(PENDING_TWO_FACTOR_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    sessionStorage.removeItem(PENDING_TWO_FACTOR_KEY);
+    return null;
+  }
+}
+
+export function setPendingTwoFactor(payload) {
+  sessionStorage.setItem(PENDING_TWO_FACTOR_KEY, JSON.stringify(payload));
+}
+
+export function clearPendingTwoFactor() {
+  sessionStorage.removeItem(PENDING_TWO_FACTOR_KEY);
 }
 
 async function request(path, { method = "GET", body, auth = true } = {}) {
@@ -69,6 +89,8 @@ async function performRequest(path, { method = "GET", body, auth = true } = {}) 
 export const authApi = {
   register: (payload) => request("/auth/register", { method: "POST", body: payload, auth: false }),
   login: (payload) => request("/auth/login", { method: "POST", body: payload, auth: false }),
+  verifyTwoFactor: (payload) => request("/auth/2fa/verify", { method: "POST", body: payload, auth: false }),
+  resendTwoFactor: (payload) => request("/auth/2fa/resend", { method: "POST", body: payload, auth: false }),
   me: () => request("/auth/me"),
   updateMe: (payload) => request("/auth/me", { method: "PATCH", body: payload }),
   changePassword: (payload) => request("/auth/me/password", { method: "POST", body: payload }),

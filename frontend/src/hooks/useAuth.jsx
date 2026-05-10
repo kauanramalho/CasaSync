@@ -1,19 +1,53 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
-import { authApi, clearToken, getToken, setToken } from "../services/api";
+import {
+  authApi,
+  clearPendingTwoFactor,
+  clearToken,
+  getPendingTwoFactor,
+  getToken,
+  setPendingTwoFactor,
+  setToken
+} from "../services/api";
 import { AUTH_SESSION_CHANGED_EVENT, emitAuthSessionChanged } from "../utils/events";
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
+  const [twoFactor, setTwoFactor] = useState(() => getPendingTwoFactor());
   const [loading, setLoading] = useState(true);
+
+  function storePendingTwoFactor(response) {
+    setPendingTwoFactor(response);
+    setTwoFactor(response);
+  }
+
+  function beginTwoFactor(response) {
+    clearToken();
+    setUser(null);
+    storePendingTwoFactor(response);
+  }
+
+  function clearPendingChallenge() {
+    clearPendingTwoFactor();
+    setTwoFactor(null);
+  }
+
+  function completeAuth(response) {
+    clearPendingChallenge();
+    setToken(response.access_token);
+    setUser(response.user);
+    emitAuthSessionChanged();
+    return response.user;
+  }
 
   useEffect(() => {
     let alive = true;
 
     async function loadSession() {
       if (!getToken()) {
+        setUser(null);
         setLoading(false);
         return;
       }
@@ -39,6 +73,7 @@ export function AuthProvider({ children }) {
     function syncSession(event) {
       if (event.type === "storage" && event.key !== "casasync_token") return;
       if (!getToken()) {
+        clearPendingChallenge();
         setUser(null);
       }
     }
@@ -53,16 +88,39 @@ export function AuthProvider({ children }) {
 
   async function login(payload) {
     const response = await authApi.login(payload);
-    setToken(response.access_token);
-    setUser(response.user);
-    return response.user;
+    if (response.requires_two_factor) {
+      beginTwoFactor(response);
+      return response;
+    }
+    return completeAuth(response);
   }
 
   async function register(payload) {
     const response = await authApi.register(payload);
-    setToken(response.access_token);
-    setUser(response.user);
-    return response.user;
+    if (response.requires_two_factor) {
+      beginTwoFactor(response);
+      return response;
+    }
+    return completeAuth(response);
+  }
+
+  async function verifyTwoFactor(code) {
+    const pending = getPendingTwoFactor();
+    if (!pending?.pending_token) {
+      throw new Error("Sessao de verificacao expirada. Entre novamente.");
+    }
+    const response = await authApi.verifyTwoFactor({ pending_token: pending.pending_token, code });
+    return completeAuth(response);
+  }
+
+  async function resendTwoFactor() {
+    const pending = getPendingTwoFactor();
+    if (!pending?.pending_token) {
+      throw new Error("Sessao de verificacao expirada. Entre novamente.");
+    }
+    const response = await authApi.resendTwoFactor({ pending_token: pending.pending_token });
+    storePendingTwoFactor(response);
+    return response;
   }
 
   async function logout() {
@@ -72,6 +130,7 @@ export function AuthProvider({ children }) {
       // Local session cleanup still wins if the server already rejected the token.
     } finally {
       clearToken();
+      clearPendingChallenge();
       setUser(null);
       emitAuthSessionChanged();
     }
@@ -80,6 +139,7 @@ export function AuthProvider({ children }) {
   async function deleteAccount() {
     await authApi.deleteMe();
     clearToken();
+    clearPendingChallenge();
     setUser(null);
     emitAuthSessionChanged();
   }
@@ -94,10 +154,21 @@ export function AuthProvider({ children }) {
     return me;
   }
 
-  const value = useMemo(
-    () => ({ user, loading, login, register, logout, deleteAccount, updateUser, refreshUser }),
-    [user, loading]
-  );
+  const value = {
+    user,
+    twoFactor,
+    loading,
+    login,
+    register,
+    verifyTwoFactor,
+    resendTwoFactor,
+    beginTwoFactor,
+    clearPendingChallenge,
+    logout,
+    deleteAccount,
+    updateUser,
+    refreshUser
+  };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

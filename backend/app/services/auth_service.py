@@ -30,6 +30,8 @@ def register_user(db: Session, payload: UserCreate) -> User:
         name=payload.name.strip(),
         email=payload.email.strip().lower(),
         hashed_password=hash_password(payload.password),
+        email_verified=False,
+        two_factor_enabled=True,
     )
     db.add(user)
     try:
@@ -48,11 +50,16 @@ def update_user_profile(db: Session, user: User, payload: UserUpdate) -> User:
     data = payload.model_dump(exclude_unset=True)
 
     if "email" in data and data["email"]:
-        next_email = data["email"].lower()
+        next_email = data["email"].strip().lower()
         existing_email = get_user_by_email(db, next_email)
         if existing_email and existing_email.id != user.id:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ja existe uma conta com este e-mail.")
-        user.email = next_email
+        if next_email != user.email:
+            user.email = next_email
+            user.email_verified = False
+            user.email_verified_at = None
+            user.last_2fa_verified_at = None
+            user.token_version += 1
 
     if "username" in data:
         next_username = (data["username"] or "").strip().lower() or None

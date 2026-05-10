@@ -16,6 +16,7 @@ const Register = lazy(() => import("./pages/Register"));
 const Reports = lazy(() => import("./pages/Reports"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Tasks = lazy(() => import("./pages/Tasks"));
+const VerifyCode = lazy(() => import("./pages/VerifyCode"));
 
 function PageLoader() {
   return <div className="grid min-h-[40vh] place-items-center text-sm font-semibold text-muted">Carregando CasaSync...</div>;
@@ -38,6 +39,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/cadastro" element={<Register />} />
+        <Route path="/verificacao" element={<VerifyCode />} />
         <Route
           element={
             <ProtectedRoute>

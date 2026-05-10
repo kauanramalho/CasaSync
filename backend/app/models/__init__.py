@@ -6,6 +6,7 @@ from app.models.family import Family, FamilyJoinRequest, FamilyMember
 from app.models.integration import GoogleCalendarConnection
 from app.models.ranking import MonthlyScore, MonthlyWinner
 from app.models.task import Task, TaskAssignee
+from app.models.two_factor import TwoFactorCode
 from app.models.user import User
 
 __all__ = [
@@ -21,5 +22,6 @@ __all__ = [
     "QuickNote",
     "Task",
     "TaskAssignee",
+    "TwoFactorCode",
     "User",
 ]

@@ -3,7 +3,7 @@ from app.database.session import engine
 from sqlalchemy import inspect, text
 
 # Importing models here registers them in SQLAlchemy metadata.
-from app.models import category, couple, family, integration, ranking, task, user  # noqa: F401
+from app.models import category, couple, family, integration, ranking, task, two_factor, user  # noqa: F401
 
 
 def create_database_tables() -> None:
@@ -34,6 +34,11 @@ def _upgrade_existing_tables() -> None:
         if "users" in existing_tables:
             _add_column_if_missing(connection, "users", "username", "username VARCHAR(80)")
             _add_column_if_missing(connection, "users", "token_version", "token_version INTEGER DEFAULT 0 NOT NULL")
+            _add_column_if_missing(connection, "users", "email_verified", "email_verified BOOLEAN DEFAULT TRUE NOT NULL")
+            _add_column_if_missing(connection, "users", "email_verified_at", f"email_verified_at {_timestamp_with_timezone_type()}")
+            _add_column_if_missing(connection, "users", "two_factor_enabled", "two_factor_enabled BOOLEAN DEFAULT TRUE NOT NULL")
+            _add_column_if_missing(connection, "users", "last_login_at", f"last_login_at {_timestamp_with_timezone_type()}")
+            _add_column_if_missing(connection, "users", "last_2fa_verified_at", f"last_2fa_verified_at {_timestamp_with_timezone_type()}")
             connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username_unique ON users (username) WHERE username IS NOT NULL"))
             if engine.dialect.name == "postgresql":
                 connection.execute(text("ALTER TABLE users ALTER COLUMN avatar_url TYPE TEXT"))

@@ -23,6 +23,19 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    if settings.environment == "production":
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        response.headers.setdefault("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+    return response
+
+
 @app.on_event("startup")
 def on_startup() -> None:
     # MVP-friendly. In production, prefer Alembic migrations before boot.
@@ -42,4 +55,3 @@ app.include_router(dashboard.router, prefix=settings.api_v1_prefix)
 app.include_router(couple.router, prefix=settings.api_v1_prefix)
 app.include_router(planner.router, prefix=settings.api_v1_prefix)
 app.include_router(integrations.router, prefix=settings.api_v1_prefix)
-

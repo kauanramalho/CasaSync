@@ -1,9 +1,9 @@
 from fastapi import Depends, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+from jose import JWTError
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
+from app.core.security import decode_token
 from app.database.session import get_db
 from app.models.user import User
 
@@ -12,7 +12,6 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
-    settings = get_settings()
     credentials_error = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Não foi possível validar suas credenciais.",
@@ -20,10 +19,11 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     )
 
     try:
-        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        payload = decode_token(token)
         user_id: str | None = payload.get("sub")
         token_version = payload.get("ver", 0)
-        if not user_id:
+        token_type = payload.get("typ", "access")
+        if not user_id or token_type != "access":
             raise credentials_error
     except JWTError as exc:
         raise credentials_error from exc
@@ -31,6 +31,11 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     user = db.query(User).filter(User.id == user_id, User.is_active.is_(True)).first()
     if not user or user.token_version != token_version:
         raise credentials_error
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Verifique seu e-mail para continuar.",
+        )
     return user
 
 

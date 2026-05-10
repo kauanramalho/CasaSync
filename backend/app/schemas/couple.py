@@ -9,7 +9,7 @@ from app.schemas.user import UserSummary
 
 class CoupleGoalCreate(BaseModel):
     title: str = Field(min_length=2, max_length=160)
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=1200)
     target_date: datetime | None = None
     progress: int = Field(default=0, ge=0, le=100)
     pinned: bool = False
@@ -17,7 +17,7 @@ class CoupleGoalCreate(BaseModel):
 
 class CoupleGoalUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=2, max_length=160)
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=1200)
     target_date: datetime | None = None
     progress: int | None = Field(default=None, ge=0, le=100)
     status: GoalStatus | None = None
@@ -39,11 +39,11 @@ class CoupleGoalRead(ORMModel):
 
 class DateIdeaCreate(BaseModel):
     title: str = Field(min_length=2, max_length=160)
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=1200)
     location: str | None = Field(default=None, max_length=180)
     budget: str | None = Field(default=None, max_length=80)
-    external_url: str | None = None
-    image_url: str | None = None
+    external_url: str | None = Field(default=None, max_length=2048)
+    image_url: str | None = Field(default=None, max_length=2048)
     suggested_date: datetime | None = None
     mood: str = "romantico"
     pinned: bool = False
@@ -51,13 +51,13 @@ class DateIdeaCreate(BaseModel):
 
 class DateIdeaUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=2, max_length=160)
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=1200)
     location: str | None = Field(default=None, max_length=180)
     budget: str | None = Field(default=None, max_length=80)
-    external_url: str | None = None
-    image_url: str | None = None
+    external_url: str | None = Field(default=None, max_length=2048)
+    image_url: str | None = Field(default=None, max_length=2048)
     suggested_date: datetime | None = None
-    mood: str | None = None
+    mood: str | None = Field(default=None, max_length=40)
     is_done: bool | None = None
     pinned: bool | None = None
 
@@ -81,13 +81,13 @@ class DateIdeaRead(ORMModel):
 
 class QuickNoteCreate(BaseModel):
     message: str = Field(min_length=1, max_length=1200)
-    color: str = "rose"
+    color: str = Field(default="rose", max_length=40)
     pinned: bool = False
 
 
 class QuickNoteUpdate(BaseModel):
     message: str | None = Field(default=None, min_length=1, max_length=1200)
-    color: str | None = None
+    color: str | None = Field(default=None, max_length=40)
     pinned: bool | None = None
 
 

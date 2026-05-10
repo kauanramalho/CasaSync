@@ -21,7 +21,11 @@ export default function Register() {
     setLoading(true);
     setError("");
     try {
-      await register(form);
+      const response = await register(form);
+      if (response?.requires_two_factor) {
+        navigate("/verificacao", { replace: true });
+        return;
+      }
       navigate("/familia");
     } catch (err) {
       setError(normalizeApiError(err));
