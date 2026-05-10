@@ -14,6 +14,7 @@ import { useNotifications } from "../hooks/useNotifications";
 import { categoriesApi, familiesApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError, priorityLabels, statusLabels } from "../utils/formatters";
+import { formatReminderLead } from "../utils/taskReminders";
 import { getAssigneeNames, getTaskAssigneeIds, getTaskPointLabel } from "../utils/tasks";
 
 const statusTabs = [
@@ -53,6 +54,8 @@ export default function Tasks() {
   const [assignee, setAssignee] = useState("");
   const [search, setSearch] = useState(searchParams.get("search") || "");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [editError, setEditError] = useState("");
   const [editingTask, setEditingTask] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -121,19 +124,33 @@ export default function Tasks() {
   async function handleSaveEdit(payload) {
     if (!editingTask) return;
     setSavingEdit(true);
+    setEditError("");
+    setError("");
+    setSuccess("");
     try {
       const updated = await tasksApi.update(editingTask.id, payload);
+      setTasks((current) => current.map((task) => (task.id === updated.id ? updated : task)));
+      const reminderChanged = Boolean(editingTask.reminder_enabled) !== Boolean(updated.reminder_enabled);
+      const reminderLead = formatReminderLead(updated.reminder_value, updated.reminder_unit);
+      const message = updated.reminder_enabled
+        ? reminderChanged
+          ? "Lembrete ativado para esta tarefa."
+          : `Tarefa atualizada com sucesso${reminderLead ? ` com lembrete de ${reminderLead}` : ""}.`
+        : editingTask.reminder_enabled
+          ? "Lembrete removido desta tarefa."
+          : "Tarefa atualizada com sucesso.";
       addNotification({
-        title: "Tarefa editada",
-        description: `${updated.title} foi atualizada. Responsaveis, prazo, prioridade e status ja refletem nos relatorios.`,
-        type: "task",
+        title: updated.reminder_enabled ? "Lembrete da tarefa salvo" : "Tarefa editada",
+        description: message,
+        type: updated.reminder_enabled || editingTask.reminder_enabled ? "reminder" : "task",
         actor: user?.name
       });
+      setSuccess(message);
       setEditingTask(null);
       emitAppDataChanged();
       load();
     } catch (err) {
-      setError(normalizeApiError(err));
+      setEditError(normalizeApiError(err));
     } finally {
       setSavingEdit(false);
     }
@@ -179,6 +196,7 @@ export default function Tasks() {
       />
 
       {error && <p className="mb-5 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</p>}
+      {success && <p className="mb-5 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{success}</p>}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={Rows3} label="Todas" value={counts.all} hint="tarefas registradas" tone="blue" />
@@ -215,7 +233,15 @@ export default function Tasks() {
             </Button>
           </div>
         </div>
-        <TaskList tasks={filteredTasks} onComplete={handleComplete} onEdit={setEditingTask} onDelete={handleDelete} />
+        <TaskList
+          tasks={filteredTasks}
+          onComplete={handleComplete}
+          onEdit={(task) => {
+            setEditError("");
+            setEditingTask(task);
+          }}
+          onDelete={handleDelete}
+        />
       </Card>
 
       <TaskEditorModal
@@ -223,7 +249,11 @@ export default function Tasks() {
         categories={categories}
         members={members}
         saving={savingEdit}
-        onClose={() => setEditingTask(null)}
+        error={editError}
+        onClose={() => {
+          setEditError("");
+          setEditingTask(null);
+        }}
         onSave={handleSaveEdit}
       />
     </>

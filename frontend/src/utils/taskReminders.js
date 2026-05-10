@@ -14,6 +14,12 @@ const unitLabels = {
   days: ["dia", "dias"]
 };
 
+const reminderDurationsMs = {
+  minutes: (value) => value * 60 * 1000,
+  hours: (value) => value * 60 * 60 * 1000,
+  days: (value) => value * 24 * 60 * 60 * 1000
+};
+
 export function buildReminderValue(value, unit) {
   return value && unit ? `${value}:${unit}` : reminderOptions[0].value;
 }
@@ -35,6 +41,37 @@ export function formatReminderMessageLead(value, unit) {
   if (!value || !unitLabels[unit]) return "";
   const [singular, plural] = unitLabels[unit];
   return `${value} ${value === 1 ? singular : plural}`;
+}
+
+export function calculateReminderAt(dueDate, value, unit) {
+  if (!dueDate || !value || !reminderDurationsMs[unit]) return null;
+  const due = new Date(dueDate);
+  if (Number.isNaN(due.getTime())) return null;
+  return new Date(due.getTime() - reminderDurationsMs[unit](Number(value)));
+}
+
+export function formatReminderDateTime(value) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
+}
+
+export function getReminderValidationError(form) {
+  if (!form.reminder_enabled) return "";
+  if (!form.due_date) return "Defina um prazo para ativar lembrete.";
+
+  const reminder = parseReminderValue(buildReminderValue(form.reminder_value, form.reminder_unit));
+  const reminderAt = calculateReminderAt(form.due_date, reminder.amount, reminder.unit);
+  if (!reminderAt) return "Escolha quando o lembrete deve acontecer.";
+  if (reminderAt.getTime() <= Date.now()) {
+    return "Esse lembrete ja ficou no passado. Escolha um prazo maior ou uma antecedencia menor.";
+  }
+  return "";
 }
 
 export function getReminderPayload(form) {

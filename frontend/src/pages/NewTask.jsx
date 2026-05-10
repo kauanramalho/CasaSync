@@ -14,7 +14,7 @@ import { useNotifications } from "../hooks/useNotifications";
 import { categoriesApi, familiesApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError, toIsoOrNull } from "../utils/formatters";
-import { getReminderPayload } from "../utils/taskReminders";
+import { formatReminderLead, getReminderPayload, getReminderValidationError } from "../utils/taskReminders";
 
 export default function NewTask() {
   const { user } = useAuth();
@@ -77,8 +77,13 @@ export default function NewTask() {
   async function handleSubmit(event) {
     event.preventDefault();
     setError("");
+    const reminderError = getReminderValidationError(form);
+    if (reminderError) {
+      setError(reminderError);
+      return;
+    }
     try {
-      await tasksApi.create({
+      const created = await tasksApi.create({
         ...form,
         assignee_id: form.assignee_ids[0] || undefined,
         assignee_ids: form.assignee_ids,
@@ -88,8 +93,10 @@ export default function NewTask() {
       });
       addNotification({
         title: "Nova tarefa criada",
-        description: `${form.title} entrou na lista da casa.`,
-        type: "task",
+        description: created.reminder_enabled
+          ? `Lembrete ativado para ${formatReminderLead(created.reminder_value, created.reminder_unit)}.`
+          : `${created.title} entrou na lista da casa.`,
+        type: created.reminder_enabled ? "reminder" : "task",
         actor: user?.name
       });
       emitAppDataChanged();

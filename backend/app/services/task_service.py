@@ -290,6 +290,7 @@ def create_task(db: Session, family_id: str, creator_id: str, payload: TaskCreat
 
     if payload.status == TaskStatus.DONE:
         _complete_task_without_commit(db, task)
+        task.reminder_sent = True
     else:
         task.status = payload.status.value
 

@@ -125,9 +125,11 @@ export function normalizeTaskForForm(task) {
     due_date: task?.due_date ?? "",
     priority: task?.priority ?? "media",
     status: task?.status ?? "pendente",
-    reminder_enabled: Boolean(task?.reminder_enabled),
-    reminder_value: task?.reminder_value ?? null,
-    reminder_unit: task?.reminder_unit ?? null
+    reminder_enabled: Boolean(task?.reminder_enabled ?? task?.reminderEnabled),
+    reminder_value: task?.reminder_value ?? task?.reminderValue ?? null,
+    reminder_unit: task?.reminder_unit ?? task?.reminderUnit ?? null,
+    reminder_at: task?.reminder_at ?? task?.reminderAt ?? null,
+    reminder_sent: Boolean(task?.reminder_sent ?? task?.reminderSent)
   };
 }
 

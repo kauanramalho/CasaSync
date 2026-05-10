@@ -1,12 +1,21 @@
 import { BellRing } from "lucide-react";
 
 import SelectMenu from "./SelectMenu";
-import { buildReminderValue, parseReminderValue, reminderOptions } from "../utils/taskReminders";
+import {
+  buildReminderValue,
+  calculateReminderAt,
+  formatReminderDateTime,
+  parseReminderValue,
+  reminderOptions
+} from "../utils/taskReminders";
 
 export default function TaskReminderFields({ form, onChange }) {
   const hasDueDate = Boolean(form.due_date);
   const reminderValue = buildReminderValue(form.reminder_value, form.reminder_unit);
   const enabled = Boolean(form.reminder_enabled && hasDueDate);
+  const previewReminderAt = enabled ? calculateReminderAt(form.due_date, form.reminder_value, form.reminder_unit) : null;
+  const persistedReminderAt = form.reminder_at ? new Date(form.reminder_at) : null;
+  const displayReminderAt = previewReminderAt || persistedReminderAt;
 
   function updateReminderEnabled(nextEnabled) {
     if (!hasDueDate) {
@@ -38,6 +47,11 @@ export default function TaskReminderFields({ form, onChange }) {
             <p className="mt-1 text-xs font-semibold leading-relaxed text-muted">
               Voce recebera uma notificacao no CasaSync antes do prazo da tarefa.
             </p>
+            {enabled && displayReminderAt && (
+              <p className="mt-2 text-xs font-bold text-blue-600">
+                Lembrete previsto para {formatReminderDateTime(displayReminderAt)}.
+              </p>
+            )}
             {!hasDueDate && <p className="mt-2 text-xs font-bold text-rose-600">Defina um prazo para ativar lembrete.</p>}
           </div>
         </div>

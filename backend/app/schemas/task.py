@@ -2,7 +2,7 @@ from datetime import datetime
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from app.models.enums import TaskPriority, TaskStatus
 from app.schemas.category import CategoryRead
@@ -10,7 +10,15 @@ from app.schemas.common import ORMModel
 from app.schemas.user import UserSummary
 
 
-class TaskCreate(BaseModel):
+class TaskReminderInput(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    reminder_enabled: bool = Field(default=False, validation_alias=AliasChoices("reminder_enabled", "reminderEnabled"))
+    reminder_value: int | None = Field(default=None, gt=0, validation_alias=AliasChoices("reminder_value", "reminderValue"))
+    reminder_unit: Literal["minutes", "hours", "days"] | None = Field(default=None, validation_alias=AliasChoices("reminder_unit", "reminderUnit"))
+
+
+class TaskCreate(TaskReminderInput):
     title: str = Field(min_length=2, max_length=180)
     description: str | None = None
     assignee_id: str | None = None
@@ -20,12 +28,11 @@ class TaskCreate(BaseModel):
     due_date: datetime | None = None
     priority: TaskPriority = TaskPriority.MEDIUM
     status: TaskStatus = TaskStatus.PENDING
-    reminder_enabled: bool = False
-    reminder_value: int | None = Field(default=None, gt=0)
-    reminder_unit: Literal["minutes", "hours", "days"] | None = None
 
 
 class TaskUpdate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     title: str | None = Field(default=None, min_length=2, max_length=180)
     description: str | None = None
     assignee_id: str | None = None
@@ -34,10 +41,10 @@ class TaskUpdate(BaseModel):
     due_date: datetime | None = None
     priority: TaskPriority | None = None
     status: TaskStatus | None = None
-    reminder_enabled: bool | None = None
-    reminder_value: int | None = Field(default=None, gt=0)
-    reminder_unit: Literal["minutes", "hours", "days"] | None = None
-    reminder_sent: bool | None = None
+    reminder_enabled: bool | None = Field(default=None, validation_alias=AliasChoices("reminder_enabled", "reminderEnabled"))
+    reminder_value: int | None = Field(default=None, gt=0, validation_alias=AliasChoices("reminder_value", "reminderValue"))
+    reminder_unit: Literal["minutes", "hours", "days"] | None = Field(default=None, validation_alias=AliasChoices("reminder_unit", "reminderUnit"))
+    reminder_sent: bool | None = Field(default=None, validation_alias=AliasChoices("reminder_sent", "reminderSent"))
 
 
 class TaskAssigneeAwardRead(BaseModel):

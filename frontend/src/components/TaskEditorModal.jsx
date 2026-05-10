@@ -7,17 +7,19 @@ import DateTimePicker from "./DateTimePicker";
 import SelectMenu from "./SelectMenu";
 import TaskReminderFields from "./TaskReminderFields";
 import { formatDateTimeLocal, toIsoOrNull } from "../utils/formatters";
-import { getReminderPayload } from "../utils/taskReminders";
+import { getReminderPayload, getReminderValidationError } from "../utils/taskReminders";
 import { normalizeTaskForForm, priorityPoints } from "../utils/tasks";
 
-export default function TaskEditorModal({ task, categories = [], members = [], onClose, onSave, saving = false }) {
+export default function TaskEditorModal({ task, categories = [], members = [], onClose, onSave, saving = false, error = "" }) {
   const [form, setForm] = useState(() => normalizeTaskForForm(task));
+  const [localError, setLocalError] = useState("");
 
   useEffect(() => {
     setForm({
       ...normalizeTaskForForm(task),
       due_date: formatDateTimeLocal(task?.due_date)
     });
+    setLocalError("");
   }, [task]);
 
   const selectedMembers = useMemo(() => {
@@ -41,6 +43,7 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
   if (!task) return null;
 
   function updateField(field, value) {
+    setLocalError("");
     setForm((current) => {
       const next = { ...current, [field]: value };
       if (field === "due_date" && !value) {
@@ -53,11 +56,17 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
   }
 
   function updateReminder(values) {
+    setLocalError("");
     setForm((current) => ({ ...current, ...values }));
   }
 
   function handleSubmit(event) {
     event.preventDefault();
+    const reminderError = getReminderValidationError(form);
+    if (reminderError) {
+      setLocalError(reminderError);
+      return;
+    }
     onSave?.({
       title: form.title,
       description: form.description || null,
@@ -143,6 +152,12 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
               />
             </div>
           </div>
+
+          {(localError || error) && (
+            <p className="mt-5 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">
+              {localError || error}
+            </p>
+          )}
 
           <div className="mt-6 flex justify-end gap-3">
             <Button type="button" variant="secondary" onClick={onClose}>
