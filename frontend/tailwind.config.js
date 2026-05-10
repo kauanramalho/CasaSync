@@ -9,7 +9,10 @@ export default {
         blush: "rgb(var(--color-blush) / <alpha-value>)",
         peach: "rgb(var(--color-peach) / <alpha-value>)",
         lavender: "rgb(var(--color-lavender) / <alpha-value>)",
-        cream: "rgb(var(--color-cream) / <alpha-value>)"
+        cream: "rgb(var(--color-cream) / <alpha-value>)",
+        surface: "rgb(var(--color-surface) / <alpha-value>)",
+        "surface-soft": "rgb(var(--color-surface-soft) / <alpha-value>)",
+        border: "rgb(var(--color-border) / <alpha-value>)"
       },
       boxShadow: {
         soft: "var(--shadow-soft)",

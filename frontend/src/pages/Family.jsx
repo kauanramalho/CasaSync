@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Activity, Camera, Copy, Crown, DoorOpen, ImagePlus, Plus, RefreshCcw, ShieldCheck, Trash2, Trophy, Users } from "lucide-react";
 
 import Avatar from "../components/Avatar";
@@ -35,6 +36,7 @@ function dateKey(value) {
 
 export default function Family() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [families, setFamilies] = useState([]);
   const [members, setMembers] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -44,6 +46,8 @@ export default function Family() {
   const [activeWeeklyDay, setActiveWeeklyDay] = useState(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
+  const [leavingFamily, setLeavingFamily] = useState(false);
 
   async function load() {
     setError("");
@@ -132,7 +136,7 @@ export default function Family() {
     try {
       await familiesApi.join({ invite_code: inviteCode });
       setInviteCode("");
-      setMessage("Voce entrou na familia.");
+      setMessage("Solicitacao enviada. Um administrador precisa aprovar sua entrada na familia.");
       emitAppDataChanged();
       load();
     } catch (err) {
@@ -191,6 +195,24 @@ export default function Family() {
     setMessage("Familia excluida.");
     emitAppDataChanged();
     load();
+  }
+
+  async function confirmLeaveFamily() {
+    setLeavingFamily(true);
+    setMessage("");
+    setError("");
+    try {
+      await familiesApi.leaveCurrent();
+      setLeaveDialogOpen(false);
+      setMessage("Voce saiu da familia.");
+      emitAppDataChanged();
+      navigate("/familia");
+      load();
+    } catch (err) {
+      setError(normalizeApiError(err));
+    } finally {
+      setLeavingFamily(false);
+    }
   }
 
   return (
@@ -322,7 +344,15 @@ export default function Family() {
                 <h2 className="section-title">{currentFamily?.name || "Nenhuma familia ativa"}</h2>
                 <p className="mt-2 text-sm text-muted">Membros, cargos e ranking familiar.</p>
               </div>
-              {currentFamily && <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-bold text-blush">{stats.active} tarefas ativas</span>}
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {currentFamily && <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-bold text-blush">{stats.active} tarefas ativas</span>}
+                {currentFamily && currentMember && (
+                  <Button type="button" variant="danger" className="px-3 py-2" onClick={() => setLeaveDialogOpen(true)}>
+                    <DoorOpen className="h-4 w-4" />
+                    Sair da familia
+                  </Button>
+                )}
+              </div>
             </div>
 
             <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -420,6 +450,30 @@ export default function Family() {
           </div>
         </div>
       </div>
+
+      {leaveDialogOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-[28px] border border-white/10 bg-surface p-6 shadow-soft">
+            <h2 className="text-lg font-bold text-ink">Sair da familia?</h2>
+            <p className="mt-3 text-sm leading-relaxed text-muted">
+              Tem certeza que deseja sair desta familia? Voce perdera acesso as tarefas, ranking e informacoes compartilhadas desta familia.
+            </p>
+            {isAdminRole(currentMember?.role) && (
+              <p className="mt-3 rounded-2xl bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-600">
+                Se voce for o unico administrador, sera preciso promover outro membro antes de sair.
+              </p>
+            )}
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <Button type="button" variant="secondary" onClick={() => setLeaveDialogOpen(false)} disabled={leavingFamily}>
+                Cancelar
+              </Button>
+              <Button type="button" variant="danger" onClick={confirmLeaveFamily} disabled={leavingFamily}>
+                {leavingFamily ? "Saindo..." : "Confirmar saida"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

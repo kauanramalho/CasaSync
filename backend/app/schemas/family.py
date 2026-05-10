@@ -42,3 +42,14 @@ class FamilyMemberRead(ORMModel):
     points: int
     created_at: datetime
     user: UserSummary
+
+
+class FamilyJoinRequestRead(ORMModel):
+    id: str
+    family_id: str
+    requester_id: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    family: FamilyRead
+    requester: UserSummary

@@ -96,7 +96,7 @@ function buildCouplePreviewItems(space = {}) {
 
 function CouplePreviewItem({ item }) {
   const pin = item.pinned ? (
-    <span className="inline-flex items-center gap-1 rounded-full bg-white/75 px-2 py-0.5 text-[10px] font-bold text-blush shadow-sm">
+    <span className="inline-flex items-center gap-1 rounded-full border border-blush/20 bg-blush/15 px-2 py-0.5 text-[10px] font-bold text-blush shadow-sm">
       <Pin className="h-3 w-3" />
       Fixado
     </span>
@@ -105,10 +105,10 @@ function CouplePreviewItem({ item }) {
   if (item.type === "goal") {
     const progress = Math.min(100, item.progress || 0);
     return (
-      <div className="rounded-[22px] border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-rose-50 p-3 shadow-card">
+      <div className="rounded-[22px] border border-blush/20 bg-gradient-to-br from-surface/95 via-surface-soft/70 to-blush/10 p-3 shadow-card">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-2">
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white text-blush shadow-sm">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-blush/15 text-blush shadow-sm">
               <Target className="h-4 w-4" />
             </span>
             <div className="min-w-0">
@@ -119,7 +119,7 @@ function CouplePreviewItem({ item }) {
           {pin}
         </div>
         <div className="mt-3 flex items-center gap-3">
-          <div className="h-2 flex-1 overflow-hidden rounded-full bg-violet-100">
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-blush/15">
             <div className="h-full rounded-full bg-gradient-to-r from-peach to-blush" style={{ width: `${progress}%` }} />
           </div>
           <span className="text-xs font-bold text-ink">{progress}%</span>
@@ -132,14 +132,14 @@ function CouplePreviewItem({ item }) {
   if (item.type === "date") {
     const badge = relativeDateLabel(item.date);
     return (
-      <div className="rounded-[22px] border border-rose-100 bg-gradient-to-br from-rose-50 via-white to-orange-50 p-3 shadow-card">
+      <div className="rounded-[22px] border border-peach/20 bg-gradient-to-br from-surface/95 via-surface-soft/70 to-peach/10 p-3 shadow-card">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-2">
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white text-orange-500 shadow-sm">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-peach/15 text-peach shadow-sm">
               <CalendarHeart className="h-4 w-4" />
             </span>
             <div className="min-w-0">
-              <p className="text-[11px] font-bold text-rose-500">Proximo date</p>
+              <p className="text-[11px] font-bold text-blush">Proximo date</p>
               <p className="line-clamp-1 font-bold text-ink">{item.title}</p>
             </div>
           </div>
@@ -149,20 +149,20 @@ function CouplePreviewItem({ item }) {
         <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] font-bold text-muted">
           <span>{formatDate(item.date, "Sem data")}</span>
           {item.date && <span>{formatTime(item.date)}</span>}
-          {badge && <span className="rounded-full bg-blush/10 px-2 py-1 text-blush">{badge}</span>}
+          {badge && <span className="rounded-full bg-blush/15 px-2 py-1 text-blush">{badge}</span>}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="rounded-[22px] border border-amber-100 bg-gradient-to-br from-amber-50 via-white to-rose-50 p-3 shadow-card">
+    <div className="rounded-[22px] border border-lavender/20 bg-gradient-to-br from-surface/95 via-surface-soft/70 to-lavender/10 p-3 shadow-card">
       <div className="mb-2 flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white text-blush shadow-sm">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-lavender/15 text-blush shadow-sm">
             <MessageCircleHeart className="h-4 w-4" />
           </span>
-          <p className="text-[11px] font-bold text-amber-600">Recado</p>
+          <p className="text-[11px] font-bold text-blush">Recado</p>
         </div>
         {pin}
       </div>
@@ -377,7 +377,7 @@ export default function Dashboard() {
               Ver mais
             </Link>
           </div>
-          <div className="rounded-[24px] bg-gradient-to-br from-rose-50 via-white to-violet-50 p-3 shadow-card">
+          <div className="rounded-[24px] border border-border/70 bg-gradient-to-br from-surface-soft/80 via-surface/80 to-blush/10 p-3 shadow-card">
             {couplePreviewItems.length ? (
               <div className="grid gap-3">
                 {couplePreviewItems.map((item) => (
@@ -385,7 +385,7 @@ export default function Dashboard() {
                 ))}
               </div>
             ) : (
-              <div className="rounded-[22px] border border-dashed border-blush/20 bg-white/75 px-4 py-6 text-center">
+              <div className="rounded-[22px] border border-dashed border-blush/25 bg-surface/70 px-4 py-6 text-center">
                 <Heart className="mx-auto h-8 w-8 text-rose-200" />
                 <p className="mt-3 font-semibold text-ink">Nosso cantinho esta esperando novidades.</p>
                 <Link to="/espaco-do-casal" className="mt-2 inline-flex text-sm font-bold text-blush">

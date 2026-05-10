@@ -56,10 +56,14 @@ export const familiesApi = {
   create: (payload) => request("/families", { method: "POST", body: payload }),
   join: (payload) => request("/families/join", { method: "POST", body: payload }),
   members: () => request("/families/current/members"),
+  joinRequests: () => request("/families/current/join-requests"),
+  approveJoinRequest: (requestId) => request(`/families/current/join-requests/${requestId}/approve`, { method: "POST" }),
+  rejectJoinRequest: (requestId) => request(`/families/current/join-requests/${requestId}/reject`, { method: "POST" }),
   updateCurrent: (payload) => request("/families/current", { method: "PATCH", body: payload }),
   regenerateCode: () => request("/families/current/regenerate-code", { method: "POST" }),
   updateMember: (memberId, payload) => request(`/families/current/members/${memberId}`, { method: "PATCH", body: payload }),
   removeMember: (memberId) => request(`/families/current/members/${memberId}`, { method: "DELETE" }),
+  leaveCurrent: () => request("/families/current/leave", { method: "POST" }),
   deleteCurrent: () => request("/families/current", { method: "DELETE" })
 };
 

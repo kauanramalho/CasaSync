@@ -34,3 +34,16 @@ class FamilyMember(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     family = relationship("Family", back_populates="members")
     user = relationship("User", back_populates="memberships")
+
+
+class FamilyJoinRequest(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "family_join_requests"
+
+    family_id = Column(String(36), ForeignKey("families.id", ondelete="CASCADE"), nullable=False)
+    requester_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    status = Column(String(24), default="pending", nullable=False)
+    decided_by_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    family = relationship("Family")
+    requester = relationship("User", foreign_keys=[requester_id])
+    decided_by = relationship("User", foreign_keys=[decided_by_id])

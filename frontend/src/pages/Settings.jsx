@@ -312,7 +312,7 @@ export default function Settings() {
               </div>
               <div className="rounded-2xl bg-white/75 p-4">
                 <p className="text-xs font-bold uppercase tracking-wide text-muted">Familia</p>
-                <p className="mt-2 font-semibold text-ink">{family?.name || "Kauan & Bia"}</p>
+                <p className="mt-2 font-semibold text-ink">{family?.name || "Minha familia"}</p>
               </div>
             </div>
           </Card>

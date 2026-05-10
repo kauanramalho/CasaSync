@@ -4,16 +4,19 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user, get_family_id
 from app.database.session import get_db
 from app.models.user import User
-from app.schemas.family import FamilyCreate, FamilyJoin, FamilyMemberRead, FamilyMemberUpdate, FamilyRead, FamilyUpdate
+from app.schemas.family import FamilyCreate, FamilyJoin, FamilyJoinRequestRead, FamilyMemberRead, FamilyMemberUpdate, FamilyRead, FamilyUpdate
 from app.services.family_service import (
     create_family,
+    decide_join_request,
     delete_family,
     get_family,
-    join_family,
+    leave_family,
+    list_pending_join_requests,
     list_members,
     list_user_families,
     regenerate_invite_code,
     remove_member,
+    request_join_family,
     update_family,
     update_member_role,
 )
@@ -37,14 +40,53 @@ def create(payload: FamilyCreate, current_user: User = Depends(get_current_user)
     return create_family(db, payload, current_user.id)
 
 
-@router.post("/join", response_model=FamilyRead)
+@router.post("/join", response_model=FamilyJoinRequestRead)
 def join(payload: FamilyJoin, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return join_family(db, payload.invite_code, current_user.id)
+    return request_join_family(db, payload.invite_code, current_user.id)
 
 
 @router.get("/current/members", response_model=list[FamilyMemberRead])
 def current_members(family_id: str = Depends(get_family_id), db: Session = Depends(get_db)):
     return list_members(db, family_id)
+
+
+@router.get("/current/join-requests", response_model=list[FamilyJoinRequestRead])
+def current_join_requests(
+    current_user: User = Depends(get_current_user),
+    family_id: str = Depends(get_family_id),
+    db: Session = Depends(get_db),
+):
+    return list_pending_join_requests(db, family_id, current_user.id)
+
+
+@router.post("/current/join-requests/{request_id}/approve", response_model=FamilyJoinRequestRead)
+def approve_join_request(
+    request_id: str,
+    current_user: User = Depends(get_current_user),
+    family_id: str = Depends(get_family_id),
+    db: Session = Depends(get_db),
+):
+    return decide_join_request(db, family_id, current_user.id, request_id, True)
+
+
+@router.post("/current/join-requests/{request_id}/reject", response_model=FamilyJoinRequestRead)
+def reject_join_request(
+    request_id: str,
+    current_user: User = Depends(get_current_user),
+    family_id: str = Depends(get_family_id),
+    db: Session = Depends(get_db),
+):
+    return decide_join_request(db, family_id, current_user.id, request_id, False)
+
+
+@router.post("/current/leave", status_code=204)
+def leave_current_family(
+    current_user: User = Depends(get_current_user),
+    family_id: str = Depends(get_family_id),
+    db: Session = Depends(get_db),
+):
+    leave_family(db, family_id, current_user.id)
+    return None
 
 
 @router.patch("/current", response_model=FamilyRead)

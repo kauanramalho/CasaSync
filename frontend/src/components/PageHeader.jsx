@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, CheckCheck, ChevronDown, LogOut, Settings, Trash2, UserRound } from "lucide-react";
+import { Bell, CheckCheck, ChevronDown, LogOut, Settings, Trash2, UserRound, UserPlus } from "lucide-react";
 
 import Avatar from "./Avatar";
 import GlobalSearch from "./GlobalSearch";
 import ProfileModal from "./ProfileModal";
 import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
+import { familiesApi } from "../services/api";
+import { APP_DATA_CHANGED_EVENT, emitAppDataChanged } from "../utils/events";
 
 const notificationTone = {
   task: "bg-blue-50 text-blue-600",
@@ -30,8 +32,10 @@ export default function PageHeader({ title, subtitle, action, user }) {
   const [openNotifications, setOpenNotifications] = useState(false);
   const [openUserMenu, setOpenUserMenu] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [joinRequests, setJoinRequests] = useState([]);
   const notificationsRef = useRef(null);
   const { notifications, unreadCount, markAsRead, markAllAsRead, clearAll } = useNotifications();
+  const totalUnread = unreadCount + joinRequests.length;
 
   useEffect(() => {
     if (!openNotifications) return undefined;
@@ -45,9 +49,39 @@ export default function PageHeader({ title, subtitle, action, user }) {
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [openNotifications]);
 
+  useEffect(() => {
+    let alive = true;
+
+    async function loadJoinRequests() {
+      try {
+        const rows = await familiesApi.joinRequests();
+        if (alive) setJoinRequests(rows);
+      } catch {
+        if (alive) setJoinRequests([]);
+      }
+    }
+
+    loadJoinRequests();
+    window.addEventListener(APP_DATA_CHANGED_EVENT, loadJoinRequests);
+    return () => {
+      alive = false;
+      window.removeEventListener(APP_DATA_CHANGED_EVENT, loadJoinRequests);
+    };
+  }, []);
+
   function handleLogout() {
     logout();
     navigate("/login");
+  }
+
+  async function decideJoinRequest(requestId, approve) {
+    if (approve) {
+      await familiesApi.approveJoinRequest(requestId);
+    } else {
+      await familiesApi.rejectJoinRequest(requestId);
+    }
+    setJoinRequests((current) => current.filter((item) => item.id !== requestId));
+    emitAppDataChanged();
   }
 
   return (
@@ -70,9 +104,9 @@ export default function PageHeader({ title, subtitle, action, user }) {
             title="Notificacoes"
           >
             <Bell className="h-5 w-5" />
-            {unreadCount > 0 && (
+            {totalUnread > 0 && (
               <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-blush px-1 text-[11px] font-bold text-white">
-                {unreadCount}
+                {totalUnread}
               </span>
             )}
           </button>
@@ -81,7 +115,7 @@ export default function PageHeader({ title, subtitle, action, user }) {
               <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
                 <div>
                   <p className="font-bold text-ink">Notificacoes</p>
-                  <p className="text-xs text-muted">{unreadCount} nao lida(s)</p>
+                  <p className="text-xs text-muted">{totalUnread} pendente(s)</p>
                 </div>
                 <div className="flex gap-1">
                   <button onClick={markAllAsRead} className="grid h-9 w-9 place-items-center rounded-xl text-muted hover:bg-emerald-50 hover:text-emerald-600" title="Marcar como lidas">
@@ -93,6 +127,43 @@ export default function PageHeader({ title, subtitle, action, user }) {
                 </div>
               </div>
               <div className="max-h-96 overflow-y-auto p-2">
+                {joinRequests.map((request) => (
+                  <div key={request.id} className="mb-2 rounded-2xl bg-blush/10 px-3 py-3 text-left">
+                    <div className="flex items-start gap-3">
+                      <span className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-2xl bg-blush/15 text-blush">
+                        <UserPlus className="h-4 w-4" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-blush/15 px-2 py-0.5 text-[11px] font-bold text-blush">Familia</span>
+                          <span className="text-[11px] font-semibold text-muted">
+                            {new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(request.created_at))}
+                          </span>
+                        </div>
+                        <p className="mt-1 font-semibold text-ink">Pedido para entrar na familia</p>
+                        <p className="mt-1 text-xs leading-relaxed text-muted">
+                          {request.requester?.name || "Um usuario"} quer entrar em {request.family?.name || "sua familia"}.
+                        </p>
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => decideJoinRequest(request.id, true)}
+                            className="rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-600"
+                          >
+                            Aceitar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => decideJoinRequest(request.id, false)}
+                            className="rounded-xl bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-100"
+                          >
+                            Recusar
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
                 {notifications.length ? (
                   notifications.map((item) => (
                     <button
@@ -118,13 +189,13 @@ export default function PageHeader({ title, subtitle, action, user }) {
                       </div>
                     </button>
                   ))
-                ) : (
+                ) : !joinRequests.length ? (
                   <div className="px-4 py-8 text-center">
                     <Bell className="mx-auto h-8 w-8 text-rose-200" />
                     <p className="mt-3 font-semibold text-ink">Tudo tranquilo por aqui.</p>
                     <p className="mt-1 text-sm text-muted">As novidades importantes vao aparecer neste cantinho.</p>
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           )}

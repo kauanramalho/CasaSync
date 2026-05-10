@@ -5,7 +5,8 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.enums import FamilyRole
-from app.models.family import Family, FamilyMember
+from app.models.family import Family, FamilyJoinRequest, FamilyMember
+from app.models.task import Task, TaskAssignee
 from app.schemas.family import FamilyCreate, FamilyUpdate
 from app.services.category_service import ensure_default_categories
 
@@ -63,6 +64,43 @@ def join_family(db: Session, invite_code: str, user_id: str) -> Family:
     db.commit()
     db.refresh(family)
     return family
+
+
+def request_join_family(db: Session, invite_code: str, user_id: str) -> FamilyJoinRequest:
+    family = db.query(Family).filter(Family.invite_code == invite_code.strip().upper()).first()
+    if not family:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Codigo de convite invalido.")
+
+    existing_member = (
+        db.query(FamilyMember)
+        .filter(FamilyMember.family_id == family.id, FamilyMember.user_id == user_id)
+        .first()
+    )
+    if existing_member:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Voce ja faz parte desta familia.")
+
+    pending_request = (
+        db.query(FamilyJoinRequest)
+        .filter(
+            FamilyJoinRequest.family_id == family.id,
+            FamilyJoinRequest.requester_id == user_id,
+            FamilyJoinRequest.status == "pending",
+        )
+        .first()
+    )
+    if pending_request:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Voce ja tem uma solicitacao pendente para esta familia.")
+
+    join_request = FamilyJoinRequest(family_id=family.id, requester_id=user_id, status="pending")
+    db.add(join_request)
+    db.commit()
+    db.refresh(join_request)
+    return (
+        db.query(FamilyJoinRequest)
+        .options(selectinload(FamilyJoinRequest.family), selectinload(FamilyJoinRequest.requester))
+        .filter(FamilyJoinRequest.id == join_request.id)
+        .one()
+    )
 
 
 def list_user_families(db: Session, user_id: str) -> list[Family]:
@@ -126,6 +164,46 @@ def list_members(db: Session, family_id: str) -> list[FamilyMember]:
     )
 
 
+def list_pending_join_requests(db: Session, family_id: str, user_id: str) -> list[FamilyJoinRequest]:
+    require_family_admin(db, family_id, user_id)
+    return (
+        db.query(FamilyJoinRequest)
+        .options(selectinload(FamilyJoinRequest.family), selectinload(FamilyJoinRequest.requester))
+        .filter(FamilyJoinRequest.family_id == family_id, FamilyJoinRequest.status == "pending")
+        .order_by(FamilyJoinRequest.created_at.asc())
+        .all()
+    )
+
+
+def decide_join_request(db: Session, family_id: str, user_id: str, request_id: str, approve: bool) -> FamilyJoinRequest:
+    require_family_admin(db, family_id, user_id)
+    join_request = (
+        db.query(FamilyJoinRequest)
+        .options(selectinload(FamilyJoinRequest.family), selectinload(FamilyJoinRequest.requester))
+        .filter(FamilyJoinRequest.family_id == family_id, FamilyJoinRequest.id == request_id)
+        .first()
+    )
+    if not join_request:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Solicitacao nao encontrada.")
+    if join_request.status != "pending":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Esta solicitacao ja foi respondida.")
+
+    existing_member = (
+        db.query(FamilyMember)
+        .filter(FamilyMember.family_id == family_id, FamilyMember.user_id == join_request.requester_id)
+        .first()
+    )
+    if approve and not existing_member:
+        db.add(FamilyMember(family_id=family_id, user_id=join_request.requester_id, role=FamilyRole.MEMBER.value))
+
+    join_request.status = "approved" if approve else "rejected"
+    join_request.decided_by_id = user_id
+    db.add(join_request)
+    db.commit()
+    db.refresh(join_request)
+    return join_request
+
+
 def update_family(db: Session, family_id: str, user_id: str, payload: FamilyUpdate) -> Family:
     require_family_admin(db, family_id, user_id)
     family = get_family(db, family_id)
@@ -187,6 +265,37 @@ def remove_member(db: Session, family_id: str, user_id: str, member_id: str) -> 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membro nao encontrado.")
     if member.role == FamilyRole.OWNER.value or actor.id == member.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Esta acao nao esta disponivel para este membro.")
+    db.delete(member)
+    db.commit()
+
+
+def leave_family(db: Session, family_id: str, user_id: str) -> None:
+    member = require_family_member(db, family_id, user_id)
+    members = db.query(FamilyMember).filter(FamilyMember.family_id == family_id).all()
+    admins = [item for item in members if item.role in [FamilyRole.OWNER.value, FamilyRole.ADMIN.value]]
+
+    if len(members) == 1:
+        family = get_family(db, family_id)
+        db.delete(family)
+        db.commit()
+        return
+
+    if member.role in [FamilyRole.OWNER.value, FamilyRole.ADMIN.value] and len(admins) <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Antes de sair, promova outro membro a administrador para a familia nao ficar sem administracao.",
+        )
+
+    task_ids = [task_id for (task_id,) in db.query(Task.id).filter(Task.family_id == family_id).all()]
+    if task_ids:
+        db.query(TaskAssignee).filter(TaskAssignee.task_id.in_(task_ids), TaskAssignee.user_id == user_id).delete(synchronize_session=False)
+    db.query(Task).filter(Task.family_id == family_id, Task.assignee_id == user_id).update({Task.assignee_id: None}, synchronize_session=False)
+
+    family = get_family(db, family_id)
+    if family.created_by_id == user_id:
+        family.created_by_id = None
+        db.add(family)
+
     db.delete(member)
     db.commit()
 
