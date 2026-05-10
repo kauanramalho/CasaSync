@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BellRing, Check, Edit3, MoreHorizontal, RotateCcw, Trash2 } from "lucide-react";
 
 import AssigneeStack from "./AssigneeStack";
@@ -17,6 +17,22 @@ export default function TaskList({ tasks = [], onComplete, onEdit, onDelete, onR
     setOpenMenuId(null);
     action?.(task);
   }
+
+  useEffect(() => {
+    if (!openMenuId) return undefined;
+    function handlePointerDown(event) {
+      if (!event.target.closest("[data-task-menu-root]")) setOpenMenuId(null);
+    }
+    function handleKeyDown(event) {
+      if (event.key === "Escape") setOpenMenuId(null);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openMenuId]);
 
   return (
     <div className="rounded-[24px] border border-slate-100 bg-white/70">
@@ -72,7 +88,7 @@ export default function TaskList({ tasks = [], onComplete, onEdit, onDelete, onR
               <PriorityBadge priority={task.priority} />
               <span className="text-sm text-muted">{formatDate(task.due_date)}</span>
               <StatusBadge status={task.status} />
-              <div className="relative">
+              <div className="relative" data-task-menu-root>
                 <button
                   onClick={() => toggleMenu(task.id)}
                   className="grid h-8 w-8 place-items-center rounded-xl text-muted hover:bg-slate-100"

@@ -58,6 +58,14 @@ export default function ProfileModal({ user, onClose, onSaved }) {
     setCrop({ zoom: 1, x: 0, y: 0 });
   }, [user]);
 
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if (event.key === "Escape" && !saving) onClose?.();
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, saving]);
+
   const previewUrl = useMemo(() => {
     if (removeAvatar) return "";
     return avatarDraft || user?.avatar_url || "";
@@ -116,8 +124,13 @@ export default function ProfileModal({ user, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/30 px-4 py-8 backdrop-blur-md">
-      <div className="max-h-[92vh] w-full max-w-4xl overflow-hidden rounded-[30px] border border-white/80 bg-white shadow-soft animate-in">
+    <div
+      className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/30 px-4 py-8 backdrop-blur-md"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !saving) onClose?.();
+      }}
+    >
+      <div className="max-h-[92vh] w-full max-w-4xl overflow-hidden rounded-[30px] border border-white/80 bg-white shadow-soft animate-in" onMouseDown={(event) => event.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
           <div>
             <p className="section-title">Meu perfil</p>

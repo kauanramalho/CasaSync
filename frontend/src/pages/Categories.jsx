@@ -8,6 +8,7 @@ import CategoryStylePicker from "../components/CategoryStylePicker";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../hooks/useAuth";
 import { categoriesApi } from "../services/api";
+import { emitAppDataChanged } from "../utils/events";
 import { colorPalettes, findColor } from "../utils/categoryDesign";
 import { normalizeApiError } from "../utils/formatters";
 import { getCategoryTone } from "../utils/tasks";
@@ -62,6 +63,7 @@ export default function Categories() {
         setMessage("Categoria criada com sucesso.");
       }
       resetForm();
+      emitAppDataChanged();
       load();
     } catch (err) {
       setError(normalizeApiError(err));

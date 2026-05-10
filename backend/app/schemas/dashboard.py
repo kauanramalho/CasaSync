@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.task import TaskRead
 from app.schemas.user import UserSummary
@@ -15,7 +15,7 @@ class CategoryStat(BaseModel):
     category: str
     total: int
     color: str
-    tasks: list[TaskRead] = []
+    tasks: list[TaskRead] = Field(default_factory=list)
 
 
 class RankingItem(BaseModel):
@@ -29,18 +29,18 @@ class ProductivityPoint(BaseModel):
     label: str
     date: str
     total: int
-    tasks: list[TaskRead] = []
+    tasks: list[TaskRead] = Field(default_factory=list)
 
 
 class MemberProductivityPoint(BaseModel):
     user: UserSummary
     total: int
     points: int
-    tasks: list[TaskRead] = []
+    tasks: list[TaskRead] = Field(default_factory=list)
 
 
 class DailyProductivityPoint(ProductivityPoint):
-    members: list[MemberProductivityPoint] = []
+    members: list[MemberProductivityPoint] = Field(default_factory=list)
 
 
 class DashboardRead(BaseModel):

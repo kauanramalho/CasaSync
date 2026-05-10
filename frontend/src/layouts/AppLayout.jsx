@@ -35,7 +35,7 @@ export default function AppLayout() {
   const { logout } = useAuth();
   const navigate = useNavigate();
   const [family, setFamily] = useState(null);
-  const [points, setPoints] = useState(0);
+  const [sidebarMetrics, setSidebarMetrics] = useState({ done: 0, total: 0, points: 0 });
 
   useEffect(() => {
     let alive = true;
@@ -47,8 +47,12 @@ export default function AppLayout() {
         if (familyResult.status === "fulfilled") setFamily(familyResult.value);
         if (familyResult.status === "rejected") setFamily(null);
         if (dashboard.status === "fulfilled") {
-          const pointsStat = dashboard.value.stats.find((item) => item.key === "points");
-          setPoints(pointsStat?.value ?? 0);
+          const stats = dashboard.value.stats;
+          const done = stats.find((item) => item.key === "done")?.value ?? 0;
+          const pending = stats.find((item) => item.key === "pending")?.value ?? 0;
+          const overdue = stats.find((item) => item.key === "overdue")?.value ?? 0;
+          const points = stats.find((item) => item.key === "points")?.value ?? 0;
+          setSidebarMetrics({ done, total: done + pending + overdue, points });
         }
       } catch {
         setFamily(null);
@@ -92,12 +96,12 @@ export default function AppLayout() {
         </nav>
 
         <div className="mt-6 rounded-[24px] bg-white/80 p-5 shadow-card">
-          <p className="text-sm font-semibold text-ink">Meta semanal do casal</p>
+          <p className="text-sm font-semibold text-ink">Progresso da familia</p>
           <div className="mt-5 flex items-center gap-4">
-            <ProgressRing />
+            <ProgressRing value={sidebarMetrics.total ? Math.round((sidebarMetrics.done / sidebarMetrics.total) * 100) : 0} />
             <div>
-              <p className="font-semibold text-ink">21 / 27 tarefas</p>
-              <p className="mt-1 text-xs text-muted">{points} pontos</p>
+              <p className="font-semibold text-ink">{sidebarMetrics.done} / {sidebarMetrics.total} tarefas</p>
+              <p className="mt-1 text-xs text-muted">{sidebarMetrics.points} pontos</p>
             </div>
           </div>
         </div>

@@ -39,6 +39,7 @@ export default function Login() {
           placeholder="E-mail"
           value={form.email}
           onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+          required
         />
         <input
           className="soft-input"
@@ -46,6 +47,8 @@ export default function Login() {
           placeholder="Senha"
           value={form.password}
           onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+          minLength={8}
+          required
         />
         {error && <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">{error}</p>}
         <Button type="submit" className="w-full" disabled={loading}>
@@ -62,4 +65,3 @@ export default function Login() {
     </AuthLayout>
   );
 }
-

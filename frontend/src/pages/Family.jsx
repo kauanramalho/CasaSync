@@ -1,6 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Activity, Camera, Copy, Crown, DoorOpen, ImagePlus, Plus, RefreshCcw, ShieldCheck, Trash2, Trophy, Users } from "lucide-react";
+import {
+  Activity,
+  Camera,
+  CheckCircle2,
+  Copy,
+  Crown,
+  DoorOpen,
+  ImagePlus,
+  Plus,
+  RefreshCcw,
+  ShieldCheck,
+  Trash2,
+  Trophy,
+  UserPlus,
+  Users,
+  XCircle
+} from "lucide-react";
 
 import Avatar from "../components/Avatar";
 import Button from "../components/Button";
@@ -39,6 +55,7 @@ export default function Family() {
   const navigate = useNavigate();
   const [families, setFamilies] = useState([]);
   const [members, setMembers] = useState([]);
+  const [joinRequests, setJoinRequests] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [familyName, setFamilyName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
@@ -48,29 +65,34 @@ export default function Family() {
   const [error, setError] = useState("");
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
   const [leavingFamily, setLeavingFamily] = useState(false);
+  const [decidingRequestId, setDecidingRequestId] = useState("");
 
-  async function load() {
+  const load = useCallback(async function load() {
     setError("");
     try {
       const familyRows = await familiesApi.list();
       if (familyRows.length) {
         const [currentFamily, memberRows, taskRows] = await Promise.all([familiesApi.current(), familiesApi.members(), tasksApi.list()]);
+        const activeMember = memberRows.find((member) => member.user_id === user?.id);
+        const requestRows = isAdminRole(activeMember?.role) ? await familiesApi.joinRequests() : [];
         setFamilies([currentFamily, ...familyRows.filter((family) => family.id !== currentFamily.id)]);
         setMembers(memberRows);
+        setJoinRequests(requestRows);
         setTasks(taskRows);
       } else {
         setFamilies([]);
         setMembers([]);
+        setJoinRequests([]);
         setTasks([]);
       }
     } catch (err) {
       setError(normalizeApiError(err));
     }
-  }
+  }, [user?.id]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const currentFamily = families[0];
   const currentMember = members.find((member) => member.user_id === user?.id);
@@ -119,7 +141,7 @@ export default function Family() {
     setMessage("");
     setError("");
     try {
-      await familiesApi.create({ name: familyName });
+      await familiesApi.create({ name: familyName.trim() });
       setFamilyName("");
       setMessage("Familia criada com sucesso.");
       emitAppDataChanged();
@@ -134,7 +156,7 @@ export default function Family() {
     setMessage("");
     setError("");
     try {
-      await familiesApi.join({ invite_code: inviteCode });
+      await familiesApi.join({ invite_code: inviteCode.trim() });
       setInviteCode("");
       setMessage("Solicitacao enviada. Um administrador precisa aprovar sua entrada na familia.");
       emitAppDataChanged();
@@ -167,34 +189,88 @@ export default function Family() {
   }
 
   async function regenerateCode() {
-    const updated = await familiesApi.regenerateCode();
-    setFamilies([updated]);
-    setMessage("Novo codigo de convite gerado.");
-    emitAppDataChanged();
+    setMessage("");
+    setError("");
+    try {
+      const updated = await familiesApi.regenerateCode();
+      setFamilies((current) => [updated, ...current.filter((family) => family.id !== updated.id)]);
+      setMessage("Novo codigo de convite gerado.");
+      emitAppDataChanged();
+    } catch (err) {
+      setError(normalizeApiError(err));
+    }
   }
 
   async function copyInviteCode() {
     if (!currentFamily?.invite_code) return;
-    await navigator.clipboard?.writeText(currentFamily.invite_code);
-    setMessage("Codigo copiado.");
+    setError("");
+    try {
+      await navigator.clipboard?.writeText(currentFamily.invite_code);
+      setMessage("Codigo copiado.");
+    } catch {
+      setError("Nao foi possivel copiar o codigo automaticamente.");
+    }
   }
 
   async function updateMemberRole(member, role) {
-    await familiesApi.updateMember(member.id, { role });
-    load();
+    setMessage("");
+    setError("");
+    try {
+      await familiesApi.updateMember(member.id, { role });
+      setMessage("Permissao do membro atualizada.");
+      emitAppDataChanged();
+      load();
+    } catch (err) {
+      setError(normalizeApiError(err));
+    }
   }
 
   async function removeMember(member) {
-    await familiesApi.removeMember(member.id);
-    load();
+    setMessage("");
+    setError("");
+    try {
+      await familiesApi.removeMember(member.id);
+      setMessage("Membro removido da familia.");
+      emitAppDataChanged();
+      load();
+    } catch (err) {
+      setError(normalizeApiError(err));
+    }
   }
 
   async function deleteFamily() {
     if (!window.confirm("Excluir esta familia e todos os dados vinculados?")) return;
-    await familiesApi.deleteCurrent();
-    setMessage("Familia excluida.");
-    emitAppDataChanged();
-    load();
+    setMessage("");
+    setError("");
+    try {
+      await familiesApi.deleteCurrent();
+      setMessage("Familia excluida.");
+      emitAppDataChanged();
+      load();
+    } catch (err) {
+      setError(normalizeApiError(err));
+    }
+  }
+
+  async function decideJoinRequest(request, approve) {
+    setDecidingRequestId(request.id);
+    setMessage("");
+    setError("");
+    try {
+      if (approve) {
+        await familiesApi.approveJoinRequest(request.id);
+        setMessage(`${request.requester?.name || "Solicitante"} agora faz parte da familia.`);
+      } else {
+        await familiesApi.rejectJoinRequest(request.id);
+        setMessage("Solicitacao recusada.");
+      }
+      emitAppDataChanged();
+      load();
+    } catch (err) {
+      setError(normalizeApiError(err));
+    } finally {
+      setDecidingRequestId("");
+    }
   }
 
   async function confirmLeaveFamily() {
@@ -259,6 +335,62 @@ export default function Family() {
         </Card>
       )}
 
+      {currentFamily && canAdmin && (
+        <Card className="mb-6">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-3">
+              <span className="grid h-11 w-11 place-items-center rounded-2xl bg-blue-50 text-blue-600 shadow-card">
+                <UserPlus className="h-5 w-5" />
+              </span>
+              <div>
+                <h2 className="section-title">Solicitacoes de entrada</h2>
+                <p className="text-sm text-muted">A entrada por codigo fica pendente ate um administrador aprovar.</p>
+              </div>
+            </div>
+            <span className="self-start rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-600 md:self-auto">
+              {joinRequests.length} pendente(s)
+            </span>
+          </div>
+
+          <div className="mt-5 grid gap-3">
+            {joinRequests.map((request) => (
+              <div key={request.id} className="flex flex-col gap-3 rounded-[22px] border border-slate-100 bg-white/75 p-4 shadow-card md:flex-row md:items-center md:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar user={request.requester} />
+                  <div className="min-w-0">
+                    <p className="truncate font-bold text-ink">{request.requester?.name || "Novo membro"}</p>
+                    <p className="truncate text-sm text-muted">{request.requester?.email || "E-mail nao informado"}</p>
+                  </div>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 md:w-auto">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="px-3 py-2 text-emerald-700 hover:bg-emerald-50"
+                    onClick={() => decideJoinRequest(request, true)}
+                    disabled={decidingRequestId === request.id}
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Aprovar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    className="px-3 py-2"
+                    onClick={() => decideJoinRequest(request, false)}
+                    disabled={decidingRequestId === request.id}
+                  >
+                    <XCircle className="h-4 w-4" />
+                    Recusar
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {!joinRequests.length && <p className="empty-state">Nenhuma solicitacao pendente no momento.</p>}
+          </div>
+        </Card>
+      )}
+
       <div className="grid gap-6 xl:grid-cols-[0.85fr_1.25fr]">
         <div className="space-y-6">
           <Card>
@@ -278,7 +410,7 @@ export default function Family() {
               <input className="soft-input uppercase" placeholder="CODIGO DE CONVITE" value={inviteCode} onChange={(event) => setInviteCode(event.target.value.toUpperCase())} required />
               <Button type="submit" variant="secondary" className="w-full">
                 <DoorOpen className="h-5 w-5" />
-                Entrar na familia
+                Solicitar entrada
               </Button>
             </form>
           </Card>
@@ -452,8 +584,13 @@ export default function Family() {
       </div>
 
       {leaveDialogOpen && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-[28px] border border-white/10 bg-surface p-6 shadow-soft">
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 px-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !leavingFamily) setLeaveDialogOpen(false);
+          }}
+        >
+          <div className="w-full max-w-md rounded-[28px] border border-white/10 bg-surface p-6 shadow-soft" onMouseDown={(event) => event.stopPropagation()}>
             <h2 className="text-lg font-bold text-ink">Sair da familia?</h2>
             <p className="mt-3 text-sm leading-relaxed text-muted">
               Tem certeza que deseja sair desta familia? Voce perdera acesso as tarefas, ranking e informacoes compartilhadas desta familia.

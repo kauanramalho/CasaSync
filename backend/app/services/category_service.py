@@ -1,8 +1,8 @@
+from fastapi import HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.category import Category
-from fastapi import HTTPException, status
-
 from app.schemas.category import CategoryCreate, CategoryUpdate
 
 
@@ -49,10 +49,23 @@ def list_categories(db: Session, family_id: str) -> list[Category]:
     )
 
 
+def _ensure_unique_category_name(db: Session, family_id: str, name: str, category_id: str | None = None) -> None:
+    query = db.query(Category).filter(
+        Category.family_id == family_id,
+        func.lower(Category.name) == name.strip().lower(),
+    )
+    if category_id:
+        query = query.filter(Category.id != category_id)
+    if query.first():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ja existe uma categoria com este nome.")
+
+
 def create_category(db: Session, family_id: str, payload: CategoryCreate) -> Category:
+    name = payload.name.strip()
+    _ensure_unique_category_name(db, family_id, name)
     category = Category(
         family_id=family_id,
-        name=payload.name.strip(),
+        name=name,
         color=payload.color,
         icon=payload.icon,
         is_default=False,
@@ -70,7 +83,9 @@ def update_category(db: Session, family_id: str, category_id: str, payload: Cate
 
     data = payload.model_dump(exclude_unset=True)
     if "name" in data and data["name"]:
-        category.name = data["name"].strip()
+        name = data["name"].strip()
+        _ensure_unique_category_name(db, family_id, name, category.id)
+        category.name = name
     if "color" in data and data["color"]:
         category.color = data["color"]
     if "icon" in data and data["icon"]:

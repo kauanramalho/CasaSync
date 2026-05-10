@@ -28,6 +28,16 @@ import { normalizeApiError } from "../utils/formatters";
 import { buildProductivityRows, getCategoryHex, getCategoryName, memberChartColors } from "../utils/tasks";
 
 const chartColors = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"];
+
+function getCurrentActivityStreak(productivity = []) {
+  let streak = 0;
+  for (let index = productivity.length - 1; index >= 0; index -= 1) {
+    if ((productivity[index]?.total || 0) <= 0) break;
+    streak += 1;
+  }
+  return streak;
+}
+
 export default function Reports() {
   const { user } = useAuth();
   const [dashboard, setDashboard] = useState(null);
@@ -64,8 +74,16 @@ export default function Reports() {
   const topCategory = categoryRows[0];
   const totalPoints = useMemo(() => ranking.reduce((sum, item) => sum + item.points, 0), [ranking]);
   const completionRate = totalTasks ? Math.round((doneTasks / totalTasks) * 100) : 0;
+  const activityStreak = useMemo(() => getCurrentActivityStreak(productivity), [productivity]);
+  const weeklyTrend = useMemo(() => {
+    const firstHalf = productivity.slice(0, 3).reduce((sum, item) => sum + item.total, 0);
+    const secondHalf = productivity.slice(3).reduce((sum, item) => sum + item.total, 0);
+    if (!firstHalf && !secondHalf) return 0;
+    if (!firstHalf) return 100;
+    return Math.round(((secondHalf - firstHalf) / firstHalf) * 100);
+  }, [productivity]);
   const streakHint = completionRate >= 50 ? "Vocês estão mantendo a constância juntos." : "Continue assim para aumentar a sequência.";
-  const weeklyHint = productivity.reduce((sum, item) => sum + item.total, 0) > 0 ? "Mais tarefas concluídas que nos dias anteriores." : "Comparado com a semana anterior.";
+  const weeklyHint = weeklyTrend > 0 ? "Mais tarefas concluídas que no início da semana." : weeklyTrend < 0 ? "Ritmo menor que no início da semana." : "Ritmo estável nesta semana.";
 
   return (
     <>
@@ -197,13 +215,13 @@ export default function Reports() {
         <div className="grid gap-6">
           <Card>
             <Flame className="h-8 w-8 text-orange-500" />
-            <p className="mt-4 text-3xl font-bold text-ink">12 dias</p>
+            <p className="mt-4 text-3xl font-bold text-ink">{activityStreak} {activityStreak === 1 ? "dia" : "dias"}</p>
             <p className="mt-2 text-sm text-muted">Sequência de organização</p>
             <p className="mt-3 text-xs font-semibold text-orange-500">{streakHint}</p>
           </Card>
           <Card>
             <TrendingUp className="h-8 w-8 text-blue-500" />
-            <p className="mt-4 text-3xl font-bold text-ink">+15%</p>
+            <p className="mt-4 text-3xl font-bold text-ink">{weeklyTrend > 0 ? "+" : ""}{weeklyTrend}%</p>
             <p className="mt-2 text-sm text-muted">Ritmo semanal</p>
             <p className="mt-3 text-xs font-semibold text-blue-500">{weeklyHint}</p>
           </Card>

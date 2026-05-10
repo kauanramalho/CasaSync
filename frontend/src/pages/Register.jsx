@@ -38,6 +38,8 @@ export default function Register() {
           placeholder="Nome"
           value={form.name}
           onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+          minLength={2}
+          required
         />
         <input
           className="soft-input"
@@ -45,6 +47,7 @@ export default function Register() {
           placeholder="E-mail"
           value={form.email}
           onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+          required
         />
         <input
           className="soft-input"
@@ -52,6 +55,8 @@ export default function Register() {
           placeholder="Senha"
           value={form.password}
           onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+          minLength={8}
+          required
         />
         {error && <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">{error}</p>}
         <Button type="submit" className="w-full" disabled={loading}>
@@ -68,4 +73,3 @@ export default function Register() {
     </AuthLayout>
   );
 }
-

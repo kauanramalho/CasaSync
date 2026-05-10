@@ -17,7 +17,7 @@ router = APIRouter(prefix="/planner", tags=["planner"])
 
 
 @router.post("/suggest", response_model=PlannerResponse)
-def suggest(payload: PlannerRequest):
+def suggest(payload: PlannerRequest, _current_user: User = Depends(get_current_user)):
     suggestions = generate_mock_plan(payload.prompt)
     return PlannerResponse(
         message="Plano inicial gerado pelo modo IA simulado. A estrutura já está pronta para trocar por um provedor real.",
@@ -34,4 +34,3 @@ def create_tasks(
 ):
     tasks = create_tasks_from_suggestions(db, family_id, current_user.id, payload.assignee_id, payload.suggestions)
     return PlannerCreateTasksResponse(created_tasks=tasks)
-

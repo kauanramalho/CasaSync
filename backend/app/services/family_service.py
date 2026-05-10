@@ -235,7 +235,7 @@ def regenerate_invite_code(db: Session, family_id: str, user_id: str) -> Family:
 
 
 def update_member_role(db: Session, family_id: str, user_id: str, member_id: str, role: str) -> FamilyMember:
-    actor = require_family_admin(db, family_id, user_id)
+    require_family_admin(db, family_id, user_id)
     member = (
         db.query(FamilyMember)
         .options(selectinload(FamilyMember.user))
@@ -244,8 +244,8 @@ def update_member_role(db: Session, family_id: str, user_id: str, member_id: str
     )
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membro nao encontrado.")
-    if member.role == FamilyRole.OWNER.value and actor.id != member.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="O criador da familia nao pode ser rebaixado por outro admin.")
+    if member.role == FamilyRole.OWNER.value:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="O criador da familia nao pode ser rebaixado.")
 
     member.role = FamilyRole.ADMIN.value if role == "admin" else FamilyRole.MEMBER.value
     db.add(member)

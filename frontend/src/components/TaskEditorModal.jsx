@@ -22,6 +22,15 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
     setLocalError("");
   }, [task]);
 
+  useEffect(() => {
+    if (!task) return undefined;
+    function handleKeyDown(event) {
+      if (event.key === "Escape" && !saving) onClose?.();
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, saving, task]);
+
   const selectedMembers = useMemo(() => {
     const selected = new Set(form.assignee_ids);
     return members.filter((member) => selected.has(member.user_id));
@@ -81,8 +90,13 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/25 px-4 py-8 backdrop-blur-sm">
-      <div className="max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-soft animate-in">
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-slate-900/25 px-4 py-8 backdrop-blur-sm"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !saving) onClose?.();
+      }}
+    >
+      <div className="max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-soft animate-in" onMouseDown={(event) => event.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
           <div>
             <p className="section-title">Editar tarefa</p>
