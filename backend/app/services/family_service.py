@@ -1,7 +1,9 @@
 import secrets
 import string
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.enums import FamilyRole
@@ -9,6 +11,9 @@ from app.models.family import Family, FamilyJoinRequest, FamilyMember
 from app.models.task import Task, TaskAssignee
 from app.schemas.family import FamilyCreate, FamilyUpdate
 from app.services.category_service import ensure_default_categories
+
+
+JOIN_REQUEST_TTL_DAYS = 7
 
 
 def _generate_invite_code(length: int = 8) -> str:
@@ -21,7 +26,44 @@ def _unique_invite_code(db: Session) -> str:
         code = _generate_invite_code()
         if not db.query(Family).filter(Family.invite_code == code).first():
             return code
-    raise RuntimeError("Não foi possível gerar um código de convite único.")
+    raise RuntimeError("Nao foi possivel gerar um codigo de convite unico.")
+
+
+def _join_request_expiration() -> datetime:
+    return datetime.now(timezone.utc) + timedelta(days=JOIN_REQUEST_TTL_DAYS)
+
+
+def _as_aware_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _refresh_expired_join_requests(
+    db: Session,
+    *,
+    family_id: str | None = None,
+    requester_id: str | None = None,
+) -> None:
+    now = datetime.now(timezone.utc)
+    query = db.query(FamilyJoinRequest).filter(FamilyJoinRequest.status == "pending")
+    if family_id:
+        query = query.filter(FamilyJoinRequest.family_id == family_id)
+    if requester_id:
+        query = query.filter(FamilyJoinRequest.requester_id == requester_id)
+
+    changed = False
+    for join_request in query.all():
+        if join_request.expires_at is None:
+            join_request.expires_at = _join_request_expiration()
+            changed = True
+            continue
+        if _as_aware_utc(join_request.expires_at) <= now:
+            join_request.status = "expired"
+            changed = True
+
+    if changed:
+        db.commit()
 
 
 def create_family(db: Session, payload: FamilyCreate, creator_id: str) -> Family:
@@ -48,28 +90,18 @@ def create_family(db: Session, payload: FamilyCreate, creator_id: str) -> Family
 
 
 def join_family(db: Session, invite_code: str, user_id: str) -> Family:
-    family = db.query(Family).filter(Family.invite_code == invite_code.strip().upper()).first()
-    if not family:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Código de convite inválido.")
-
-    existing_member = (
-        db.query(FamilyMember)
-        .filter(FamilyMember.family_id == family.id, FamilyMember.user_id == user_id)
-        .first()
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Entrada direta por codigo foi desativada. Envie uma solicitacao para aprovacao de um administrador.",
     )
-    if existing_member:
-        return family
-
-    db.add(FamilyMember(family_id=family.id, user_id=user_id, role=FamilyRole.MEMBER.value))
-    db.commit()
-    db.refresh(family)
-    return family
 
 
 def request_join_family(db: Session, invite_code: str, user_id: str) -> FamilyJoinRequest:
     family = db.query(Family).filter(Family.invite_code == invite_code.strip().upper()).first()
     if not family:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Codigo de convite invalido.")
+
+    _refresh_expired_join_requests(db, family_id=family.id, requester_id=user_id)
 
     existing_member = (
         db.query(FamilyMember)
@@ -91,9 +123,21 @@ def request_join_family(db: Session, invite_code: str, user_id: str) -> FamilyJo
     if pending_request:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Voce ja tem uma solicitacao pendente para esta familia.")
 
-    join_request = FamilyJoinRequest(family_id=family.id, requester_id=user_id, status="pending")
+    join_request = FamilyJoinRequest(
+        family_id=family.id,
+        requester_id=user_id,
+        status="pending",
+        expires_at=_join_request_expiration(),
+    )
     db.add(join_request)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Nao foi possivel criar a solicitacao. Tente novamente em instantes.",
+        ) from exc
     db.refresh(join_request)
     return (
         db.query(FamilyJoinRequest)
@@ -139,7 +183,7 @@ def require_family_member(db: Session, family_id: str, user_id: str) -> FamilyMe
     if not member:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Você não faz parte desta família.",
+            detail="Voce nao faz parte desta familia.",
         )
     return member
 
@@ -166,6 +210,7 @@ def list_members(db: Session, family_id: str) -> list[FamilyMember]:
 
 def list_pending_join_requests(db: Session, family_id: str, user_id: str) -> list[FamilyJoinRequest]:
     require_family_admin(db, family_id, user_id)
+    _refresh_expired_join_requests(db, family_id=family_id)
     return (
         db.query(FamilyJoinRequest)
         .options(selectinload(FamilyJoinRequest.family), selectinload(FamilyJoinRequest.requester))
@@ -177,16 +222,24 @@ def list_pending_join_requests(db: Session, family_id: str, user_id: str) -> lis
 
 def decide_join_request(db: Session, family_id: str, user_id: str, request_id: str, approve: bool) -> FamilyJoinRequest:
     require_family_admin(db, family_id, user_id)
+    _refresh_expired_join_requests(db, family_id=family_id)
     join_request = (
         db.query(FamilyJoinRequest)
         .options(selectinload(FamilyJoinRequest.family), selectinload(FamilyJoinRequest.requester))
         .filter(FamilyJoinRequest.family_id == family_id, FamilyJoinRequest.id == request_id)
+        .with_for_update()
         .first()
     )
     if not join_request:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Solicitacao nao encontrada.")
     if join_request.status != "pending":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Esta solicitacao ja foi respondida.")
+    if join_request.expires_at and _as_aware_utc(join_request.expires_at) <= datetime.now(timezone.utc):
+        join_request.status = "expired"
+        join_request.decided_by_id = user_id
+        db.add(join_request)
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Esta solicitacao expirou.")
 
     existing_member = (
         db.query(FamilyMember)
@@ -199,7 +252,11 @@ def decide_join_request(db: Session, family_id: str, user_id: str, request_id: s
     join_request.status = "approved" if approve else "rejected"
     join_request.decided_by_id = user_id
     db.add(join_request)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Esta solicitacao ja foi processada.") from exc
     db.refresh(join_request)
     return join_request
 
@@ -235,7 +292,7 @@ def regenerate_invite_code(db: Session, family_id: str, user_id: str) -> Family:
 
 
 def update_member_role(db: Session, family_id: str, user_id: str, member_id: str, role: str) -> FamilyMember:
-    require_family_admin(db, family_id, user_id)
+    actor = require_family_admin(db, family_id, user_id)
     member = (
         db.query(FamilyMember)
         .options(selectinload(FamilyMember.user))
@@ -246,6 +303,21 @@ def update_member_role(db: Session, family_id: str, user_id: str, member_id: str
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membro nao encontrado.")
     if member.role == FamilyRole.OWNER.value:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="O criador da familia nao pode ser rebaixado.")
+    if actor.id == member.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Voce nao pode alterar a propria permissao.")
+    if actor.role != FamilyRole.OWNER.value and (member.role == FamilyRole.ADMIN.value or role == "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Somente o proprietario pode promover ou rebaixar administradores.",
+        )
+    if member.role == FamilyRole.ADMIN.value and role == "member":
+        admin_count = (
+            db.query(FamilyMember)
+            .filter(FamilyMember.family_id == family_id, FamilyMember.role.in_([FamilyRole.OWNER.value, FamilyRole.ADMIN.value]))
+            .count()
+        )
+        if admin_count <= 1:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A familia precisa manter pelo menos um administrador.")
 
     member.role = FamilyRole.ADMIN.value if role == "admin" else FamilyRole.MEMBER.value
     db.add(member)
@@ -265,6 +337,8 @@ def remove_member(db: Session, family_id: str, user_id: str, member_id: str) -> 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membro nao encontrado.")
     if member.role == FamilyRole.OWNER.value or actor.id == member.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Esta acao nao esta disponivel para este membro.")
+    if member.role == FamilyRole.ADMIN.value and actor.role != FamilyRole.OWNER.value:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Somente o proprietario pode remover administradores.")
     db.delete(member)
     db.commit()
 
@@ -301,7 +375,9 @@ def leave_family(db: Session, family_id: str, user_id: str) -> None:
 
 
 def delete_family(db: Session, family_id: str, user_id: str) -> None:
-    require_family_admin(db, family_id, user_id)
+    actor = require_family_admin(db, family_id, user_id)
+    if actor.role != FamilyRole.OWNER.value:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Somente o proprietario pode excluir a familia.")
     family = db.query(Family).filter(Family.id == family_id).first()
     if not family:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Familia nao encontrada.")

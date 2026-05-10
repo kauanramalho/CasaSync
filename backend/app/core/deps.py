@@ -22,13 +22,14 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     try:
         payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
         user_id: str | None = payload.get("sub")
+        token_version = payload.get("ver", 0)
         if not user_id:
             raise credentials_error
     except JWTError as exc:
         raise credentials_error from exc
 
     user = db.query(User).filter(User.id == user_id, User.is_active.is_(True)).first()
-    if not user:
+    if not user or user.token_version != token_version:
         raise credentials_error
     return user
 
@@ -49,4 +50,3 @@ def get_family_id(
         )
     require_family_member(db, resolved_family_id, current_user.id)
     return resolved_family_id
-

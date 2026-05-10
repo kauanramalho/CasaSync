@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 import { authApi, clearToken, getToken, setToken } from "../services/api";
+import { AUTH_SESSION_CHANGED_EVENT, emitAuthSessionChanged } from "../utils/events";
 
 const AuthContext = createContext(null);
 
@@ -34,6 +35,22 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
+  useEffect(() => {
+    function syncSession(event) {
+      if (event.type === "storage" && event.key !== "casasync_token") return;
+      if (!getToken()) {
+        setUser(null);
+      }
+    }
+
+    window.addEventListener("storage", syncSession);
+    window.addEventListener(AUTH_SESSION_CHANGED_EVENT, syncSession);
+    return () => {
+      window.removeEventListener("storage", syncSession);
+      window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, syncSession);
+    };
+  }, []);
+
   async function login(payload) {
     const response = await authApi.login(payload);
     setToken(response.access_token);
@@ -48,9 +65,23 @@ export function AuthProvider({ children }) {
     return response.user;
   }
 
-  function logout() {
+  async function logout() {
+    try {
+      if (getToken()) await authApi.logout();
+    } catch {
+      // Local session cleanup still wins if the server already rejected the token.
+    } finally {
+      clearToken();
+      setUser(null);
+      emitAuthSessionChanged();
+    }
+  }
+
+  async function deleteAccount() {
+    await authApi.deleteMe();
     clearToken();
     setUser(null);
+    emitAuthSessionChanged();
   }
 
   function updateUser(nextUser) {
@@ -63,7 +94,10 @@ export function AuthProvider({ children }) {
     return me;
   }
 
-  const value = useMemo(() => ({ user, loading, login, register, logout, updateUser, refreshUser }), [user, loading]);
+  const value = useMemo(
+    () => ({ user, loading, login, register, logout, deleteAccount, updateUser, refreshUser }),
+    [user, loading]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

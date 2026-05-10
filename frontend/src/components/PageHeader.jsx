@@ -71,8 +71,8 @@ export default function PageHeader({ title, subtitle, action, user }) {
     };
   }, []);
 
-  function handleLogout() {
-    logout();
+  async function handleLogout() {
+    await logout();
     navigate("/login");
   }
 

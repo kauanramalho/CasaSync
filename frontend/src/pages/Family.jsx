@@ -42,6 +42,7 @@ function isAdminRole(role) {
 }
 
 function roleLabel(role) {
+  if (role === "owner") return "Proprietario";
   return isAdminRole(role) ? "Administrador" : "Membro";
 }
 
@@ -97,6 +98,7 @@ export default function Family() {
   const currentFamily = families[0];
   const currentMember = members.find((member) => member.user_id === user?.id);
   const canAdmin = isAdminRole(currentMember?.role);
+  const canOwner = currentMember?.role === "owner";
 
   useEffect(() => {
     setFamilyForm({
@@ -435,7 +437,7 @@ export default function Family() {
                   <ImagePlus className="h-5 w-5" />
                   Salvar configuracoes
                 </Button>
-                {canAdmin && (
+                {canOwner && (
                   <Button type="button" variant="danger" className="w-full" onClick={deleteFamily}>
                     <Trash2 className="h-5 w-5" />
                     Excluir familia
@@ -506,16 +508,20 @@ export default function Family() {
                       <p className="mt-1 text-xs text-muted">#{index + 1} ranking</p>
                     </div>
                   </div>
-                  {canAdmin && member.role !== "owner" && member.user_id !== user?.id && (
+                  {canAdmin && member.role !== "owner" && member.user_id !== user?.id && (canOwner || member.role === "member") && (
                     <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]">
-                      <SelectMenu
-                        value={member.role === "admin" ? "admin" : "member"}
-                        onChange={(role) => updateMemberRole(member, role)}
-                        options={[
-                          { value: "admin", label: "Admin", helper: "Pode gerenciar" },
-                          { value: "member", label: "Membro", helper: "Uso normal" }
-                        ]}
-                      />
+                      {canOwner ? (
+                        <SelectMenu
+                          value={member.role === "admin" ? "admin" : "member"}
+                          onChange={(role) => updateMemberRole(member, role)}
+                          options={[
+                            { value: "admin", label: "Admin", helper: "Pode gerenciar" },
+                            { value: "member", label: "Membro", helper: "Uso normal" }
+                          ]}
+                        />
+                      ) : (
+                        <span className="rounded-2xl bg-slate-50 px-3 py-2 text-xs font-bold text-muted">Membro comum</span>
+                      )}
                       <button type="button" onClick={() => removeMember(member)} className="inline-flex items-center justify-center rounded-2xl bg-rose-50 px-3 text-rose-600 hover:bg-rose-100">
                         <Trash2 className="h-4 w-4" />
                       </button>

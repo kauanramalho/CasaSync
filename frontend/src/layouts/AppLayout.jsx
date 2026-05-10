@@ -67,8 +67,8 @@ export default function AppLayout() {
     };
   }, []);
 
-  function handleLogout() {
-    logout();
+  async function handleLogout() {
+    await logout();
     navigate("/login");
   }
 

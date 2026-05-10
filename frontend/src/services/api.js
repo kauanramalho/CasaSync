@@ -1,5 +1,6 @@
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
 const TOKEN_KEY = "casasync_token";
+const AUTH_SESSION_CHANGED_EVENT = "casasync:auth-session-changed";
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
@@ -33,6 +34,10 @@ async function request(path, { method = "GET", body, auth = true } = {}) {
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
+    if (auth && response.status === 401) {
+      clearToken();
+      window.dispatchEvent(new Event(AUTH_SESSION_CHANGED_EVENT));
+    }
     const detail = Array.isArray(data?.detail)
       ? data.detail.map((item) => item.msg).join(", ")
       : data?.detail;
@@ -47,7 +52,9 @@ export const authApi = {
   login: (payload) => request("/auth/login", { method: "POST", body: payload, auth: false }),
   me: () => request("/auth/me"),
   updateMe: (payload) => request("/auth/me", { method: "PATCH", body: payload }),
-  changePassword: (payload) => request("/auth/me/password", { method: "POST", body: payload })
+  changePassword: (payload) => request("/auth/me/password", { method: "POST", body: payload }),
+  logout: () => request("/auth/logout", { method: "POST" }),
+  deleteMe: () => request("/auth/me", { method: "DELETE" })
 };
 
 export const familiesApi = {

@@ -49,6 +49,7 @@ class FamilyJoinRequestRead(ORMModel):
     family_id: str
     requester_id: str
     status: str
+    expires_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     family: FamilyRead

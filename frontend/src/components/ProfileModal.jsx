@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { AtSign, Camera, ImagePlus, LockKeyhole, Mail, Save, Trash2, UserRound, X } from "lucide-react";
 
 import Button from "./Button";
-import { authApi } from "../services/api";
+import { authApi, clearToken } from "../services/api";
+import { emitAuthSessionChanged } from "../utils/events";
 import { normalizeApiError } from "../utils/formatters";
 
 function readFileAsDataUrl(file) {
@@ -110,6 +111,9 @@ export default function ProfileModal({ user, onClose, onSaved }) {
           current_password: passwordForm.current_password,
           new_password: passwordForm.new_password
         });
+        clearToken();
+        emitAuthSessionChanged();
+        return;
       }
 
       onSaved?.(updated);

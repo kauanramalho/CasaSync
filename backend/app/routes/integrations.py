@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_family_id
+from app.core.deps import get_current_user, get_family_id
 from app.database.session import get_db
+from app.models.user import User
 from app.schemas.integration import GoogleCalendarConnectUrl, GoogleCalendarStatus
 from app.services.calendar_service import build_google_connect_url, get_google_calendar_status
 
@@ -23,7 +24,9 @@ def google_calendar_status(family_id: str = Depends(get_family_id), db: Session 
 
 
 @router.get("/google-calendar/connect-url", response_model=GoogleCalendarConnectUrl)
-def google_calendar_connect_url():
+def google_calendar_connect_url(
+    _current_user: User = Depends(get_current_user),
+    _family_id: str = Depends(get_family_id),
+):
     url, message = build_google_connect_url()
     return GoogleCalendarConnectUrl(url=url, message=message)
-

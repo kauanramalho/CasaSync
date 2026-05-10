@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   BadgeCheck,
   CalendarDays,
@@ -33,14 +34,20 @@ const tabs = [
   { key: "security", label: "Seguranca", icon: LockKeyhole }
 ];
 
+function isAdminRole(role) {
+  return role === "owner" || role === "admin";
+}
+
 export default function Settings() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, deleteAccount } = useAuth();
+  const navigate = useNavigate();
   const { preferences, updatePreference, updatePreferences } = useAppPreferences();
   const { paletteId, palettes, selectPalette } = useTheme();
   const [activeTab, setActiveTab] = useState("general");
   const [calendarStatus, setCalendarStatus] = useState(null);
   const [calendarMessage, setCalendarMessage] = useState("");
   const [family, setFamily] = useState(null);
+  const [currentMember, setCurrentMember] = useState(null);
   const [familyForm, setFamilyForm] = useState({ name: "" });
   const [profileOpen, setProfileOpen] = useState(false);
   const [error, setError] = useState("");
@@ -51,13 +58,20 @@ export default function Settings() {
     let alive = true;
 
     async function loadSettings() {
-      const [calendarResult, familyResult] = await Promise.allSettled([integrationsApi.googleCalendarStatus(), familiesApi.current()]);
+      const [calendarResult, familyResult, membersResult] = await Promise.allSettled([
+        integrationsApi.googleCalendarStatus(),
+        familiesApi.current(),
+        familiesApi.members()
+      ]);
       if (!alive) return;
 
       if (calendarResult.status === "fulfilled") setCalendarStatus(calendarResult.value);
       if (familyResult.status === "fulfilled") {
         setFamily(familyResult.value);
         setFamilyForm({ name: familyResult.value?.name || "" });
+      }
+      if (membersResult.status === "fulfilled") {
+        setCurrentMember(membersResult.value.find((member) => member.user_id === user?.id) || null);
       }
       if (calendarResult.status === "rejected") setError(normalizeApiError(calendarResult.reason));
     }
@@ -66,7 +80,9 @@ export default function Settings() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [user?.id]);
+
+  const canAdminFamily = isAdminRole(currentMember?.role);
 
   async function connectCalendar() {
     try {
@@ -86,6 +102,9 @@ export default function Settings() {
       if (!family) {
         throw new Error("Crie ou entre em uma familia antes de salvar as configuracoes.");
       }
+      if (!canAdminFamily) {
+        throw new Error("Somente administradores podem alterar as configuracoes da familia.");
+      }
       if (nextName.length < 2) {
         throw new Error("Informe um nome de familia com pelo menos 2 caracteres.");
       }
@@ -103,6 +122,18 @@ export default function Settings() {
       setError(normalizeApiError(err));
     } finally {
       setSavingFamily(false);
+    }
+  }
+
+  async function handleDeleteAccount() {
+    if (!window.confirm("Excluir sua conta? Esta acao desativa seu acesso e remove voce das familias em que participa.")) return;
+    setError("");
+    setMessage("");
+    try {
+      await deleteAccount();
+      navigate("/login", { replace: true });
+    } catch (err) {
+      setError(normalizeApiError(err));
     }
   }
 
@@ -165,7 +196,7 @@ export default function Settings() {
             <div className="mt-6 space-y-5">
               <label className="block">
                 <span className="mb-2 block text-sm font-semibold text-muted">Nome da familia</span>
-                <input className="soft-input" value={familyForm.name} onChange={(event) => setFamilyForm({ name: event.target.value })} placeholder="Nome da familia" />
+                <input className="soft-input" value={familyForm.name} onChange={(event) => setFamilyForm({ name: event.target.value })} placeholder="Nome da familia" disabled={!canAdminFamily} />
               </label>
               <label className="block">
                 <span className="mb-2 block text-sm font-semibold text-muted">Codigo de convite</span>
@@ -175,7 +206,7 @@ export default function Settings() {
                 <span className="mb-2 block text-sm font-semibold text-muted">Fuso horario</span>
                 <SelectMenu value={preferences.timezone} onChange={(value) => updatePreference("timezone", value)} options={timezoneOptions} />
               </label>
-              <Button className="mx-auto flex w-full md:w-64" onClick={saveFamilySettings} disabled={savingFamily || !family || familyForm.name.trim().length < 2}>
+              <Button className="mx-auto flex w-full md:w-64" onClick={saveFamilySettings} disabled={savingFamily || !family || !canAdminFamily || familyForm.name.trim().length < 2}>
                 {savingFamily ? "Salvando..." : "Salvar alteracoes"}
               </Button>
             </div>
@@ -354,6 +385,9 @@ export default function Settings() {
               <div className="rounded-2xl bg-rose-50 px-4 py-4">
                 <p className="font-semibold text-rose-600">Excluir conta</p>
                 <p className="mt-1 text-sm text-muted">Acao permanente e irreversivel.</p>
+                <Button type="button" variant="danger" className="mt-4" onClick={handleDeleteAccount}>
+                  Excluir conta
+                </Button>
               </div>
             </div>
           </Card>

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import relationship
 
 from app.database.base import Base
@@ -38,11 +38,22 @@ class FamilyMember(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
 class FamilyJoinRequest(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "family_join_requests"
+    __table_args__ = (
+        Index(
+            "ix_family_join_requests_pending_unique",
+            "family_id",
+            "requester_id",
+            unique=True,
+            sqlite_where=text("status = 'pending'"),
+            postgresql_where=text("status = 'pending'"),
+        ),
+    )
 
     family_id = Column(String(36), ForeignKey("families.id", ondelete="CASCADE"), nullable=False)
     requester_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     status = Column(String(24), default="pending", nullable=False)
     decided_by_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
 
     family = relationship("Family")
     requester = relationship("User", foreign_keys=[requester_id])

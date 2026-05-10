@@ -33,12 +33,23 @@ def _upgrade_existing_tables() -> None:
         existing_tables = set(inspect(connection).get_table_names())
         if "users" in existing_tables:
             _add_column_if_missing(connection, "users", "username", "username VARCHAR(80)")
+            _add_column_if_missing(connection, "users", "token_version", "token_version INTEGER DEFAULT 0 NOT NULL")
+            connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username_unique ON users (username) WHERE username IS NOT NULL"))
             if engine.dialect.name == "postgresql":
                 connection.execute(text("ALTER TABLE users ALTER COLUMN avatar_url TYPE TEXT"))
 
         if "families" in existing_tables:
             _add_column_if_missing(connection, "families", "description", "description TEXT")
             _add_column_if_missing(connection, "families", "image_url", "image_url TEXT")
+
+        if "family_join_requests" in existing_tables:
+            _add_column_if_missing(connection, "family_join_requests", "expires_at", f"expires_at {_timestamp_with_timezone_type()}")
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS ix_family_join_requests_pending_unique "
+                    "ON family_join_requests (family_id, requester_id) WHERE status = 'pending'"
+                )
+            )
 
         if "couple_goals" in existing_tables:
             _add_column_if_missing(connection, "couple_goals", "progress", "progress INTEGER DEFAULT 0 NOT NULL")
