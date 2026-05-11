@@ -31,8 +31,8 @@ Data: 2026-05-10
 - `JWT_SECRET_KEY`: obrigatoria e forte em producao.
 - `TWO_FACTOR_HMAC_SECRET`: recomendado em producao, separado do JWT.
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_USE_TLS`, `EMAIL_FROM`: necessarias para envio real.
-- `EMAIL_DEV_MODE=true`: apenas desenvolvimento; imprime o codigo no terminal quando SMTP nao esta configurado.
-- `EMAIL_DEV_MODE=false` em producao para impedir fallback local.
+- `EMAIL_DEV_MODE=true`: apenas teste controlado; registra o codigo 2FA nos logs e permite validar Render temporariamente sem SMTP.
+- `EMAIL_DEV_MODE=false` em producao para exigir SMTP real e impedir fallback local.
 - `ENVIRONMENT=production` para habilitar HSTS/CSP e evitar comportamento de desenvolvimento.
 
 ## Riscos remanescentes antes do beta

@@ -1,9 +1,13 @@
+import logging
 import smtplib
 from email.message import EmailMessage
 
 from fastapi import HTTPException, status
 
 from app.core.config import get_settings
+
+
+logger = logging.getLogger(__name__)
 
 
 def _purpose_label(purpose: str) -> str:
@@ -19,7 +23,18 @@ def send_two_factor_email(recipient: str, code: str, purpose: str, expires_minut
         f"Ele expira em {expires_minutes} minutos. Se voce nao pediu este codigo, ignore este e-mail."
     )
 
-    if settings.smtp_host:
+    if settings.email_dev_mode:
+        logger.warning(
+            "[CasaSync DEV EMAIL] EMAIL_DEV_MODE=true; codigo 2FA para %s (%s): %s "
+            "(expira em %s minutos)",
+            recipient,
+            _purpose_label(purpose),
+            code,
+            expires_minutes,
+        )
+        return
+
+    if settings.smtp_configured:
         message = EmailMessage()
         message["Subject"] = subject
         message["From"] = settings.email_from
@@ -34,14 +49,10 @@ def send_two_factor_email(recipient: str, code: str, purpose: str, expires_minut
             smtp.send_message(message)
         return
 
-    if settings.environment == "development" and settings.email_dev_mode:
-        print(
-            f"[CasaSync DEV EMAIL] {subject} para {recipient}: {code} "
-            f"(expira em {expires_minutes} minutos)"
-        )
-        return
-
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail="Envio de e-mail 2FA nao configurado.",
+        detail=(
+            "Envio de e-mail 2FA nao configurado. Configure SMTP_HOST ou ative "
+            "EMAIL_DEV_MODE=true apenas para teste controlado."
+        ),
     )

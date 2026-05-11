@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_use_tls: bool = True
     email_from: str = "CasaSync <no-reply@casasync.app>"
-    email_dev_mode: bool = True
+    email_dev_mode: bool = False
 
     cors_origins: list[str] = Field(default_factory=default_cors_origins)
     cors_origin_regex: str | None = r"^https://casa-sync(?:-[a-z0-9-]+)*\.vercel\.app$"
@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     @property
     def allowed_cors_origins(self) -> list[str]:
         return sorted(set(default_cors_origins()) | set(self.cors_origins))
+
+    @property
+    def smtp_configured(self) -> bool:
+        return bool(self.smtp_host)
 
 
 @lru_cache
