@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.rate_limit import check_rate_limit, client_identifier
 from app.core.deps import get_current_user
 from app.core.security import create_access_token, create_pending_two_factor_token
@@ -13,6 +14,7 @@ from app.services.auth_service import (
     change_user_password,
     delete_user_account,
     logout_user,
+    mark_email_verified,
     register_user,
     update_user_profile,
 )
@@ -28,6 +30,15 @@ from app.services.two_factor_service import (
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _email_two_factor_enabled() -> bool:
+    return get_settings().should_require_email_two_factor
+
+
+def _auth_response(user: User, db: Session) -> AuthResponse:
+    user = record_login_without_two_factor(db, user)
+    return AuthResponse(access_token=create_access_token(user.id, token_version=user.token_version), user=user)
 
 
 def _two_factor_response(user: User, purpose: str, db: Session) -> TwoFactorRequiredResponse:
@@ -48,7 +59,15 @@ def _two_factor_response(user: User, purpose: str, db: Session) -> TwoFactorRequ
 @router.post("/register", response_model=AuthResponse | TwoFactorRequiredResponse, status_code=201)
 def register(payload: UserCreate, request: Request, db: Session = Depends(get_db)):
     check_rate_limit(f"auth:register:{client_identifier(request)}", limit=8, window_seconds=3600)
-    user = register_user(db, payload)
+    requires_email_code = _email_two_factor_enabled()
+    user = register_user(
+        db,
+        payload,
+        email_verified=not requires_email_code,
+        two_factor_enabled=requires_email_code,
+    )
+    if not requires_email_code:
+        return _auth_response(user, db)
     return _two_factor_response(user, "signup", db)
 
 
@@ -59,11 +78,11 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
     check_rate_limit(f"auth:login:ip:{client_id}", limit=30, window_seconds=300)
     check_rate_limit(f"auth:login:account:{client_id}:{normalized_email}", limit=10, window_seconds=300)
     user = authenticate_user(db, payload.email, payload.password)
-    purpose = login_two_factor_purpose(user)
-    if purpose == "signup" or should_require_login_two_factor(user):
-        return _two_factor_response(user, purpose, db)
-    user = record_login_without_two_factor(db, user)
-    return AuthResponse(access_token=create_access_token(user.id, token_version=user.token_version), user=user)
+    if _email_two_factor_enabled():
+        purpose = login_two_factor_purpose(user)
+        if purpose == "signup" or should_require_login_two_factor(user):
+            return _two_factor_response(user, purpose, db)
+    return _auth_response(user, db)
 
 
 @router.post("/2fa/verify", response_model=AuthResponse)
@@ -92,7 +111,9 @@ def update_me(payload: UserUpdate, current_user: User = Depends(get_current_user
     email_changed = bool(next_email and next_email != current_user.email)
     user = update_user_profile(db, current_user, payload)
     if email_changed:
-        return _two_factor_response(user, "signup", db)
+        if _email_two_factor_enabled():
+            return _two_factor_response(user, "signup", db)
+        return mark_email_verified(db, user, two_factor_enabled=False)
     return user
 
 
