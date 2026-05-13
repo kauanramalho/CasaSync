@@ -1,4 +1,5 @@
 import secrets
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
@@ -18,7 +19,13 @@ def get_user_by_username(db: Session, username: str) -> User | None:
     return db.query(User).filter(User.username == username.strip().lower()).first()
 
 
-def register_user(db: Session, payload: UserCreate) -> User:
+def register_user(
+    db: Session,
+    payload: UserCreate,
+    *,
+    email_verified: bool = False,
+    two_factor_enabled: bool = True,
+) -> User:
     existing_user = get_user_by_email(db, payload.email)
     if existing_user:
         raise HTTPException(
@@ -30,8 +37,9 @@ def register_user(db: Session, payload: UserCreate) -> User:
         name=payload.name.strip(),
         email=payload.email.strip().lower(),
         hashed_password=hash_password(payload.password),
-        email_verified=False,
-        two_factor_enabled=True,
+        email_verified=email_verified,
+        email_verified_at=datetime.now(timezone.utc) if email_verified else None,
+        two_factor_enabled=two_factor_enabled,
     )
     db.add(user)
     try:
@@ -42,6 +50,18 @@ def register_user(db: Session, payload: UserCreate) -> User:
             status_code=status.HTTP_409_CONFLICT,
             detail="Ja existe uma conta com este e-mail.",
         ) from exc
+    db.refresh(user)
+    return user
+
+
+def mark_email_verified(db: Session, user: User, *, two_factor_enabled: bool | None = None) -> User:
+    user.email_verified = True
+    if not user.email_verified_at:
+        user.email_verified_at = datetime.now(timezone.utc)
+    if two_factor_enabled is not None:
+        user.two_factor_enabled = two_factor_enabled
+    db.add(user)
+    db.commit()
     db.refresh(user)
     return user
 
