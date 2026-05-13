@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     two_factor_login_interval_days: int = 30
     two_factor_code_length: int = 6
     two_factor_hmac_secret: str | None = None
+    two_factor_email_enabled: bool | None = None
 
     smtp_host: str | None = None
     smtp_port: int = 587
@@ -57,6 +58,16 @@ class Settings(BaseSettings):
     @property
     def allowed_cors_origins(self) -> list[str]:
         return sorted(set(default_cors_origins()) | set(self.cors_origins))
+
+    @property
+    def can_send_two_factor_email(self) -> bool:
+        return bool(self.smtp_host) or (self.environment == "development" and self.email_dev_mode)
+
+    @property
+    def should_require_email_two_factor(self) -> bool:
+        if self.two_factor_email_enabled is not None:
+            return self.two_factor_email_enabled
+        return self.can_send_two_factor_email
 
 
 @lru_cache
