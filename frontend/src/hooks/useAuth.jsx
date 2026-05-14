@@ -23,10 +23,10 @@ export function AuthProvider({ children }) {
     setTwoFactor(response);
   }
 
-  function beginTwoFactor(response) {
+  function beginTwoFactor(response, options = {}) {
     clearToken();
     setUser(null);
-    storePendingTwoFactor(response);
+    storePendingTwoFactor({ ...response, remember_session: options.rememberSession ?? true });
   }
 
   function clearPendingChallenge() {
@@ -34,9 +34,9 @@ export function AuthProvider({ children }) {
     setTwoFactor(null);
   }
 
-  function completeAuth(response) {
+  function completeAuth(response, options = {}) {
     clearPendingChallenge();
-    setToken(response.access_token);
+    setToken(response.access_token, { remember: options.rememberSession ?? true });
     setUser(response.user);
     emitAuthSessionChanged();
     return response.user;
@@ -86,13 +86,13 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  async function login(payload) {
+  async function login(payload, options = {}) {
     const response = await authApi.login(payload);
     if (response.requires_two_factor) {
-      beginTwoFactor(response);
+      beginTwoFactor(response, options);
       return response;
     }
-    return completeAuth(response);
+    return completeAuth(response, options);
   }
 
   async function register(payload) {
@@ -110,7 +110,7 @@ export function AuthProvider({ children }) {
       throw new Error("Sessao de verificacao expirada. Entre novamente.");
     }
     const response = await authApi.verifyTwoFactor({ pending_token: pending.pending_token, code });
-    return completeAuth(response);
+    return completeAuth(response, { rememberSession: pending.remember_session ?? true });
   }
 
   async function resendTwoFactor() {
@@ -119,7 +119,7 @@ export function AuthProvider({ children }) {
       throw new Error("Sessao de verificacao expirada. Entre novamente.");
     }
     const response = await authApi.resendTwoFactor({ pending_token: pending.pending_token });
-    storePendingTwoFactor(response);
+    storePendingTwoFactor({ ...response, remember_session: pending.remember_session ?? true });
     return response;
   }
 

@@ -84,6 +84,42 @@ npm run dev
 
 Para rodar localmente, ajuste `DATABASE_URL` em um `.env` apontando para seu PostgreSQL.
 
+## Deploy em Produção
+
+Backend (Render, Docker ou serviço equivalente):
+
+- Root/build directory: `backend`
+- Build command: `pip install -r requirements.txt`
+- Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- Docker: o `backend/Dockerfile` já usa `${PORT:-8000}` e bind em `0.0.0.0`.
+
+Variáveis obrigatórias/recomendadas no backend:
+
+- `ENVIRONMENT=production`
+- `DATABASE_URL=postgresql+psycopg2://...`
+- `JWT_SECRET_KEY=<segredo forte>`
+- `FRONTEND_URL=https://seu-frontend.vercel.app`
+- `CORS_ORIGINS=["https://seu-frontend.vercel.app"]` para origens extras, se necessário
+- `CORS_ORIGIN_REGEX=^https://casa-sync(?:-[a-z0-9-]+)*\.vercel\.app$` se usar previews da Vercel do projeto
+- `TWO_FACTOR_HMAC_SECRET=<segredo forte separado do JWT>` recomendado
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_USE_TLS`, `EMAIL_FROM` para envio real de 2FA
+- `EMAIL_DEV_MODE=false` em produção, exceto em teste controlado e temporário
+
+Frontend (Vercel/Netlify):
+
+- Root/build directory: `frontend`
+- Build command: `npm install && npm run build`
+- Publish directory: `dist`
+- Configure `VITE_API_URL=https://seu-backend-publico/api`. O cliente também aceita a URL sem `/api` e normaliza automaticamente.
+- `NEXT_PUBLIC_API_URL` também é aceito como alias público. Não use `API_URL` genérico no frontend Vite.
+
+Checklist rápido de autenticação em produção:
+
+1. No DevTools > Network, o cadastro deve chamar `https://seu-backend-publico/api/auth/register`.
+2. A requisição `OPTIONS` de preflight deve retornar 200/204 com `access-control-allow-origin` igual à URL do frontend.
+3. A requisição `POST` deve retornar JSON. Se SMTP/2FA estiver ausente, o frontend deve exibir a mensagem real do backend, não `Failed to fetch`.
+4. O build de produção do frontend não deve usar `localhost` em `VITE_API_URL`.
+
 ## Estrutura
 
 ```text

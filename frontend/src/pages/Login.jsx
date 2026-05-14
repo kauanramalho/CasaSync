@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { LogIn } from "lucide-react";
 
 import Button from "../components/Button";
+import PasswordInput from "../components/PasswordInput";
 import AuthLayout from "../layouts/AuthLayout";
 import { useAuth } from "../hooks/useAuth";
 import { normalizeApiError } from "../utils/formatters";
@@ -11,6 +12,7 @@ export default function Login() {
   const navigate = useNavigate();
   const { login, user } = useAuth();
   const [form, setForm] = useState({ email: "", password: "" });
+  const [rememberSession, setRememberSession] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -21,7 +23,7 @@ export default function Login() {
     setLoading(true);
     setError("");
     try {
-      const response = await login(form);
+      const response = await login(form, { rememberSession });
       if (response?.requires_two_factor) {
         navigate("/verificacao", { replace: true });
         return;
@@ -45,15 +47,23 @@ export default function Login() {
           onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
           required
         />
-        <input
-          className="soft-input"
-          type="password"
+        <PasswordInput
           placeholder="Senha"
           value={form.password}
           onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+          autoComplete="current-password"
           minLength={8}
           required
         />
+        <label className="flex cursor-pointer items-center gap-3 rounded-2xl bg-white/70 px-4 py-3 text-sm font-semibold text-muted transition hover:bg-white">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-slate-300 accent-blush"
+            checked={rememberSession}
+            onChange={(event) => setRememberSession(event.target.checked)}
+          />
+          Manter conta aberta
+        </label>
         {error && <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">{error}</p>}
         <Button type="submit" className="w-full" disabled={loading}>
           <LogIn className="h-5 w-5" />

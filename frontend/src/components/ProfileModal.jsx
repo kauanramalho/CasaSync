@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { AtSign, Camera, ImagePlus, LockKeyhole, Mail, Save, Trash2, UserRound, X } from "lucide-react";
 
 import Button from "./Button";
+import PasswordInput from "./PasswordInput";
 import { useAuth } from "../hooks/useAuth";
 import { authApi, clearToken } from "../services/api";
 import { emitAuthSessionChanged } from "../utils/events";
@@ -244,9 +245,9 @@ export default function ProfileModal({ user, onClose, onSaved }) {
                   <p className="font-bold text-ink">Alterar senha</p>
                 </div>
                 <div className="grid gap-4 md:grid-cols-3">
-                  <input className="soft-input" type="password" placeholder="Senha atual" value={passwordForm.current_password} onChange={(event) => setPasswordForm((current) => ({ ...current, current_password: event.target.value }))} />
-                  <input className="soft-input" type="password" placeholder="Nova senha" value={passwordForm.new_password} onChange={(event) => setPasswordForm((current) => ({ ...current, new_password: event.target.value }))} />
-                  <input className="soft-input" type="password" placeholder="Confirmar nova senha" value={passwordForm.confirm_password} onChange={(event) => setPasswordForm((current) => ({ ...current, confirm_password: event.target.value }))} />
+                  <PasswordInput placeholder="Senha atual" value={passwordForm.current_password} onChange={(event) => setPasswordForm((current) => ({ ...current, current_password: event.target.value }))} autoComplete="current-password" />
+                  <PasswordInput placeholder="Nova senha" value={passwordForm.new_password} onChange={(event) => setPasswordForm((current) => ({ ...current, new_password: event.target.value }))} autoComplete="new-password" />
+                  <PasswordInput placeholder="Confirmar nova senha" value={passwordForm.confirm_password} onChange={(event) => setPasswordForm((current) => ({ ...current, confirm_password: event.target.value }))} autoComplete="new-password" />
                 </div>
               </div>
 

@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, Request
+import hashlib
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.rate_limit import check_rate_limit, client_identifier
@@ -28,6 +31,14 @@ from app.services.two_factor_service import (
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
+
+
+def _email_fingerprint(email: str | None) -> str:
+    normalized_email = (email or "").strip().lower()
+    if not normalized_email:
+        return "missing"
+    return hashlib.sha256(normalized_email.encode("utf-8")).hexdigest()[:12]
 
 
 def _two_factor_response(user: User, purpose: str, db: Session) -> TwoFactorRequiredResponse:
@@ -47,9 +58,24 @@ def _two_factor_response(user: User, purpose: str, db: Session) -> TwoFactorRequ
 
 @router.post("/register", response_model=AuthResponse | TwoFactorRequiredResponse, status_code=201)
 def register(payload: UserCreate, request: Request, db: Session = Depends(get_db)):
-    check_rate_limit(f"auth:register:{client_identifier(request)}", limit=8, window_seconds=3600)
-    user = register_user(db, payload)
-    return _two_factor_response(user, "signup", db)
+    try:
+        check_rate_limit(f"auth:register:{client_identifier(request)}", limit=8, window_seconds=3600)
+        user = register_user(db, payload)
+        return _two_factor_response(user, "signup", db)
+    except HTTPException as exc:
+        logger.warning(
+            "Register request failed status=%s email_hash=%s detail=%s",
+            exc.status_code,
+            _email_fingerprint(payload.email),
+            exc.detail,
+        )
+        raise
+    except Exception as exc:
+        logger.exception("Unexpected register error email_hash=%s", _email_fingerprint(payload.email))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Nao foi possivel criar sua conta agora. Tente novamente em alguns minutos.",
+        ) from exc
 
 
 @router.post("/login", response_model=AuthResponse | TwoFactorRequiredResponse)

@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { Sparkles } from "lucide-react";
 
 import Button from "../components/Button";
+import PasswordInput from "../components/PasswordInput";
 import AuthLayout from "../layouts/AuthLayout";
 import { useAuth } from "../hooks/useAuth";
 import { normalizeApiError } from "../utils/formatters";
@@ -10,7 +11,7 @@ import { normalizeApiError } from "../utils/formatters";
 export default function Register() {
   const navigate = useNavigate();
   const { register, user } = useAuth();
-  const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", confirmPassword: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -18,10 +19,16 @@ export default function Register() {
 
   async function handleSubmit(event) {
     event.preventDefault();
-    setLoading(true);
     setError("");
+    if (form.password !== form.confirmPassword) {
+      setError("As senhas nao conferem. Confira os dois campos antes de criar a conta.");
+      return;
+    }
+
+    setLoading(true);
     try {
-      const response = await register(form);
+      const { confirmPassword: _confirmPassword, ...registerPayload } = form;
+      const response = await register(registerPayload);
       if (response?.requires_two_factor) {
         navigate("/verificacao", { replace: true });
         return;
@@ -53,12 +60,19 @@ export default function Register() {
           onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
           required
         />
-        <input
-          className="soft-input"
-          type="password"
+        <PasswordInput
           placeholder="Senha"
           value={form.password}
           onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+          autoComplete="new-password"
+          minLength={8}
+          required
+        />
+        <PasswordInput
+          placeholder="Confirmar senha"
+          value={form.confirmPassword}
+          onChange={(event) => setForm((current) => ({ ...current, confirmPassword: event.target.value }))}
+          autoComplete="new-password"
           minLength={8}
           required
         />

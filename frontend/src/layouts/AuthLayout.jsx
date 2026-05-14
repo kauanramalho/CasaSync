@@ -12,19 +12,7 @@ export default function AuthLayout({ children, title, subtitle }) {
           </div>
           <div className="mt-8">{children}</div>
         </section>
-        <aside className="hidden border-l border-white/80 bg-gradient-to-br from-rose-50 via-white to-violet-50 p-10 lg:flex lg:flex-col lg:justify-between">
-          <div className="rounded-[28px] bg-white/75 p-6 shadow-card">
-            <p className="text-sm font-semibold text-muted">Meta semanal do casal</p>
-            <div className="mt-6 flex items-center gap-5">
-              <div className="grid h-24 w-24 place-items-center rounded-full bg-[conic-gradient(#f85d8f_280deg,#ffe6dd_0)]">
-                <div className="grid h-16 w-16 place-items-center rounded-full bg-white text-lg font-bold">78%</div>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-ink">21 / 27</p>
-                <p className="text-sm text-muted">tarefas concluídas</p>
-              </div>
-            </div>
-          </div>
+        <aside className="hidden border-l border-white/80 bg-gradient-to-br from-rose-50 via-white to-violet-50 p-10 lg:flex lg:flex-col lg:justify-center">
           <div className="rounded-[28px] bg-white/75 p-6 shadow-card">
             <p className="text-lg font-bold text-ink">Pequenas ações, grandes conexões.</p>
             <p className="mt-2 text-sm text-muted">Organização da casa, estudos, fé, saúde e relacionamento em um só espaço.</p>
@@ -34,4 +22,3 @@ export default function AuthLayout({ children, title, subtitle }) {
     </main>
   );
 }
-

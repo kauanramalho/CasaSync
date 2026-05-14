@@ -1,31 +1,99 @@
-function getApiUrl() {
-  const apiUrl = import.meta.env.VITE_API_URL;
-  if (!apiUrl) {
-    throw new Error("VITE_API_URL precisa estar configurada para o frontend acessar a API.");
-  }
-  return apiUrl.replace(/\/+$/, "");
-}
-
-const API_URL = getApiUrl();
 const TOKEN_KEY = "casasync_token";
+const SESSION_TOKEN_KEY = "casasync_session_token";
 const PENDING_TWO_FACTOR_KEY = "casasync_pending_2fa";
 const AUTH_SESSION_CHANGED_EVENT = "casasync:auth-session-changed";
 const pendingGetRequests = new Map();
+let cachedApiUrl = null;
+
+function configuredApiUrl() {
+  return (import.meta.env.VITE_API_URL || import.meta.env.NEXT_PUBLIC_API_URL || "").trim();
+}
+
+function developmentFallbackApiUrl() {
+  return `http://${["local", "host"].join("")}:8000/api`;
+}
+
+function isLocalApiHost(hostname) {
+  const host = hostname.toLowerCase();
+  return (
+    host === ["local", "host"].join("") ||
+    host === "0.0.0.0" ||
+    host === "::1" ||
+    host === "[::1]" ||
+    /^127(?:\.\d{1,3}){3}$/.test(host)
+  );
+}
+
+function appendApiPrefix(pathname) {
+  const path = pathname.replace(/\/+$/, "");
+  return path.endsWith("/api") ? path : `${path}/api`;
+}
+
+function normalizeApiUrl(apiUrl) {
+  const value = apiUrl.replace(/\/+$/, "");
+
+  if (value.startsWith("/")) {
+    if (import.meta.env.PROD) {
+      throw new Error("Configure VITE_API_URL com a URL publica completa do backend em producao.");
+    }
+    return appendApiPrefix(value);
+  }
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(value);
+  } catch {
+    throw new Error("VITE_API_URL invalida. Use uma URL absoluta, por exemplo https://seu-backend.onrender.com/api.");
+  }
+
+  if (import.meta.env.PROD) {
+    if (parsedUrl.protocol !== "https:") {
+      throw new Error("Em producao, VITE_API_URL deve usar HTTPS e apontar para o backend publico.");
+    }
+    if (isLocalApiHost(parsedUrl.hostname)) {
+      throw new Error("VITE_API_URL de producao nao pode apontar para uma maquina local.");
+    }
+  }
+
+  parsedUrl.pathname = appendApiPrefix(parsedUrl.pathname);
+  parsedUrl.search = "";
+  parsedUrl.hash = "";
+  return parsedUrl.toString().replace(/\/+$/, "");
+}
+
+function getApiUrl() {
+  if (cachedApiUrl) return cachedApiUrl;
+
+  const apiUrl = configuredApiUrl();
+  if (!apiUrl) {
+    if (import.meta.env.DEV) {
+      cachedApiUrl = normalizeApiUrl(developmentFallbackApiUrl());
+      return cachedApiUrl;
+    }
+    throw new Error("API nao configurada. Defina VITE_API_URL com a URL publica do backend.");
+  }
+
+  cachedApiUrl = normalizeApiUrl(apiUrl);
+  return cachedApiUrl;
+}
 
 function apiPath(path) {
   return path.startsWith("/") ? path : `/${path}`;
 }
 
 export function getToken() {
-  return localStorage.getItem(TOKEN_KEY);
+  return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(SESSION_TOKEN_KEY);
 }
 
-export function setToken(token) {
-  localStorage.setItem(TOKEN_KEY, token);
+export function setToken(token, { remember = true } = {}) {
+  clearToken();
+  const storage = remember ? localStorage : sessionStorage;
+  storage.setItem(remember ? TOKEN_KEY : SESSION_TOKEN_KEY, token);
 }
 
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(SESSION_TOKEN_KEY);
 }
 
 export function getPendingTwoFactor() {
@@ -66,6 +134,7 @@ async function request(path, { method = "GET", body, auth = true } = {}) {
 }
 
 async function performRequest(path, { method = "GET", body, auth = true } = {}) {
+  const url = `${getApiUrl()}${apiPath(path)}`;
   const headers = {};
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
@@ -76,26 +145,62 @@ async function performRequest(path, { method = "GET", body, auth = true } = {}) 
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_URL}${apiPath(path)}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined
-  });
+  if (import.meta.env.DEV) {
+    console.info("[CasaSync API]", method, url);
+  }
 
-  const data = await response.json().catch(() => null);
+  let response;
+  try {
+    response = await fetch(url, {
+      method,
+      headers,
+      credentials: "omit",
+      body: body !== undefined ? JSON.stringify(body) : undefined
+    });
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error("[CasaSync API]", "network-error", method, url, error);
+    }
+    throw new Error(
+      "Nao foi possivel conectar a API. O servidor pode estar indisponivel ou bloqueando a origem do site."
+    );
+  }
+
+  if (import.meta.env.DEV) {
+    console.info("[CasaSync API]", response.status, method, url);
+  }
+
+  const data = response.status === 204 ? null : await response.json().catch(() => null);
 
   if (!response.ok) {
     if (auth && response.status === 401) {
       clearToken();
       window.dispatchEvent(new Event(AUTH_SESSION_CHANGED_EVENT));
     }
-    const detail = Array.isArray(data?.detail)
-      ? data.detail.map((item) => item.msg).join(", ")
-      : data?.detail;
-    throw new Error(detail || "Não foi possível concluir a ação.");
+    const detail = extractApiErrorMessage(data);
+    throw new Error(detail || "Nao foi possivel concluir a acao.");
   }
 
   return data;
+}
+
+function extractApiErrorMessage(data) {
+  const detail = data?.detail ?? data?.message ?? data?.error;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        const message = item?.msg || item?.message;
+        if (!message) return null;
+        const location = Array.isArray(item?.loc)
+          ? item.loc.filter((part) => part !== "body").join(".")
+          : "";
+        return location ? `${location}: ${message}` : message;
+      })
+      .filter(Boolean)
+      .join(", ");
+  }
+  if (typeof detail === "string") return detail;
+  return null;
 }
 
 export const authApi = {

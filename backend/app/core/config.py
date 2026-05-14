@@ -1,17 +1,48 @@
+import json
 from functools import lru_cache
+from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-def default_cors_origins() -> list[str]:
-    return [
-        "https://casa-sync.vercel.app",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:4173",
-        "http://127.0.0.1:4173",
-    ]
+BACKEND_DIR = Path(__file__).resolve().parents[2]
+REPO_ROOT = BACKEND_DIR.parent
+
+PRODUCTION_CORS_ORIGINS = ["https://casa-sync.vercel.app"]
+DEVELOPMENT_CORS_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+]
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
+
+
+def _normalize_origin(origin: str) -> str:
+    cleaned = origin.strip().rstrip("/")
+    if not cleaned:
+        return ""
+
+    parsed = urlsplit(cleaned)
+    if not parsed.scheme or not parsed.netloc:
+        return cleaned
+
+    hostname = (parsed.hostname or "").lower()
+    if ":" in hostname and not hostname.startswith("["):
+        hostname = f"[{hostname}]"
+
+    netloc = hostname
+    if parsed.port:
+        netloc = f"{netloc}:{parsed.port}"
+
+    return urlunsplit((parsed.scheme.lower(), netloc, "", "", ""))
+
+
+def _is_local_origin(origin: str) -> bool:
+    parsed = urlsplit(origin)
+    return (parsed.hostname or "").lower() in LOCAL_HOSTS
 
 
 class Settings(BaseSettings):
@@ -42,7 +73,8 @@ class Settings(BaseSettings):
     email_from: str = "CasaSync <no-reply@casasync.app>"
     email_dev_mode: bool = False
 
-    cors_origins: list[str] = Field(default_factory=default_cors_origins)
+    frontend_url: str | None = None
+    cors_origins: list[str] = Field(default_factory=list)
     cors_origin_regex: str | None = r"^https://casa-sync(?:-[a-z0-9-]+)*\.vercel\.app$"
 
     google_client_id: str | None = None
@@ -52,11 +84,57 @@ class Settings(BaseSettings):
     ai_provider: str = "mock"
     ai_api_key: str | None = None
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=(REPO_ROOT / ".env", BACKEND_DIR / ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value):
+        if value is None or value == "":
+            return []
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if not cleaned:
+                return []
+            if cleaned.startswith("["):
+                try:
+                    return json.loads(cleaned)
+                except json.JSONDecodeError:
+                    pass
+            return [origin.strip() for origin in cleaned.split(",") if origin.strip()]
+        return value
+
+    @field_validator("frontend_url", "cors_origin_regex", mode="before")
+    @classmethod
+    def blank_to_none(cls, value):
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.strip().lower() == "production"
 
     @property
     def allowed_cors_origins(self) -> list[str]:
-        return sorted(set(default_cors_origins()) | set(self.cors_origins))
+        origins = []
+        if self.frontend_url:
+            origins.append(self.frontend_url)
+        origins.extend(self.cors_origins)
+        origins.extend(PRODUCTION_CORS_ORIGINS)
+        if not self.is_production:
+            origins.extend(DEVELOPMENT_CORS_ORIGINS)
+
+        normalized_origins = {
+            normalized
+            for origin in origins
+            if (normalized := _normalize_origin(origin))
+            and (not self.is_production or not _is_local_origin(normalized))
+        }
+        return sorted(normalized_origins)
 
     @property
     def smtp_configured(self) -> bool:
