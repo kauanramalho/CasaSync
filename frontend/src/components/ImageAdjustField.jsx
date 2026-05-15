@@ -1,17 +1,29 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { ImagePlus, SlidersHorizontal, Trash2, X } from "lucide-react";
 
-import { cropImageDataUrl, defaultCrop, imageFileAccept, readFileAsDataUrl, validateImageFile } from "../utils/files";
+import { uploadsApi } from "../services/api";
+import {
+  cropImageFileToBlob,
+  defaultCrop,
+  imageFileAccept,
+  optimizedImageMaxBytes,
+  validateImageDimensions,
+  validateImageFile
+} from "../utils/files";
 
 function backgroundPosition(crop) {
   return `${50 + (Number(crop.x) || 0) / 4}% ${50 + (Number(crop.y) || 0) / 4}%`;
+}
+
+function isInlineImage(value) {
+  return String(value || "").trim().toLowerCase().startsWith("data:image/");
 }
 
 const ImageAdjustField = forwardRef(function ImageAdjustField(
   {
     value = "",
     label,
-    helper = "PNG, JPG ou WEBP ate 2 MB.",
+    helper = "PNG, JPG ou WEBP. A imagem sera otimizada automaticamente.",
     chooseLabel = "Escolher imagem",
     removeLabel = "Remover imagem",
     cancelLabel = "Cancelar ajuste",
@@ -20,7 +32,11 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
     previewClassName = "h-40 w-40 rounded-full",
     outputWidth = 512,
     outputHeight = 512,
-    outputQuality = 0.9,
+    outputQuality = 0.86,
+    outputMimeType = "image/webp",
+    maxOptimizedBytes = optimizedImageMaxBytes,
+    uploadScope = "system",
+    uploadFamilyId,
     className = "",
     onError,
     onRemove
@@ -28,49 +44,95 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
   ref
 ) {
   const inputRef = useRef(null);
+  const draftUrlRef = useRef("");
   const lastValueRef = useRef(value);
-  const [draft, setDraft] = useState("");
+  const [draftUrl, setDraftUrl] = useState("");
+  const [draftFile, setDraftFile] = useState(null);
   const [removed, setRemoved] = useState(false);
   const [crop, setCrop] = useState(defaultCrop);
   const [fieldError, setFieldError] = useState("");
 
+  const revokeDraftUrl = useCallback(() => {
+    if (draftUrlRef.current) {
+      URL.revokeObjectURL(draftUrlRef.current);
+      draftUrlRef.current = "";
+    }
+  }, []);
+
+  const clearDraft = useCallback(() => {
+    revokeDraftUrl();
+    setDraftUrl("");
+    setDraftFile(null);
+  }, [revokeDraftUrl]);
+
+  useEffect(() => () => revokeDraftUrl(), [revokeDraftUrl]);
+
   useEffect(() => {
     if (lastValueRef.current === value) return;
     lastValueRef.current = value;
-    setDraft("");
+    clearDraft();
     setRemoved(false);
     setCrop(defaultCrop);
     setFieldError("");
-  }, [value]);
+  }, [clearDraft, value]);
 
   const previewUrl = useMemo(() => {
     if (removed) return "";
-    return draft || value || "";
-  }, [draft, removed, value]);
+    return draftUrl || value || "";
+  }, [draftUrl, removed, value]);
 
   useImperativeHandle(
     ref,
     () => ({
       async getValue() {
         if (removed) return null;
-        if (draft) {
-          return cropImageDataUrl(draft, crop, {
+        if (!draftFile) {
+          return value && !isInlineImage(value) ? value : null;
+        }
+
+        try {
+          const optimizedFile = await cropImageFileToBlob(draftFile, crop, {
             width: outputWidth,
             height: outputHeight,
-            quality: outputQuality
+            quality: outputQuality,
+            mimeType: outputMimeType,
+            maxBytes: maxOptimizedBytes
           });
+          const uploaded = await uploadsApi.uploadImage(optimizedFile, {
+            scope: uploadScope,
+            familyId: uploadFamilyId
+          });
+          return uploaded.url;
+        } catch (error) {
+          const message = error?.message || "Nao foi possivel otimizar e enviar a imagem.";
+          setFieldError(message);
+          onError?.(message);
+          throw error;
         }
-        return value || null;
       },
       resetDraft() {
-        setDraft("");
+        clearDraft();
         setRemoved(false);
         setCrop(defaultCrop);
         setFieldError("");
         if (inputRef.current) inputRef.current.value = "";
       }
     }),
-    [crop, draft, outputHeight, outputQuality, outputWidth, removed, value]
+    [
+      clearDraft,
+      crop,
+      draftFile,
+      maxOptimizedBytes,
+      onError,
+      outputHeight,
+      outputMimeType,
+      outputQuality,
+      outputWidth,
+      removed,
+      uploadFamilyId,
+      uploadScope,
+      value
+    ]
   );
 
   function clearInput() {
@@ -90,8 +152,18 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
     }
 
     try {
-      const dataUrl = await readFileAsDataUrl(file);
-      setDraft(dataUrl);
+      const dimensionError = await validateImageDimensions(file);
+      if (dimensionError) {
+        setFieldError(dimensionError);
+        onError?.(dimensionError);
+        return;
+      }
+
+      const objectUrl = URL.createObjectURL(file);
+      revokeDraftUrl();
+      draftUrlRef.current = objectUrl;
+      setDraftUrl(objectUrl);
+      setDraftFile(file);
       setRemoved(false);
       setCrop(defaultCrop);
       setFieldError("");
@@ -105,7 +177,7 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
   }
 
   function cancelDraft() {
-    setDraft("");
+    clearDraft();
     setRemoved(false);
     setCrop(defaultCrop);
     setFieldError("");
@@ -113,7 +185,7 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
   }
 
   function removeImage() {
-    setDraft("");
+    clearDraft();
     setRemoved(true);
     setCrop(defaultCrop);
     setFieldError("");
@@ -124,8 +196,8 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
   const previewStyle = previewUrl
     ? {
         backgroundImage: `url(${previewUrl})`,
-        backgroundSize: draft ? `${Math.max(100, crop.zoom * 100)}%` : "cover",
-        backgroundPosition: draft ? backgroundPosition(crop) : "center"
+        backgroundSize: draftUrl ? `${Math.max(100, crop.zoom * 100)}%` : "cover",
+        backgroundPosition: draftUrl ? backgroundPosition(crop) : "center"
       }
     : undefined;
 
@@ -161,7 +233,7 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
       {helper && <p className="mt-3 text-xs font-semibold text-muted">{helper}</p>}
       {fieldError && <p className="mt-3 rounded-2xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600">{fieldError}</p>}
 
-      {draft && !disabled && (
+      {draftUrl && !disabled && (
         <div className="mt-5 space-y-3 rounded-2xl bg-white/80 p-4">
           <div className="flex items-center gap-2 text-xs font-bold text-muted">
             <SlidersHorizontal className="h-4 w-4 text-blush" />

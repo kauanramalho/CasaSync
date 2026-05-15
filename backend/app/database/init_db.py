@@ -3,7 +3,7 @@ from app.database.session import engine
 from sqlalchemy import inspect, text
 
 # Importing models here registers them in SQLAlchemy metadata.
-from app.models import category, couple, family, integration, ranking, task, two_factor, user  # noqa: F401
+from app.models import category, couple, family, image_asset, integration, ranking, task, two_factor, user  # noqa: F401
 
 
 def create_database_tables() -> None:

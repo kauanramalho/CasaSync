@@ -54,10 +54,6 @@ function saveStoredNoteIcons(nextIcons) {
   localStorage.setItem(noteIconStorageKey, JSON.stringify(nextIcons));
 }
 
-function isDataImage(value) {
-  return typeof value === "string" && value.startsWith("data:image/");
-}
-
 function domainFromUrl(url) {
   if (!url) return "";
   try {
@@ -353,8 +349,8 @@ export default function CoupleSpace() {
                 <ImagePlus className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
                 <input
                   className="soft-input pl-10"
-                  placeholder={isDataImage(dateForm.image_url) ? "Imagem local selecionada" : "Imagem opcional (URL)"}
-                  value={isDataImage(dateForm.image_url) ? "" : dateForm.image_url}
+                  placeholder="Imagem opcional (URL)"
+                  value={dateForm.image_url}
                   onChange={(event) => {
                     setDateForm((current) => ({ ...current, image_url: event.target.value }));
                   }}
@@ -370,6 +366,7 @@ export default function CoupleSpace() {
                 outputWidth={768}
                 outputHeight={432}
                 outputQuality={0.86}
+                uploadScope="date"
                 onRemove={clearDateImage}
                 onError={(message) => {
                   setError(message);

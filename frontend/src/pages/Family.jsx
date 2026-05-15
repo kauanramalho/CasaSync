@@ -467,6 +467,9 @@ export default function Family() {
                   removeLabel="Remover imagem"
                   previewClassName="h-20 w-20 rounded-2xl"
                   emptyLabel={<Camera className="h-7 w-7 text-blush" />}
+                  outputWidth={768}
+                  outputHeight={768}
+                  uploadScope="family"
                   disabled={!canAdmin}
                   onError={(message) => {
                     setError(message);

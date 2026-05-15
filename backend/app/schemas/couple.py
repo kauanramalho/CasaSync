@@ -1,9 +1,10 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.enums import GoalStatus
 from app.schemas.common import ORMModel
+from app.schemas.image import MAX_IMAGE_URL_LENGTH, validate_image_url
 from app.schemas.user import UserSummary
 
 
@@ -43,10 +44,15 @@ class DateIdeaCreate(BaseModel):
     location: str | None = Field(default=None, max_length=180)
     budget: str | None = Field(default=None, max_length=80)
     external_url: str | None = Field(default=None, max_length=2048)
-    image_url: str | None = Field(default=None, max_length=300000)
+    image_url: str | None = Field(default=None, max_length=MAX_IMAGE_URL_LENGTH)
     suggested_date: datetime | None = None
     mood: str = "romantico"
     pinned: bool = False
+
+    @field_validator("image_url")
+    @classmethod
+    def normalize_image_url(cls, value: str | None) -> str | None:
+        return validate_image_url(value)
 
 
 class DateIdeaUpdate(BaseModel):
@@ -55,11 +61,16 @@ class DateIdeaUpdate(BaseModel):
     location: str | None = Field(default=None, max_length=180)
     budget: str | None = Field(default=None, max_length=80)
     external_url: str | None = Field(default=None, max_length=2048)
-    image_url: str | None = Field(default=None, max_length=300000)
+    image_url: str | None = Field(default=None, max_length=MAX_IMAGE_URL_LENGTH)
     suggested_date: datetime | None = None
     mood: str | None = Field(default=None, max_length=40)
     is_done: bool | None = None
     pinned: bool | None = None
+
+    @field_validator("image_url")
+    @classmethod
+    def normalize_image_url(cls, value: str | None) -> str | None:
+        return validate_image_url(value)
 
 
 class DateIdeaRead(ORMModel):

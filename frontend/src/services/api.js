@@ -137,6 +137,7 @@ async function performRequest(path, { method = "GET", body, auth = true } = {}) 
   const url = `${getApiUrl()}${apiPath(path)}`;
   const headers = {};
   if (body !== undefined) {
+    assertPayloadHasNoInlineImages(body);
     headers["Content-Type"] = "application/json";
   }
 
@@ -184,6 +185,59 @@ async function performRequest(path, { method = "GET", body, auth = true } = {}) 
   return data;
 }
 
+async function uploadRequest(path, { formData, auth = true } = {}) {
+  const url = `${getApiUrl()}${apiPath(path)}`;
+  const headers = {};
+  const token = getToken();
+  if (auth && token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  let response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers,
+      credentials: "omit",
+      body: formData
+    });
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error("[CasaSync API]", "upload-network-error", url, error);
+    }
+    throw new Error("Nao foi possivel enviar a imagem. Verifique sua conexao e tente novamente.");
+  }
+
+  const data = response.status === 204 ? null : await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail = extractApiErrorMessage(data);
+    throw new Error(detail || "Nao foi possivel enviar a imagem.");
+  }
+  return data;
+}
+
+function assertPayloadHasNoInlineImages(value, path = "") {
+  if (value == null) return;
+  if (typeof value === "string") {
+    const lower = value.trim().toLowerCase();
+    const imageField = /(^|\.)((image_url)|(avatar_url))$/.test(path);
+    if (lower.startsWith("data:image/")) {
+      throw new Error("A imagem precisa ser enviada pelo upload antes de salvar.");
+    }
+    if (imageField && value.length > 2048) {
+      throw new Error("A URL da imagem ficou grande demais. Escolha a foto novamente.");
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertPayloadHasNoInlineImages(item, `${path}.${index}`));
+    return;
+  }
+  if (typeof value === "object") {
+    Object.entries(value).forEach(([key, item]) => assertPayloadHasNoInlineImages(item, path ? `${path}.${key}` : key));
+  }
+}
+
 function extractApiErrorMessage(data) {
   const detail = data?.detail ?? data?.message ?? data?.error;
   if (Array.isArray(detail)) {
@@ -213,6 +267,16 @@ export const authApi = {
   changePassword: (payload) => request("/auth/me/password", { method: "POST", body: payload }),
   logout: () => request("/auth/logout", { method: "POST" }),
   deleteMe: () => request("/auth/me", { method: "DELETE" })
+};
+
+export const uploadsApi = {
+  uploadImage: (file, { scope = "system", familyId } = {}) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const search = new URLSearchParams({ scope });
+    if (familyId) search.set("family_id", familyId);
+    return uploadRequest(`/uploads/images?${search.toString()}`, { formData });
+  }
 };
 
 export const familiesApi = {

@@ -115,6 +115,7 @@ export default function ProfileModal({ user, onClose, onSaved }) {
                 removeLabel="Remover foto"
                 previewClassName="mx-auto h-40 w-40 rounded-full ring-8 ring-white"
                 emptyLabel={form.name?.[0]?.toUpperCase() || "C"}
+                uploadScope="avatar"
                 onError={setError}
               />
             </div>

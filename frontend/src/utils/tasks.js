@@ -14,6 +14,15 @@ const prioritySortRank = {
   baixa: 2
 };
 
+export const taskSortColumns = [
+  { key: "title", label: "Tarefa" },
+  { key: "category", label: "Categoria" },
+  { key: "assignees", label: "Responsaveis" },
+  { key: "priority", label: "Prioridade" },
+  { key: "due_date", label: "Prazo" },
+  { key: "status", label: "Status" }
+];
+
 export const memberChartColors = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"];
 
 export const categoryToneClasses = {
@@ -84,6 +93,16 @@ function safeDateTime(value, fallback = Number.MAX_SAFE_INTEGER) {
   return Number.isNaN(time) ? fallback : time;
 }
 
+function sortDirectionFactor(direction) {
+  return direction === "desc" ? -1 : 1;
+}
+
+function safeComparableDate(value) {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? null : time;
+}
+
 function taskStatusGroup(task) {
   if (task?.status === "concluida") return 2;
   if (task?.status === "atrasada") return 0;
@@ -102,6 +121,46 @@ function taskStatusRank(task) {
 
 function compareText(left, right) {
   return taskSortCollator.compare(left || "", right || "");
+}
+
+function compareDateWithEmptyLast(left, right, direction) {
+  const leftTime = safeComparableDate(left);
+  const rightTime = safeComparableDate(right);
+  const leftEmpty = leftTime === null;
+  const rightEmpty = rightTime === null;
+
+  if (leftEmpty && rightEmpty) return 0;
+  if (leftEmpty) return 1;
+  if (rightEmpty) return -1;
+  return sortDirectionFactor(direction) * (leftTime - rightTime);
+}
+
+function compareManualTaskColumn(left, right, sort) {
+  const direction = sort?.direction === "desc" ? "desc" : "asc";
+  const factor = sortDirectionFactor(direction);
+
+  switch (sort?.key) {
+    case "title":
+      return factor * compareText(left?.title, right?.title);
+    case "category":
+      return factor * compareText(getCategoryName(left?.category, ""), getCategoryName(right?.category, ""));
+    case "assignees":
+      return factor * compareText(getAssigneeNames(left, ""), getAssigneeNames(right, ""));
+    case "priority":
+      return factor * ((prioritySortRank[left?.priority] ?? 1) - (prioritySortRank[right?.priority] ?? 1));
+    case "due_date":
+      return compareDateWithEmptyLast(left?.due_date, right?.due_date, direction);
+    case "status":
+      return factor * (taskStatusRank(left) - taskStatusRank(right));
+    default:
+      return 0;
+  }
+}
+
+export function getNextTaskSort(currentSort, columnKey) {
+  if (!taskSortColumns.some((column) => column.key === columnKey)) return null;
+  const direction = currentSort?.key === columnKey && currentSort.direction !== "desc" ? "desc" : "asc";
+  return { key: columnKey, direction };
 }
 
 export function compareTasksForDisplay(left, right) {
@@ -129,10 +188,13 @@ export function compareTasksForDisplay(left, right) {
   return compareText(left?.title, right?.title);
 }
 
-export function sortTasksForDisplay(tasks = []) {
+export function sortTasksForDisplay(tasks = [], manualSort = null) {
   return [...tasks]
     .map((task, index) => ({ task, index }))
-    .sort((left, right) => compareTasksForDisplay(left.task, right.task) || left.index - right.index)
+    .sort((left, right) => {
+      const manualDelta = manualSort?.key ? compareManualTaskColumn(left.task, right.task, manualSort) : 0;
+      return manualDelta || compareTasksForDisplay(left.task, right.task) || left.index - right.index;
+    })
     .map((item) => item.task);
 }
 

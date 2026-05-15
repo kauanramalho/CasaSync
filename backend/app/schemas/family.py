@@ -1,8 +1,9 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.common import ORMModel
+from app.schemas.image import MAX_IMAGE_URL_LENGTH, validate_image_url
 from app.schemas.user import UserSummary
 
 
@@ -27,7 +28,12 @@ class FamilyRead(ORMModel):
 class FamilyUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=140)
     description: str | None = Field(default=None, max_length=1200)
-    image_url: str | None = Field(default=None, max_length=300000)
+    image_url: str | None = Field(default=None, max_length=MAX_IMAGE_URL_LENGTH)
+
+    @field_validator("image_url")
+    @classmethod
+    def normalize_image_url(cls, value: str | None) -> str | None:
+        return validate_image_url(value)
 
 
 class FamilyMemberUpdate(BaseModel):

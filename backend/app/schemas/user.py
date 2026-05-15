@@ -3,6 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.schemas.common import ORMModel
+from app.schemas.image import MAX_IMAGE_URL_LENGTH, validate_image_url
 
 
 class UserCreate(BaseModel):
@@ -57,7 +58,7 @@ class UserUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=120)
     username: str | None = Field(default=None, min_length=2, max_length=80)
     email: EmailStr | None = None
-    avatar_url: str | None = Field(default=None, max_length=300000)
+    avatar_url: str | None = Field(default=None, max_length=MAX_IMAGE_URL_LENGTH)
 
     @field_validator("name")
     @classmethod
@@ -83,6 +84,11 @@ class UserUpdate(BaseModel):
         if value is None:
             return None
         return str(value).strip().lower()
+
+    @field_validator("avatar_url")
+    @classmethod
+    def normalize_avatar_url(cls, value: str | None) -> str | None:
+        return validate_image_url(value)
 
 
 class PasswordUpdate(BaseModel):
