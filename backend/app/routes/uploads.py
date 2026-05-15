@@ -39,7 +39,7 @@ async def upload_image(
     )
     return ImageUploadResponse(
         id=asset.id,
-        url=str(request.url_for("get_uploaded_image", image_id=asset.id)),
+        url=str(request.app.url_path_for("get_uploaded_image", image_id=asset.id)),
         content_type=asset.content_type,
         byte_size=asset.byte_size,
     )
