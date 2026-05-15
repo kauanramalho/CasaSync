@@ -125,7 +125,7 @@ export default function Reports() {
 
               <div className="mt-4 space-y-2">
                 {categoryRows.map((item) => (
-                  <div key={item.name} className="flex items-center justify-between gap-3 rounded-2xl bg-white/75 px-3 py-2 shadow-sm">
+                  <div key={item.name} className="flex min-w-0 items-center justify-between gap-3 rounded-2xl bg-white/75 px-3 py-2 shadow-sm">
                     <CategoryBadge category={item} className="max-w-[70%]" />
                     <div className="text-right text-xs font-bold text-muted">
                       <p className="text-ink">{item.total}</p>
@@ -171,11 +171,11 @@ export default function Reports() {
           <h2 className="section-title">Ranking do mes</h2>
           <div className="mt-5 space-y-4">
             {ranking.map((item) => (
-              <div key={item.user.id} className="flex items-center justify-between gap-4 rounded-[24px] bg-white/75 p-4">
-                <div className="flex items-center gap-4">
+              <div key={item.user.id} className="flex min-w-0 items-center justify-between gap-4 rounded-[24px] bg-white/75 p-4">
+                <div className="flex min-w-0 items-center gap-4">
                   <Avatar user={item.user} />
-                  <div>
-                    <p className="font-bold text-ink">{item.user.name}</p>
+                  <div className="min-w-0">
+                    <p className="truncate font-bold text-ink">{item.user.name}</p>
                     <p className="text-sm text-muted">{item.completed_tasks} concluídas</p>
                   </div>
                 </div>

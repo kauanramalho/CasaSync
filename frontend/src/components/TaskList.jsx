@@ -1,10 +1,11 @@
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { BellRing, Check, Edit3, MoreHorizontal, RotateCcw, Trash2 } from "lucide-react";
 
 import AssigneeStack from "./AssigneeStack";
 import { CategoryBadge, PriorityBadge, StatusBadge } from "./Badges";
 import { formatDate } from "../utils/formatters";
 import { formatReminderLead } from "../utils/taskReminders";
+import { sortTasksForDisplay } from "../utils/tasks";
 
 function TaskRow({ task, compact, menuOpen, onToggleMenu, onRunAction, onComplete, onEdit, onDelete, onRemoveRecent }) {
   const hasActiveReminder =
@@ -16,7 +17,7 @@ function TaskRow({ task, compact, menuOpen, onToggleMenu, onRunAction, onComplet
 
   return (
     <div
-      className="grid gap-3 px-5 py-4 transition hover:bg-rose-50/40 md:grid-cols-[44px_1.8fr_1fr_1.15fr_1fr_0.8fr_1fr_44px] md:items-center md:gap-4"
+      className="grid min-w-0 gap-3 px-4 py-4 transition hover:bg-rose-50/40 md:grid-cols-[44px_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,1fr)_44px] md:items-center md:gap-4 md:px-5"
     >
       <button
         onClick={() => onComplete?.(task)}
@@ -41,12 +42,18 @@ function TaskRow({ task, compact, menuOpen, onToggleMenu, onRunAction, onComplet
           </span>
         )}
       </div>
-      <CategoryBadge category={task.category} className="w-full justify-start" />
-      <AssigneeStack task={task} />
-      <PriorityBadge priority={task.priority} />
-      <span className="text-sm text-muted">{formatDate(task.due_date)}</span>
-      <StatusBadge status={task.status} />
-      <div className="relative" data-task-menu-root>
+      <CategoryBadge category={task.category} className="w-full min-w-0 justify-start" />
+      <div className="min-w-0">
+        <AssigneeStack task={task} />
+      </div>
+      <div className="min-w-0">
+        <PriorityBadge priority={task.priority} />
+      </div>
+      <span className="min-w-0 text-sm text-muted">{formatDate(task.due_date)}</span>
+      <div className="min-w-0">
+        <StatusBadge status={task.status} />
+      </div>
+      <div className="relative justify-self-start md:justify-self-auto" data-task-menu-root>
         <button
           onClick={() => onToggleMenu(task.id)}
           className="grid h-8 w-8 place-items-center rounded-xl text-muted hover:bg-slate-100"
@@ -55,7 +62,7 @@ function TaskRow({ task, compact, menuOpen, onToggleMenu, onRunAction, onComplet
           <MoreHorizontal className="h-5 w-5" />
         </button>
         {menuOpen && (
-          <div className="absolute right-0 top-9 z-30 w-52 overflow-hidden rounded-2xl border border-slate-100 bg-white p-1 shadow-card animate-in">
+          <div className="absolute left-0 top-9 z-30 w-52 overflow-hidden rounded-2xl border border-slate-100 bg-white p-1 shadow-card animate-in md:left-auto md:right-0">
             {onEdit && (
               <button onClick={() => onRunAction(onEdit, task)} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-ink hover:bg-blue-50">
                 <Edit3 className="h-4 w-4 text-blue-500" />
@@ -89,6 +96,7 @@ const MemoTaskRow = memo(TaskRow);
 
 function TaskList({ tasks = [], onComplete, onEdit, onDelete, onRemoveRecent, compact = false }) {
   const [openMenuId, setOpenMenuId] = useState(null);
+  const orderedTasks = useMemo(() => sortTasksForDisplay(tasks), [tasks]);
 
   const toggleMenu = useCallback(function toggleMenu(taskId) {
     setOpenMenuId((current) => (current === taskId ? null : taskId));
@@ -116,8 +124,8 @@ function TaskList({ tasks = [], onComplete, onEdit, onDelete, onRemoveRecent, co
   }, [openMenuId]);
 
   return (
-    <div className="rounded-[24px] border border-slate-100 bg-white/70">
-      <div className="hidden grid-cols-[44px_1.8fr_1fr_1.15fr_1fr_0.8fr_1fr_44px] gap-4 border-b border-slate-100 px-5 py-4 text-sm font-medium text-muted md:grid">
+    <div className="min-w-0 overflow-hidden rounded-[24px] border border-slate-100 bg-white/70">
+      <div className="hidden min-w-0 grid-cols-[44px_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,1fr)_44px] gap-4 border-b border-slate-100 px-5 py-4 text-sm font-medium text-muted md:grid">
         <span />
         <span>Tarefa</span>
         <span>Categoria</span>
@@ -127,8 +135,8 @@ function TaskList({ tasks = [], onComplete, onEdit, onDelete, onRemoveRecent, co
         <span>Status</span>
         <span />
       </div>
-      <div className="max-h-[620px] divide-y divide-slate-100 overflow-y-auto">
-        {tasks.map((task) => (
+      <div className="max-h-[620px] divide-y divide-slate-100 overflow-x-hidden overflow-y-auto">
+        {orderedTasks.map((task) => (
           <MemoTaskRow
             key={task.id}
             task={task}
@@ -142,7 +150,7 @@ function TaskList({ tasks = [], onComplete, onEdit, onDelete, onRemoveRecent, co
             onRemoveRecent={onRemoveRecent}
           />
         ))}
-        {tasks.length === 0 && <div className="px-5 py-10 text-center text-sm text-muted">Nenhuma tarefa encontrada.</div>}
+        {orderedTasks.length === 0 && <div className="px-5 py-10 text-center text-sm text-muted">Nenhuma tarefa encontrada.</div>}
       </div>
     </div>
   );

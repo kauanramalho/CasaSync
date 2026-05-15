@@ -5,7 +5,7 @@ import { CalendarClock, CheckCircle2, Clock3, Loader2, Search, UserRound } from 
 import { CategoryBadge } from "./Badges";
 import { tasksApi } from "../services/api";
 import { formatDate, priorityLabels, statusLabels } from "../utils/formatters";
-import { getAssigneeNames, getTaskPointLabel } from "../utils/tasks";
+import { getAssigneeNames, getTaskPointLabel, sortTasksForDisplay } from "../utils/tasks";
 
 const statusToTab = {
   concluida: "concluida",
@@ -81,8 +81,8 @@ export default function GlobalSearch() {
 
   const results = useMemo(() => {
     const needle = debouncedQuery.trim().toLowerCase();
-    if (!needle) return tasks.slice(0, 5);
-    return tasks.filter((task) => searchableText(task).includes(needle)).slice(0, 7);
+    if (!needle) return sortTasksForDisplay(tasks).slice(0, 5);
+    return sortTasksForDisplay(tasks.filter((task) => searchableText(task).includes(needle))).slice(0, 7);
   }, [debouncedQuery, tasks]);
 
   function goToTasks(task) {
@@ -99,7 +99,7 @@ export default function GlobalSearch() {
   }
 
   return (
-    <div ref={ref} className="relative min-w-[260px] flex-1 lg:w-96 lg:flex-none">
+    <div ref={ref} className="relative w-full min-w-0 flex-[1_1_240px] sm:min-w-[260px] lg:w-96 lg:flex-none">
       <form onSubmit={handleSubmit}>
         <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted" />
         <input
@@ -118,7 +118,7 @@ export default function GlobalSearch() {
       </form>
 
       {open && (
-        <div className="absolute right-0 top-14 z-50 w-[min(460px,calc(100vw-2rem))] overflow-hidden rounded-[26px] border border-white/80 bg-white/95 shadow-soft backdrop-blur-xl animate-in">
+        <div className="absolute left-0 top-14 z-50 w-full overflow-hidden rounded-[26px] border border-white/80 bg-white/95 shadow-soft backdrop-blur-xl animate-in sm:left-auto sm:right-0 sm:w-[min(460px,calc(100vw-2rem))]">
           <div className="border-b border-slate-100 px-4 py-3">
             <p className="text-sm font-bold text-ink">Pesquisa global</p>
             <p className="mt-0.5 text-xs font-medium text-muted">Nome, categoria, responsavel, prioridade, status, prazo e pontos.</p>
@@ -138,7 +138,7 @@ export default function GlobalSearch() {
                   className="group w-full rounded-2xl px-3 py-3 text-left transition hover:bg-rose-50/70"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="truncate font-bold text-ink group-hover:text-blush">{task.title}</p>
                       <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-bold text-muted">
                         <CategoryBadge category={task.category} compact />

@@ -169,6 +169,12 @@
     transition: background 240ms ease, color 240ms ease;
   }
 
+  img,
+  video,
+  canvas {
+    max-width: 100%;
+  }
+
   button,
   input,
   textarea,
@@ -277,7 +283,8 @@
     position: relative;
     min-width: 0;
     width: 100%;
-    overflow: visible;
+    overflow-x: auto;
+    overflow-y: visible;
     overscroll-behavior-x: contain;
     border-radius: 24px;
     background: linear-gradient(135deg, rgb(var(--color-surface) / 0.94), rgb(var(--color-blush) / 0.07));
@@ -287,12 +294,14 @@
   .chart-canvas {
     height: clamp(17rem, 34vw, 21rem);
     min-width: 0;
+    width: 100%;
     overflow: visible;
   }
 
   .chart-canvas-sm {
     height: clamp(16rem, 30vw, 19rem);
     min-width: 0;
+    width: 100%;
     overflow: visible;
   }
 
@@ -371,8 +380,7 @@
 
 @media (max-width: 640px) {
   .chart-frame {
-    overflow-x: auto;
-    overflow-y: visible;
+    padding-bottom: 1rem;
   }
 
   .chart-canvas {

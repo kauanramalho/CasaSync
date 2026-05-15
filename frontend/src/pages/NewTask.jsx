@@ -164,8 +164,8 @@ export default function NewTask() {
             />
           </div>
           {error && <p className="md:col-span-2 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</p>}
-          <div className="md:col-span-2 flex justify-end">
-            <Button type="submit">
+          <div className="md:col-span-2 flex flex-col sm:flex-row sm:justify-end">
+            <Button type="submit" className="w-full sm:w-auto">
               <Plus className="h-5 w-5" />
               Criar tarefa
             </Button>

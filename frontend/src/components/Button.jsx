@@ -14,6 +14,7 @@ export default function Button({ as: Component = "button", children, className, 
     <Component
       className={clsx(
         "inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition duration-200 hover:-translate-y-0.5 active:translate-y-0 disabled:cursor-not-allowed disabled:translate-y-0 disabled:opacity-60",
+        "min-w-0 max-w-full text-center",
         variants[variant],
         className
       )}

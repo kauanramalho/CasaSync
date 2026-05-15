@@ -16,7 +16,7 @@ import { categoriesApi, familiesApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError, priorityLabels, statusLabels } from "../utils/formatters";
 import { formatReminderLead } from "../utils/taskReminders";
-import { getAssigneeNames, getTaskAssigneeIds, getTaskPointLabel } from "../utils/tasks";
+import { getAssigneeNames, getTaskAssigneeIds, getTaskPointLabel, sortTasksForDisplay } from "../utils/tasks";
 
 const statusTabs = [
   { key: "all", label: "Todas" },
@@ -90,7 +90,7 @@ export default function Tasks() {
 
   const filteredTasks = useMemo(() => {
     const normalizedSearch = deferredSearch.trim().toLowerCase();
-    return indexedTasks.reduce((acc, item) => {
+    const matches = indexedTasks.reduce((acc, item) => {
       const task = item.task;
       const matchesStatus = status === "all" || (status === "pendente" ? ["pendente", "em_andamento"].includes(task.status) : task.status === status);
       const matchesCategory = !category || task.category_id === category;
@@ -99,6 +99,7 @@ export default function Tasks() {
       if (matchesStatus && matchesCategory && matchesAssignee && matchesSearch) acc.push(task);
       return acc;
     }, []);
+    return sortTasksForDisplay(matches);
   }, [indexedTasks, status, category, assignee, deferredSearch]);
 
   const counts = useMemo(
@@ -231,12 +232,12 @@ export default function Tasks() {
 
       <Card className="mt-6">
         <div className="mb-5 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
             {statusTabs.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setStatus(tab.key)}
-                className={`rounded-2xl px-4 py-2 text-sm font-semibold transition hover:-translate-y-0.5 ${
+                className={`shrink-0 rounded-2xl px-4 py-2 text-sm font-semibold transition hover:-translate-y-0.5 ${
                   status === tab.key ? "bg-rose-50 text-blush shadow-card" : "bg-white text-muted hover:text-ink"
                 }`}
               >
@@ -244,14 +245,14 @@ export default function Tasks() {
               </button>
             ))}
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:flex xl:flex-wrap">
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:flex xl:flex-wrap">
             <div className="relative sm:col-span-2 xl:w-64">
               <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
               <input className="soft-input pl-10" placeholder="Buscar por nome, status, pontos..." value={search} onChange={(event) => setSearch(event.target.value)} />
             </div>
             <SelectMenu className="xl:w-48" value={category} onChange={setCategory} options={categoryOptions} />
             <SelectMenu className="xl:w-48" value={assignee} onChange={setAssignee} options={memberOptions} />
-            <Button variant="secondary" onClick={clearFilters}>
+            <Button variant="secondary" className="w-full sm:w-auto" onClick={clearFilters}>
               <ListFilter className="h-4 w-4" />
               Limpar
             </Button>

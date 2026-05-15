@@ -339,23 +339,23 @@ export default function Family() {
       {currentFamily && (
         <Card className="mb-6 overflow-hidden bg-gradient-to-br from-white via-rose-50/40 to-blue-50/50">
           <div className="grid gap-5 lg:grid-cols-[1fr_360px] lg:items-center">
-            <div className="flex items-center gap-4">
+            <div className="flex min-w-0 items-center gap-4">
               <div className="h-24 w-24 shrink-0 overflow-hidden rounded-[26px] bg-gradient-to-br from-rose-100 to-violet-100 shadow-card">
                 {currentFamily.image_url ? <img src={currentFamily.image_url} alt={currentFamily.name} className="h-full w-full object-cover" /> : <div className="grid h-full w-full place-items-center text-3xl font-bold text-blush">{currentFamily.name?.[0]}</div>}
               </div>
-              <div>
+              <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-2xl font-bold text-ink">{currentFamily.name}</h2>
+                  <h2 className="break-words text-2xl font-bold text-ink">{currentFamily.name}</h2>
                   {canAdmin && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700"><ShieldCheck className="h-3 w-3" /> admin</span>}
                 </div>
                 <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">{currentFamily.description || "Casa organizada, rotina mais leve e um ranking para manter todo mundo junto."}</p>
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <button onClick={copyInviteCode} className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 text-left shadow-card transition hover:-translate-y-0.5 hover:bg-rose-50">
-                <span>
+              <button onClick={copyInviteCode} className="flex min-w-0 items-center justify-between rounded-2xl bg-white px-4 py-3 text-left shadow-card transition hover:-translate-y-0.5 hover:bg-rose-50">
+                <span className="min-w-0">
                   <span className="block text-xs font-bold text-muted">Convite</span>
-                  <span className="font-bold text-blush">{currentFamily.invite_code}</span>
+                  <span className="block truncate font-bold text-blush">{currentFamily.invite_code}</span>
                 </span>
                 <Copy className="h-5 w-5 text-blush" />
               </button>

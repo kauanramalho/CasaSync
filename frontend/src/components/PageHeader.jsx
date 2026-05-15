@@ -87,13 +87,13 @@ export default function PageHeader({ title, subtitle, action, user }) {
   }
 
   return (
-    <header className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-      <div>
+    <header className="mb-8 flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="min-w-0">
         <h1 className="page-title">{title}</h1>
         {subtitle && <p className="mt-2 text-sm text-muted">{subtitle}</p>}
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex w-full min-w-0 flex-wrap items-center gap-3 lg:w-auto lg:justify-end">
         <GlobalSearch />
 
         <div ref={notificationsRef} className="relative">
@@ -113,7 +113,7 @@ export default function PageHeader({ title, subtitle, action, user }) {
             )}
           </button>
           {openNotifications && (
-            <div className="absolute right-0 top-14 z-50 w-[min(380px,calc(100vw-2rem))] overflow-hidden rounded-[26px] border border-white/80 bg-white/95 shadow-soft backdrop-blur-xl animate-in">
+            <div className="fixed left-4 right-4 top-24 z-50 overflow-hidden rounded-[26px] border border-white/80 bg-white/95 shadow-soft backdrop-blur-xl animate-in sm:absolute sm:left-auto sm:right-0 sm:top-14 sm:w-[min(380px,calc(100vw-2rem))]">
               <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
                 <div>
                   <p className="font-bold text-ink">Notificacoes</p>
@@ -221,7 +221,7 @@ export default function PageHeader({ title, subtitle, action, user }) {
           </button>
 
           {openUserMenu && (
-            <div className="absolute right-0 top-14 z-50 w-64 overflow-hidden rounded-[24px] border border-white/80 bg-white/95 p-2 shadow-soft backdrop-blur-xl animate-in">
+            <div className="fixed left-4 right-4 top-24 z-50 overflow-hidden rounded-[24px] border border-white/80 bg-white/95 p-2 shadow-soft backdrop-blur-xl animate-in sm:absolute sm:left-auto sm:right-0 sm:top-14 sm:w-64">
               <button
                 type="button"
                 onClick={() => {

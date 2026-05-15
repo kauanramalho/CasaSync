@@ -1,9 +1,17 @@
 import { findColor } from "./categoryDesign";
 
+const taskSortCollator = new Intl.Collator("pt-BR", { sensitivity: "base", numeric: true });
+
 export const priorityPoints = {
   baixa: 5,
   media: 10,
   alta: 20
+};
+
+const prioritySortRank = {
+  alta: 0,
+  media: 1,
+  baixa: 2
 };
 
 export const memberChartColors = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"];
@@ -69,6 +77,63 @@ export function getAssigneeNames(task, fallback = "Sem responsavel") {
   const names = getTaskAssignees(task).map((user) => user.name).filter(Boolean);
   if (!names.length) return fallback;
   return new Intl.ListFormat("pt-BR", { style: "long", type: "conjunction" }).format(names);
+}
+
+function safeDateTime(value, fallback = Number.MAX_SAFE_INTEGER) {
+  const time = value ? new Date(value).getTime() : fallback;
+  return Number.isNaN(time) ? fallback : time;
+}
+
+function taskStatusGroup(task) {
+  if (task?.status === "concluida") return 2;
+  if (task?.status === "atrasada") return 0;
+  return 1;
+}
+
+function taskStatusRank(task) {
+  const ranks = {
+    atrasada: 0,
+    em_andamento: 1,
+    pendente: 2,
+    concluida: 3
+  };
+  return ranks[task?.status] ?? 2;
+}
+
+function compareText(left, right) {
+  return taskSortCollator.compare(left || "", right || "");
+}
+
+export function compareTasksForDisplay(left, right) {
+  const statusGroupDelta = taskStatusGroup(left) - taskStatusGroup(right);
+  if (statusGroupDelta) return statusGroupDelta;
+
+  const dueDateDelta = safeDateTime(left?.due_date) - safeDateTime(right?.due_date);
+  if (dueDateDelta) return dueDateDelta;
+
+  const priorityDelta = (prioritySortRank[left?.priority] ?? 1) - (prioritySortRank[right?.priority] ?? 1);
+  if (priorityDelta) return priorityDelta;
+
+  const statusDelta = taskStatusRank(left) - taskStatusRank(right);
+  if (statusDelta) return statusDelta;
+
+  const categoryDelta = compareText(getCategoryName(left?.category, ""), getCategoryName(right?.category, ""));
+  if (categoryDelta) return categoryDelta;
+
+  const createdAtDelta = safeDateTime(right?.created_at, 0) - safeDateTime(left?.created_at, 0);
+  if (createdAtDelta) return createdAtDelta;
+
+  const assigneeDelta = compareText(getAssigneeNames(left, ""), getAssigneeNames(right, ""));
+  if (assigneeDelta) return assigneeDelta;
+
+  return compareText(left?.title, right?.title);
+}
+
+export function sortTasksForDisplay(tasks = []) {
+  return [...tasks]
+    .map((task, index) => ({ task, index }))
+    .sort((left, right) => compareTasksForDisplay(left.task, right.task) || left.index - right.index)
+    .map((item) => item.task);
 }
 
 export function getTaskPointLabel(task) {

@@ -73,7 +73,7 @@ export default function AppLayout() {
   }
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[280px_1fr]">
+    <div className="min-h-screen lg:grid lg:grid-cols-[280px_minmax(0,1fr)]">
       <aside className="sticky top-0 z-20 hidden h-screen flex-col border-r border-white/80 bg-white/70 p-6 shadow-soft backdrop-blur-xl lg:flex">
         <LogoMark subtitle={family?.name || "Minha familia"} />
         {family && <p className="mt-2 pl-[60px] text-xs font-medium text-muted">Código: {family.invite_code}</p>}
@@ -112,7 +112,7 @@ export default function AppLayout() {
         </button>
       </aside>
 
-      <div className="flex min-h-screen flex-col">
+      <div className="flex min-h-screen min-w-0 flex-col">
         <div className="sticky top-0 z-10 border-b border-white/70 bg-white/75 px-4 py-3 backdrop-blur-xl lg:hidden">
           <LogoMark subtitle={family?.name || "Minha familia"} />
           <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
@@ -132,7 +132,7 @@ export default function AppLayout() {
             ))}
           </div>
         </div>
-        <main className="flex-1 px-4 py-6 md:px-8 lg:px-10 lg:py-8">
+        <main className="min-w-0 flex-1 overflow-x-hidden px-4 py-6 md:px-8 lg:px-10 lg:py-8">
           <Outlet />
         </main>
         <footer className="pb-8 text-center text-sm text-muted">CasaSync © 2026 · Feito com amor para nós</footer>

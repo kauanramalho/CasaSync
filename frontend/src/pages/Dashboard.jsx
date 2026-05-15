@@ -16,6 +16,7 @@ import { categoriesApi, coupleApi, dashboardApi, familiesApi, tasksApi } from ".
 import { emitAppDataChanged } from "../utils/events";
 import { formatDate, normalizeApiError } from "../utils/formatters";
 import { getHiddenRecentTaskIds, hideRecentTask } from "../utils/recentTasks";
+import { sortTasksForDisplay } from "../utils/tasks";
 
 const statMeta = {
   done: { icon: CheckCircle2, tone: "emerald" },
@@ -248,7 +249,7 @@ export default function Dashboard() {
   const ranking = useMemo(() => dashboard?.ranking ?? [], [dashboard]);
   const recentTasks = useMemo(() => {
     const hidden = new Set(hiddenRecentIds);
-    return (dashboard?.recent_tasks ?? []).filter((task) => !hidden.has(task.id)).slice(0, 6);
+    return sortTasksForDisplay((dashboard?.recent_tasks ?? []).filter((task) => !hidden.has(task.id)).slice(0, 6));
   }, [dashboard, hiddenRecentIds]);
   const couplePreviewItems = useMemo(() => buildCouplePreviewItems(coupleSpace), [coupleSpace]);
 
@@ -290,9 +291,9 @@ export default function Dashboard() {
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.15fr_1fr]">
         <Card>
-          <div className="mb-5 flex items-center justify-between">
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="section-title">Tarefas recentes</h2>
-            <Link to="/tarefas/nova" className="rounded-2xl bg-gradient-to-r from-peach to-blush px-4 py-2 text-sm font-semibold text-white">
+            <Link to="/tarefas/nova" className="inline-flex items-center justify-center rounded-2xl bg-gradient-to-r from-peach to-blush px-4 py-2 text-sm font-semibold text-white">
               Nova tarefa
             </Link>
           </div>
@@ -300,7 +301,7 @@ export default function Dashboard() {
         </Card>
 
         <Card>
-          <div className="mb-5 flex items-center justify-between">
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="section-title">Produtividade da semana</h2>
             <div className="flex flex-wrap items-center justify-end gap-2 text-[11px] font-bold">
               <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">Concluidas</span>
@@ -365,16 +366,16 @@ export default function Dashboard() {
           </div>
           <div className="space-y-4">
             {ranking.slice(0, 3).map((item) => (
-              <div key={item.user.id} className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="font-semibold text-ink">
+              <div key={item.user.id} className="flex min-w-0 items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-ink">
                     {item.position}. {item.user.name}
                   </p>
-                  <div className="mt-2 h-2 w-40 rounded-full bg-slate-100">
+                  <div className="mt-2 h-2 w-full max-w-40 rounded-full bg-slate-100">
                     <div className="h-2 rounded-full bg-gradient-to-r from-blue-400 to-blush" style={{ width: `${Math.min(100, item.points / 2)}%` }} />
                   </div>
                 </div>
-                <p className="font-bold text-ink">{item.points} pts</p>
+                <p className="shrink-0 font-bold text-ink">{item.points} pts</p>
               </div>
             ))}
           </div>

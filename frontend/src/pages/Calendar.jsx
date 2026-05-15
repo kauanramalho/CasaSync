@@ -18,7 +18,7 @@ import { categoriesApi, familiesApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { formatDate, normalizeApiError } from "../utils/formatters";
 import { buildMonthDays, getStoredPreferences, getWeekdayLabels, startOfWeek as getPreferenceStartOfWeek } from "../utils/preferences";
-import { getCategoryHex, getTaskPointLabel } from "../utils/tasks";
+import { getCategoryHex, getTaskPointLabel, sortTasksForDisplay } from "../utils/tasks";
 
 const weekdays = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const viewModes = [
@@ -26,7 +26,6 @@ const viewModes = [
   { key: "week", label: "Semana" },
   { key: "list", label: "Lista" }
 ];
-const priorityWeight = { alta: 3, media: 2, baixa: 1 };
 const priorityDot = {
   alta: "bg-rose-400",
   media: "bg-orange-400",
@@ -80,14 +79,7 @@ function periodLabel(baseDate, viewMode, weekStart) {
 }
 
 function sortCalendarTasks(tasks = []) {
-  return [...tasks].sort((a, b) => {
-    const priorityDelta = (priorityWeight[b.priority] || 0) - (priorityWeight[a.priority] || 0);
-    if (priorityDelta) return priorityDelta;
-    const aDate = a.due_date ? new Date(a.due_date).getTime() : Number.MAX_SAFE_INTEGER;
-    const bDate = b.due_date ? new Date(b.due_date).getTime() : Number.MAX_SAFE_INTEGER;
-    if (aDate !== bDate) return aDate - bDate;
-    return new Date(a.created_at || 0) - new Date(b.created_at || 0);
-  });
+  return sortTasksForDisplay(tasks);
 }
 
 function clamp(value, min, max) {
@@ -551,7 +543,7 @@ export default function Calendar() {
                     <div key={task.id} className="grid gap-3 px-4 py-3 md:grid-cols-[64px_1fr_180px_120px] md:items-center">
                       <span className="text-sm font-bold text-muted">{timeLabel(task.due_date)}</span>
                       <div className="min-w-0">
-                        <button type="button" onClick={() => setEditingTask(task)} className="truncate text-left font-bold text-ink hover:text-blush">
+                        <button type="button" onClick={() => setEditingTask(task)} className="block max-w-full truncate text-left font-bold text-ink hover:text-blush">
                           {task.title}
                         </button>
                         <div className="mt-2 flex flex-wrap gap-2">
@@ -583,7 +575,7 @@ export default function Calendar() {
           <button onClick={() => movePeriod(-1)} className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-muted shadow-card">
             <ChevronLeft className="h-5 w-5" />
           </button>
-          <h2 className="min-w-52 text-xl font-bold capitalize text-ink">{periodLabel(baseDate, viewMode, preferences.weekStart)}</h2>
+          <h2 className="min-w-0 flex-1 text-xl font-bold capitalize text-ink sm:min-w-52 sm:flex-none">{periodLabel(baseDate, viewMode, preferences.weekStart)}</h2>
           <button onClick={() => movePeriod(1)} className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-muted shadow-card">
             <ChevronRight className="h-5 w-5" />
           </button>

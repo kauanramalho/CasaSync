@@ -91,14 +91,14 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-slate-900/25 px-4 py-8 backdrop-blur-sm"
+      className="fixed inset-0 z-50 grid place-items-center bg-slate-900/25 px-3 py-4 backdrop-blur-sm sm:px-4 sm:py-8"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !saving) onClose?.();
       }}
     >
-      <div className="max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-soft animate-in" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
-          <div>
+      <div className="max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-[24px] border border-white/80 bg-white shadow-soft animate-in sm:rounded-[28px]" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-4 sm:px-6 sm:py-5">
+          <div className="min-w-0">
             <p className="section-title">Editar tarefa</p>
             <p className="mt-1 text-sm text-muted">Ajuste responsaveis, status, prioridade e prazo em um so lugar.</p>
           </div>
@@ -107,7 +107,7 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="max-h-[calc(92vh-84px)] overflow-y-auto px-6 py-5">
+        <form onSubmit={handleSubmit} className="max-h-[calc(92vh-84px)] overflow-y-auto px-4 py-5 sm:px-6">
           <div className="grid gap-5 md:grid-cols-2">
             <div className="md:col-span-2">
               <label className="mb-2 block text-sm font-semibold text-ink">Nome</label>
@@ -173,11 +173,11 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
             </p>
           )}
 
-          <div className="mt-6 flex justify-end gap-3">
-            <Button type="button" variant="secondary" onClick={onClose}>
+          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={onClose}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={saving}>
+            <Button type="submit" className="w-full sm:w-auto" disabled={saving}>
               <Save className="h-5 w-5" />
               Salvar edicao
             </Button>
