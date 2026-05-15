@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarHeart,
   CheckCircle2,
@@ -23,13 +23,14 @@ import Button from "../components/Button";
 import Card from "../components/Card";
 import CategoryStylePicker, { getPaletteIdForColor } from "../components/CategoryStylePicker";
 import DateTimePicker from "../components/DateTimePicker";
+import ImageAdjustField from "../components/ImageAdjustField";
 import PageHeader from "../components/PageHeader";
 import { categoryIconMap } from "../components/Badges";
 import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
+import { useToast } from "../hooks/useToast";
 import { coupleApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
-import { readFileAsDataUrl, validateImageFile } from "../utils/files";
 import { formatDate, normalizeApiError, toIsoOrNull } from "../utils/formatters";
 import { getStoredPreferences } from "../utils/preferences";
 import { findColor } from "../utils/categoryDesign";
@@ -78,28 +79,34 @@ function formatTime(value) {
 export default function CoupleSpace() {
   const { user } = useAuth();
   const { addNotification } = useNotifications();
+  const { showToast } = useToast();
   const [space, setSpace] = useState({ goals: [], date_ideas: [], notes: [] });
   const [goalForm, setGoalForm] = useState(initialGoal);
   const [dateForm, setDateForm] = useState(initialDate);
   const [noteForm, setNoteForm] = useState(initialNote);
-  const [dateImageError, setDateImageError] = useState("");
   const [noteIcons, setNoteIcons] = useState(getStoredNoteIcons);
   const [activeNotePalette, setActiveNotePalette] = useState("pastel");
   const [editingNote, setEditingNote] = useState(null);
   const [error, setError] = useState("");
-  const dateImageInputRef = useRef(null);
+  const dateImageRef = useRef(null);
 
-  async function load() {
+  const showOperationError = useCallback((err) => {
+    const message = normalizeApiError(err);
+    setError(message);
+    showToast({ type: "error", message });
+  }, [showToast]);
+
+  const load = useCallback(async function load() {
     try {
       setSpace(await coupleApi.get());
     } catch (err) {
-      setError(normalizeApiError(err));
+      showOperationError(err);
     }
-  }
+  }, [showOperationError]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const notePreviewColor = useMemo(() => findColor(noteForm.color), [noteForm.color]);
 
@@ -121,34 +128,14 @@ export default function CoupleSpace() {
     });
   }
 
-  async function handleDateImageFile(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const validationError = validateImageFile(file);
-    if (validationError) {
-      setDateImageError(validationError);
-      event.target.value = "";
-      return;
-    }
-
-    try {
-      const dataUrl = await readFileAsDataUrl(file);
-      setDateImageError("");
-      setDateForm((current) => ({ ...current, image_url: dataUrl }));
-    } catch {
-      setDateImageError("Nao foi possivel carregar a imagem.");
-    }
-  }
-
   function clearDateImage() {
-    setDateImageError("");
     setDateForm((current) => ({ ...current, image_url: "" }));
-    if (dateImageInputRef.current) dateImageInputRef.current.value = "";
+    dateImageRef.current?.resetDraft();
   }
 
   async function createGoal(event) {
     event.preventDefault();
+    setError("");
     try {
       await coupleApi.createGoal({
         ...goalForm,
@@ -156,97 +143,147 @@ export default function CoupleSpace() {
         target_date: toIsoOrNull(goalForm.target_date)
       });
       addNotification({ title: "Nova meta do casal", description: `${goalForm.title} entrou no cantinho de metas.`, type: "couple", actor: user?.name });
+      showToast({ type: "success", message: "Meta do casal criada com sucesso." });
       setGoalForm(initialGoal);
       emitAppDataChanged();
       load();
     } catch (err) {
-      setError(normalizeApiError(err));
+      showOperationError(err);
     }
   }
 
   async function updateGoal(goal, payload) {
+    setError("");
     try {
       await coupleApi.updateGoal(goal.id, payload);
+      showToast({ type: "success", message: "Meta do casal editada com sucesso." });
       emitAppDataChanged();
       load();
     } catch (err) {
-      setError(normalizeApiError(err));
+      showOperationError(err);
     }
   }
 
   async function removeGoal(goal) {
-    await coupleApi.deleteGoal(goal.id);
-    emitAppDataChanged();
-    load();
+    setError("");
+    try {
+      await coupleApi.deleteGoal(goal.id);
+      showToast({ type: "success", message: "Meta do casal removida com sucesso." });
+      emitAppDataChanged();
+      load();
+    } catch (err) {
+      showOperationError(err);
+    }
   }
 
   async function createDateIdea(event) {
     event.preventDefault();
+    setError("");
     try {
-      await coupleApi.createDateIdea({ ...dateForm, suggested_date: toIsoOrNull(dateForm.suggested_date) });
+      const imageUrl = await dateImageRef.current?.getValue();
+      await coupleApi.createDateIdea({ ...dateForm, image_url: imageUrl, suggested_date: toIsoOrNull(dateForm.suggested_date) });
       addNotification({ title: "Nova ideia de date", description: `${dateForm.title} foi adicionada para um momento especial.`, type: "couple", actor: user?.name });
+      showToast({ type: "success", message: "Date criado com sucesso." });
       setDateForm(initialDate);
       clearDateImage();
       emitAppDataChanged();
       load();
     } catch (err) {
-      setError(normalizeApiError(err));
+      showOperationError(err);
     }
   }
 
   async function toggleDateIdea(idea) {
-    await coupleApi.updateDateIdea(idea.id, { is_done: !idea.is_done });
-    emitAppDataChanged();
-    load();
+    setError("");
+    try {
+      await coupleApi.updateDateIdea(idea.id, { is_done: !idea.is_done });
+      showToast({ type: "success", message: "Date editado com sucesso." });
+      emitAppDataChanged();
+      load();
+    } catch (err) {
+      showOperationError(err);
+    }
   }
 
   async function toggleDateIdeaPinned(idea) {
-    await coupleApi.updateDateIdea(idea.id, { pinned: !idea.pinned });
-    emitAppDataChanged();
-    load();
+    setError("");
+    try {
+      await coupleApi.updateDateIdea(idea.id, { pinned: !idea.pinned });
+      showToast({ type: "success", message: "Date editado com sucesso." });
+      emitAppDataChanged();
+      load();
+    } catch (err) {
+      showOperationError(err);
+    }
   }
 
   async function removeDateIdea(idea) {
-    await coupleApi.deleteDateIdea(idea.id);
-    emitAppDataChanged();
-    load();
+    setError("");
+    try {
+      await coupleApi.deleteDateIdea(idea.id);
+      showToast({ type: "success", message: "Date removido com sucesso." });
+      emitAppDataChanged();
+      load();
+    } catch (err) {
+      showOperationError(err);
+    }
   }
 
   async function createNote(event) {
     event.preventDefault();
+    setError("");
     try {
       const created = await coupleApi.createNote({ message: noteForm.message, color: noteForm.color });
       persistNoteIcon(created?.id, noteForm.icon);
       addNotification({ title: "Nova nota rapida", description: "Uma mensagem carinhosa foi guardada no Espaco do Casal.", type: "couple", actor: user?.name });
+      showToast({ type: "success", message: "Anotacao criada com sucesso." });
       setNoteForm(initialNote);
       setActiveNotePalette(getPaletteIdForColor(initialNote.color));
       emitAppDataChanged();
       load();
     } catch (err) {
-      setError(normalizeApiError(err));
+      showOperationError(err);
     }
   }
 
   async function saveNote() {
     if (!editingNote) return;
-    await coupleApi.updateNote(editingNote.id, { message: editingNote.message, color: editingNote.color });
-    persistNoteIcon(editingNote.id, editingNote.icon);
-    setEditingNote(null);
-    emitAppDataChanged();
-    load();
+    setError("");
+    try {
+      await coupleApi.updateNote(editingNote.id, { message: editingNote.message, color: editingNote.color });
+      persistNoteIcon(editingNote.id, editingNote.icon);
+      setEditingNote(null);
+      showToast({ type: "success", message: "Anotacao editada com sucesso." });
+      emitAppDataChanged();
+      load();
+    } catch (err) {
+      showOperationError(err);
+    }
   }
 
   async function toggleNotePinned(note) {
-    await coupleApi.updateNote(note.id, { pinned: !note.pinned });
-    emitAppDataChanged();
-    load();
+    setError("");
+    try {
+      await coupleApi.updateNote(note.id, { pinned: !note.pinned });
+      showToast({ type: "success", message: "Alteracoes salvas com sucesso." });
+      emitAppDataChanged();
+      load();
+    } catch (err) {
+      showOperationError(err);
+    }
   }
 
   async function removeNote(note) {
-    await coupleApi.deleteNote(note.id);
-    removeStoredNoteIcon(note.id);
-    emitAppDataChanged();
-    load();
+    setError("");
+    try {
+      await coupleApi.deleteNote(note.id);
+      removeStoredNoteIcon(note.id);
+      showToast({ type: "success", message: "Anotacao removida com sucesso." });
+      emitAppDataChanged();
+      load();
+    } catch (err) {
+      showOperationError(err);
+    }
   }
 
   return (
@@ -319,33 +356,26 @@ export default function CoupleSpace() {
                   placeholder={isDataImage(dateForm.image_url) ? "Imagem local selecionada" : "Imagem opcional (URL)"}
                   value={isDataImage(dateForm.image_url) ? "" : dateForm.image_url}
                   onChange={(event) => {
-                    setDateImageError("");
                     setDateForm((current) => ({ ...current, image_url: event.target.value }));
                   }}
                 />
               </div>
-              <div className="rounded-[22px] border border-slate-100 bg-white/70 p-3">
-                <div className="flex flex-wrap items-center gap-3">
-                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-white px-4 py-2 text-sm font-bold text-muted shadow-card transition hover:text-blush">
-                    <ImagePlus className="h-4 w-4" />
-                    Escolher imagem
-                    <input ref={dateImageInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleDateImageFile} />
-                  </label>
-                  {dateForm.image_url && (
-                    <button type="button" onClick={clearDateImage} className="inline-flex items-center gap-2 rounded-2xl bg-rose-50 px-4 py-2 text-sm font-bold text-rose-600">
-                      <Trash2 className="h-4 w-4" />
-                      Remover
-                    </button>
-                  )}
-                  <span className="text-xs font-semibold text-muted">PNG, JPG ou WEBP ate 2 MB.</span>
-                </div>
-                {dateImageError && <p className="mt-3 rounded-2xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600">{dateImageError}</p>}
-                {dateForm.image_url && (
-                  <div className="mt-3 overflow-hidden rounded-[20px] border border-white/80 bg-slate-50">
-                    <img src={dateForm.image_url} alt="Preview do date" className="h-40 w-full object-cover" />
-                  </div>
-                )}
-              </div>
+              <ImageAdjustField
+                ref={dateImageRef}
+                value={dateForm.image_url}
+                label="Imagem do date"
+                chooseLabel="Escolher imagem"
+                removeLabel="Remover imagem"
+                previewClassName="h-40 w-full rounded-[20px]"
+                outputWidth={768}
+                outputHeight={432}
+                outputQuality={0.86}
+                onRemove={clearDateImage}
+                onError={(message) => {
+                  setError(message);
+                  showToast({ type: "error", message });
+                }}
+              />
               <Button type="submit" className="w-full">
                 <Plus className="h-5 w-5" />
                 Salvar date

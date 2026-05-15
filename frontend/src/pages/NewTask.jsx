@@ -11,6 +11,7 @@ import SelectMenu from "../components/SelectMenu";
 import TaskReminderFields from "../components/TaskReminderFields";
 import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
+import { useToast } from "../hooks/useToast";
 import { categoriesApi, familiesApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError, toIsoOrNull } from "../utils/formatters";
@@ -19,6 +20,7 @@ import { formatReminderLead, getReminderPayload, getReminderValidationError } fr
 export default function NewTask() {
   const { user } = useAuth();
   const { addNotification } = useNotifications();
+  const { showToast } = useToast();
   const navigate = useNavigate();
   const [categories, setCategories] = useState([]);
   const [members, setMembers] = useState([]);
@@ -99,10 +101,13 @@ export default function NewTask() {
         type: created.reminder_enabled ? "reminder" : "task",
         actor: user?.name
       });
+      showToast({ type: "success", message: "Tarefa criada com sucesso." });
       emitAppDataChanged();
       navigate("/tarefas");
     } catch (err) {
-      setError(normalizeApiError(err));
+      const message = normalizeApiError(err);
+      setError(message);
+      showToast({ type: "error", message });
     }
   }
 

@@ -30,6 +30,17 @@ function formatLocalDateTime(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+function parseManualTime(value) {
+  const trimmed = value.trim();
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour > 23 || minute > 59) return null;
+  return { hour, minute, label: `${pad(hour)}:${pad(minute)}` };
+}
+
 function sameDay(left, right) {
   return Boolean(
     left &&
@@ -72,6 +83,8 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
   const selectedDate = useMemo(() => parseLocalDateTime(value), [value]);
   const [open, setOpen] = useState(false);
   const [viewDate, setViewDate] = useState(() => selectedDate ?? new Date());
+  const [timeInput, setTimeInput] = useState(() => (selectedDate ? `${pad(selectedDate.getHours())}:${pad(selectedDate.getMinutes())}` : ""));
+  const [timeError, setTimeError] = useState("");
   const [popoverStyle, setPopoverStyle] = useState(null);
   const wrapperRef = useRef(null);
   const buttonRef = useRef(null);
@@ -82,6 +95,11 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
 
   useEffect(() => {
     if (selectedDate) setViewDate(selectedDate);
+  }, [selectedDate]);
+
+  useEffect(() => {
+    setTimeInput(selectedDate ? `${pad(selectedDate.getHours())}:${pad(selectedDate.getMinutes())}` : "");
+    setTimeError("");
   }, [selectedDate]);
 
   useEffect(() => {
@@ -145,6 +163,28 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
     if (!selectedDate) nextDate.setHours(9, 0, 0, 0);
     if (part === "hour") nextDate.setHours((nextDate.getHours() + amount + 24) % 24);
     if (part === "minute") nextDate.setMinutes((nextDate.getMinutes() + amount + 60) % 60);
+    setTimeError("");
+    onChange?.(formatLocalDateTime(nextDate));
+  }
+
+  function commitManualTime() {
+    if (!timeInput.trim()) {
+      setTimeError("");
+      return;
+    }
+
+    const parsed = parseManualTime(timeInput);
+    if (!parsed) {
+      setTimeError("Informe um horario valido, como 08:30.");
+      return;
+    }
+
+    const base = selectedDate ?? new Date();
+    const nextDate = new Date(base);
+    if (!selectedDate) nextDate.setSeconds(0, 0);
+    nextDate.setHours(parsed.hour, parsed.minute, 0, 0);
+    setTimeInput(parsed.label);
+    setTimeError("");
     onChange?.(formatLocalDateTime(nextDate));
   }
 
@@ -155,6 +195,7 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
   function chooseToday() {
     const now = new Date();
     setViewDate(now);
+    setTimeError("");
     onChange?.(formatLocalDateTime(now));
   }
 
@@ -177,6 +218,8 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
             type="button"
             onClick={(event) => {
               event.stopPropagation();
+              setTimeInput("");
+              setTimeError("");
               onChange?.("");
             }}
             className="mr-2 grid h-8 w-8 shrink-0 place-items-center rounded-xl text-muted transition hover:bg-blush/10 hover:text-blush"
@@ -252,6 +295,28 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
                 <Clock3 className="h-4 w-4 text-blush" />
                 Horario
               </div>
+              <label className="mb-3 block">
+                <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted">Digite o horario</span>
+                <input
+                  className={clsx("soft-input bg-white/90 text-center font-black tabular-nums", timeError && "border-rose-300 text-rose-700 ring-4 ring-rose-100")}
+                  inputMode="text"
+                  placeholder="08:30"
+                  value={timeInput}
+                  onChange={(event) => {
+                    setTimeInput(event.target.value);
+                    setTimeError("");
+                  }}
+                  onBlur={commitManualTime}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      commitManualTime();
+                    }
+                  }}
+                  aria-invalid={Boolean(timeError)}
+                />
+                {timeError && <span className="mt-2 block rounded-2xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600">{timeError}</span>}
+              </label>
               <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
                 <TimeSpinner label="Hora" value={(selectedDate ?? new Date(0, 0, 1, 9)).getHours()} onIncrement={(amount) => incrementTime("hour", amount)} />
                 <span className="pt-6 text-xl font-bold text-muted">:</span>
@@ -260,7 +325,15 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
             </div>
 
             <div className="mt-4 flex items-center justify-between gap-3">
-              <button type="button" onClick={() => onChange?.("")} className="rounded-2xl px-3 py-2 text-sm font-bold text-muted hover:bg-slate-50 hover:text-ink">
+              <button
+                type="button"
+                onClick={() => {
+                  setTimeInput("");
+                  setTimeError("");
+                  onChange?.("");
+                }}
+                className="rounded-2xl px-3 py-2 text-sm font-bold text-muted hover:bg-slate-50 hover:text-ink"
+              >
                 Limpar
               </button>
               <div className="flex gap-2">

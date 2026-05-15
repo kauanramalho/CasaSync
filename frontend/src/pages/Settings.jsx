@@ -22,6 +22,7 @@ import SelectMenu from "../components/SelectMenu";
 import { useAppPreferences } from "../hooks/useAppPreferences";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
+import { useToast } from "../hooks/useToast";
 import { familiesApi, integrationsApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError } from "../utils/formatters";
@@ -43,6 +44,7 @@ export default function Settings() {
   const navigate = useNavigate();
   const { preferences, updatePreference, updatePreferences } = useAppPreferences();
   const { paletteId, palettes, selectPalette } = useTheme();
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState("general");
   const [calendarStatus, setCalendarStatus] = useState(null);
   const [calendarMessage, setCalendarMessage] = useState("");
@@ -51,7 +53,6 @@ export default function Settings() {
   const [familyForm, setFamilyForm] = useState({ name: "" });
   const [profileOpen, setProfileOpen] = useState(false);
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
   const [savingFamily, setSavingFamily] = useState(false);
 
   useEffect(() => {
@@ -73,14 +74,18 @@ export default function Settings() {
       if (membersResult.status === "fulfilled") {
         setCurrentMember(membersResult.value.find((member) => member.user_id === user?.id) || null);
       }
-      if (calendarResult.status === "rejected") setError(normalizeApiError(calendarResult.reason));
+      if (calendarResult.status === "rejected") {
+        const message = normalizeApiError(calendarResult.reason);
+        setError(message);
+        showToast({ type: "error", message });
+      }
     }
 
     loadSettings();
     return () => {
       alive = false;
     };
-  }, [user?.id]);
+  }, [showToast, user?.id]);
 
   const canAdminFamily = isAdminRole(currentMember?.role);
 
@@ -89,13 +94,14 @@ export default function Settings() {
       const response = await integrationsApi.googleCalendarConnectUrl();
       setCalendarMessage(response.message);
     } catch (err) {
-      setError(normalizeApiError(err));
+      const message = normalizeApiError(err);
+      setError(message);
+      showToast({ type: "error", message });
     }
   }
 
   async function saveFamilySettings() {
     setError("");
-    setMessage("");
     setSavingFamily(true);
     try {
       const nextName = familyForm.name.trim();
@@ -117,9 +123,11 @@ export default function Settings() {
       setFamily(updated);
       setFamilyForm({ name: updated.name || "" });
       emitAppDataChanged();
-      setMessage("Alteracoes salvas com sucesso.");
+      showToast({ type: "success", message: "Alteracoes salvas com sucesso." });
     } catch (err) {
-      setError(normalizeApiError(err));
+      const message = normalizeApiError(err);
+      setError(message);
+      showToast({ type: "error", message });
     } finally {
       setSavingFamily(false);
     }
@@ -128,12 +136,13 @@ export default function Settings() {
   async function handleDeleteAccount() {
     if (!window.confirm("Excluir sua conta? Esta acao desativa seu acesso e remove voce das familias em que participa.")) return;
     setError("");
-    setMessage("");
     try {
       await deleteAccount();
       navigate("/login", { replace: true });
     } catch (err) {
-      setError(normalizeApiError(err));
+      const message = normalizeApiError(err);
+      setError(message);
+      showToast({ type: "error", message });
     }
   }
 
@@ -141,7 +150,6 @@ export default function Settings() {
     <>
       <PageHeader title="Configuracoes" user={user} />
       {error && <p className="mb-5 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</p>}
-      {message && <p className="mb-5 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-600">{message}</p>}
 
       <div className="mb-8 flex gap-3 overflow-x-auto border-b border-slate-200 pb-1">
         {tabs.map((tab) => {
@@ -198,6 +206,11 @@ export default function Settings() {
                 <span className="mb-2 block text-sm font-semibold text-muted">Nome da familia</span>
                 <input className="soft-input" value={familyForm.name} onChange={(event) => setFamilyForm({ name: event.target.value })} placeholder="Nome da familia" disabled={!canAdminFamily} />
               </label>
+              {family && !canAdminFamily && (
+                <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+                  Somente administradores podem alterar as configuracoes da familia.
+                </p>
+              )}
               <label className="block">
                 <span className="mb-2 block text-sm font-semibold text-muted">Codigo de convite</span>
                 <input className="soft-input" value={family?.invite_code || "Carregando..."} readOnly />

@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertCircle, CalendarHeart, CheckCircle2, Clock3, Heart, MessageCircleHeart, Pin, Plus, Star, Target } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { CategoryBadge } from "../components/Badges";
 import Button from "../components/Button";
 import Card from "../components/Card";
-import { staticChartTooltipProps, WeeklyTasksTooltip } from "../components/ChartTooltips";
 import PageHeader from "../components/PageHeader";
 import StatCard from "../components/StatCard";
 import TaskEditorModal from "../components/TaskEditorModal";
 import TaskList from "../components/TaskList";
+import WeeklyProductivityChart from "../components/WeeklyProductivityChart";
 import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
 import { categoriesApi, coupleApi, dashboardApi, familiesApi, tasksApi } from "../services/api";
@@ -167,25 +166,6 @@ function CouplePreviewItem({ item }) {
   );
 }
 
-function buildProductivityView(productivity = []) {
-  return productivity.map((point) => {
-    const doneTasks = point.tasks || [];
-    const pendingTasks = point.pending_tasks || [];
-    const overdueTasks = point.overdue_tasks || [];
-
-    return {
-      ...point,
-      done: point.done ?? doneTasks.length,
-      pending: point.pending ?? pendingTasks.length,
-      overdue: point.overdue ?? overdueTasks.length,
-      total: point.total ?? doneTasks.length + pendingTasks.length + overdueTasks.length,
-      doneTasks,
-      pendingTasks,
-      overdueTasks
-    };
-  });
-}
-
 export default function Dashboard() {
   const { user } = useAuth();
   const { addNotification } = useNotifications();
@@ -270,7 +250,6 @@ export default function Dashboard() {
     const hidden = new Set(hiddenRecentIds);
     return (dashboard?.recent_tasks ?? []).filter((task) => !hidden.has(task.id)).slice(0, 6);
   }, [dashboard, hiddenRecentIds]);
-  const productivityRows = useMemo(() => buildProductivityView(productivity), [productivity]);
   const couplePreviewItems = useMemo(() => buildCouplePreviewItems(coupleSpace), [coupleSpace]);
 
   const greeting = useMemo(() => {
@@ -329,21 +308,7 @@ export default function Dashboard() {
               <span className="rounded-full bg-rose-50 px-2.5 py-1 text-rose-700">Atrasadas</span>
             </div>
           </div>
-          <div className="chart-frame">
-            <div className="chart-canvas">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={productivityRows} margin={{ top: 18, right: 18, left: 2, bottom: 16 }} barCategoryGap="24%" maxBarSize={58}>
-                  <CartesianGrid vertical={false} stroke="var(--chart-grid)" strokeDasharray="4 6" />
-                  <XAxis dataKey="label" interval={0} minTickGap={4} height={34} tickMargin={10} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
-                  <YAxis width={34} tickMargin={8} allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
-                  <Tooltip cursor={{ fill: "rgb(var(--color-blush) / 0.08)" }} content={<WeeklyTasksTooltip />} {...staticChartTooltipProps} />
-                  <Bar dataKey="done" stackId="week" radius={[0, 0, 10, 10]} fill="var(--chart-3)" animationDuration={750} minPointSize={3} />
-                  <Bar dataKey="pending" stackId="week" fill="var(--chart-4)" animationDuration={900} minPointSize={3} />
-                  <Bar dataKey="overdue" stackId="week" radius={[12, 12, 0, 0]} fill="var(--chart-5)" animationDuration={1050} minPointSize={3} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+          <WeeklyProductivityChart productivity={productivity} />
         </Card>
       </div>
 

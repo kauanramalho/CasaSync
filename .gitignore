@@ -9,6 +9,11 @@ __pycache__/
 !.env.example
 
 node_modules/
+.npm-cache/
+.vercel/
+.vercel-appdata/
+.vercel-localappdata/
+.vercel-data/
 dist/
 build/
 .vite/

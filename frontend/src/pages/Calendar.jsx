@@ -13,6 +13,7 @@ import TaskEditorModal from "../components/TaskEditorModal";
 import { useAppPreferences } from "../hooks/useAppPreferences";
 import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
+import { useToast } from "../hooks/useToast";
 import { categoriesApi, familiesApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { formatDate, normalizeApiError } from "../utils/formatters";
@@ -253,6 +254,7 @@ export default function Calendar() {
   const { user } = useAuth();
   const { preferences } = useAppPreferences();
   const { addNotification } = useNotifications();
+  const { showToast } = useToast();
   const [baseDate, setBaseDate] = useState(new Date());
   const [viewMode, setViewMode] = useState("month");
   const [tasks, setTasks] = useState([]);
@@ -263,6 +265,7 @@ export default function Calendar() {
   const [editingTask, setEditingTask] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [error, setError] = useState("");
+  const [editError, setEditError] = useState("");
   const previewTimer = useRef(null);
 
   const load = useCallback(async function load() {
@@ -273,9 +276,11 @@ export default function Calendar() {
       setCategories(categoryRows);
       setMembers(memberRows);
     } catch (err) {
-      setError(normalizeApiError(err));
+      const message = normalizeApiError(err);
+      setError(message);
+      showToast({ type: "error", message });
     }
-  }, []);
+  }, [showToast]);
 
   useEffect(() => {
     load();
@@ -358,6 +363,7 @@ export default function Calendar() {
   }, [showPreview]);
 
   const handleComplete = useCallback(async function handleComplete(task) {
+    try {
     const updated = await tasksApi.complete(task.id);
     setTasks((current) => current.map((item) => (item.id === updated.id ? updated : item)));
     addNotification({
@@ -367,11 +373,17 @@ export default function Calendar() {
       actor: user?.name
     });
     emitAppDataChanged();
-  }, [addNotification, user?.name]);
+    } catch (err) {
+      const message = normalizeApiError(err);
+      setError(message);
+      showToast({ type: "error", message });
+    }
+  }, [addNotification, showToast, user?.name]);
 
   const handleCompleteAll = useCallback(async function handleCompleteAll(dayTasks) {
     const openTasks = dayTasks.filter((task) => task.status !== "concluida");
     if (!openTasks.length) return;
+    try {
     const updatedTasks = await Promise.all(openTasks.map((task) => tasksApi.complete(task.id)));
     const updatedById = new Map(updatedTasks.map((task) => [task.id, task]));
     setTasks((current) => current.map((task) => updatedById.get(task.id) || task));
@@ -382,11 +394,17 @@ export default function Calendar() {
       actor: user?.name
     });
     emitAppDataChanged();
-  }, [addNotification, user?.name]);
+    } catch (err) {
+      const message = normalizeApiError(err);
+      setError(message);
+      showToast({ type: "error", message });
+    }
+  }, [addNotification, showToast, user?.name]);
 
   const handleSaveEdit = useCallback(async function handleSaveEdit(payload) {
     if (!editingTask) return;
     setSavingEdit(true);
+    setEditError("");
     try {
       const updated = await tasksApi.update(editingTask.id, payload);
       addNotification({
@@ -396,14 +414,17 @@ export default function Calendar() {
         actor: user?.name
       });
       setTasks((current) => current.map((task) => (task.id === updated.id ? updated : task)));
+      showToast({ type: "success", message: "Tarefa editada com sucesso." });
       setEditingTask(null);
       emitAppDataChanged();
     } catch (err) {
-      setError(normalizeApiError(err));
+      const message = normalizeApiError(err);
+      setEditError(message);
+      showToast({ type: "error", message });
     } finally {
       setSavingEdit(false);
     }
-  }, [addNotification, editingTask, user?.name]);
+  }, [addNotification, editingTask, showToast, user?.name]);
 
   function renderMonthView() {
     return (
@@ -631,7 +652,11 @@ export default function Calendar() {
         categories={categories}
         members={members}
         saving={savingEdit}
-        onClose={() => setEditingTask(null)}
+        error={editError}
+        onClose={() => {
+          setEditError("");
+          setEditingTask(null);
+        }}
         onSave={handleSaveEdit}
       />
     </>

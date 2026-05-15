@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Activity,
@@ -21,21 +21,14 @@ import {
 import Avatar from "../components/Avatar";
 import Button from "../components/Button";
 import Card from "../components/Card";
+import ImageAdjustField from "../components/ImageAdjustField";
 import PageHeader from "../components/PageHeader";
 import SelectMenu from "../components/SelectMenu";
 import { useAuth } from "../hooks/useAuth";
+import { useToast } from "../hooks/useToast";
 import { dashboardApi, familiesApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError } from "../utils/formatters";
-
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
 
 function isAdminRole(role) {
   return role === "owner" || role === "admin";
@@ -54,6 +47,8 @@ function dateKey(value) {
 export default function Family() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { showToast } = useToast();
+  const familyImageRef = useRef(null);
   const [families, setFamilies] = useState([]);
   const [members, setMembers] = useState([]);
   const [monthlyRanking, setMonthlyRanking] = useState([]);
@@ -70,6 +65,7 @@ export default function Family() {
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
   const [leavingFamily, setLeavingFamily] = useState(false);
   const [decidingRequestId, setDecidingRequestId] = useState("");
+  const [savingFamily, setSavingFamily] = useState(false);
 
   const load = useCallback(async function load() {
     setError("");
@@ -189,22 +185,42 @@ export default function Family() {
     event.preventDefault();
     setMessage("");
     setError("");
+    setSavingFamily(true);
     try {
-      const updated = await familiesApi.updateCurrent({ ...familyForm, name: familyForm.name.trim() });
+      if (!currentFamily) {
+        throw new Error("Crie ou entre em uma familia antes de salvar as configuracoes.");
+      }
+      if (!canAdmin) {
+        throw new Error("Somente administradores podem alterar as configuracoes da familia.");
+      }
+      const nextName = familyForm.name.trim();
+      if (nextName.length < 2) {
+        throw new Error("Informe um nome de familia com pelo menos 2 caracteres.");
+      }
+      const imageUrl = await familyImageRef.current?.getValue();
+      const updated = await familiesApi.updateCurrent({
+        name: nextName,
+        description: familyForm.description.trim() || null,
+        image_url: imageUrl
+      });
       setFamilies((current) => [updated, ...current.filter((family) => family.id !== updated.id)]);
+      setFamilyForm({
+        name: updated.name || "",
+        description: updated.description || "",
+        image_url: updated.image_url || ""
+      });
+      familyImageRef.current?.resetDraft();
       setMessage("Configuracoes da familia atualizadas.");
+      showToast({ type: "success", message: "Configuracoes da familia atualizadas." });
       emitAppDataChanged();
       load();
     } catch (err) {
-      setError(normalizeApiError(err));
+      const message = normalizeApiError(err);
+      setError(message);
+      showToast({ type: "error", message });
+    } finally {
+      setSavingFamily(false);
     }
-  }
-
-  async function handleFamilyImage(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const dataUrl = await readFileAsDataUrl(file);
-    setFamilyForm((current) => ({ ...current, image_url: dataUrl }));
   }
 
   async function regenerateCode() {
@@ -438,21 +454,31 @@ export default function Family() {
             <Card>
               <h2 className="section-title">Configuracoes da familia</h2>
               <form onSubmit={updateFamily} className="mt-5 space-y-4">
-                <div className="flex items-center gap-3">
-                  <label className={`flex h-16 w-16 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-2xl bg-rose-50 text-blush shadow-card ${!canAdmin ? "pointer-events-none opacity-60" : ""}`}>
-                    {familyForm.image_url ? <img src={familyForm.image_url} alt="" className="h-full w-full object-cover" /> : <Camera className="h-6 w-6" />}
-                    <input type="file" accept="image/*" className="hidden" onChange={handleFamilyImage} disabled={!canAdmin} />
-                  </label>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-ink">Imagem da familia</p>
-                    <p className="text-xs text-muted">Upload com preview antes de salvar.</p>
-                  </div>
-                </div>
+                {!canAdmin && (
+                  <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+                    Somente administradores podem alterar estas configuracoes.
+                  </p>
+                )}
+                <ImageAdjustField
+                  ref={familyImageRef}
+                  value={familyForm.image_url}
+                  label="Imagem da familia"
+                  chooseLabel="Escolher imagem"
+                  removeLabel="Remover imagem"
+                  previewClassName="h-20 w-20 rounded-2xl"
+                  emptyLabel={<Camera className="h-7 w-7 text-blush" />}
+                  disabled={!canAdmin}
+                  onError={(message) => {
+                    setError(message);
+                    showToast({ type: "error", message });
+                  }}
+                  onRemove={() => setFamilyForm((current) => ({ ...current, image_url: "" }))}
+                />
                 <input className="soft-input" value={familyForm.name} onChange={(event) => setFamilyForm((current) => ({ ...current, name: event.target.value }))} disabled={!canAdmin} />
                 <textarea className="soft-input min-h-28 resize-none" placeholder="Descricao" value={familyForm.description} onChange={(event) => setFamilyForm((current) => ({ ...current, description: event.target.value }))} disabled={!canAdmin} />
-                <Button type="submit" className="w-full" disabled={!canAdmin}>
+                <Button type="submit" className="w-full" disabled={!canAdmin || savingFamily || familyForm.name.trim().length < 2}>
                   <ImagePlus className="h-5 w-5" />
-                  Salvar configuracoes
+                  {savingFamily ? "Salvando..." : "Salvar configuracoes"}
                 </Button>
                 {canOwner && (
                   <Button type="button" variant="danger" className="w-full" onClick={deleteFamily}>

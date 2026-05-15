@@ -1,31 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
 import { Download, Flame, TrendingUp } from "lucide-react";
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
   Cell,
-  Legend,
-  Line,
-  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis
+  Tooltip
 } from "recharts";
 
 import Avatar from "../components/Avatar";
 import { CategoryBadge } from "../components/Badges";
 import Button from "../components/Button";
 import Card from "../components/Card";
-import { CategoryTasksTooltip, MemberProductivityTooltip, staticChartTooltipProps, WeeklyTasksTooltip } from "../components/ChartTooltips";
+import { CategoryTasksTooltip, staticChartTooltipProps } from "../components/ChartTooltips";
 import PageHeader from "../components/PageHeader";
+import WeeklyProductivityChart from "../components/WeeklyProductivityChart";
 import { useAuth } from "../hooks/useAuth";
 import { dashboardApi } from "../services/api";
 import { normalizeApiError } from "../utils/formatters";
-import { buildProductivityRows, getCategoryHex, getCategoryName, memberChartColors } from "../utils/tasks";
+import { getCategoryHex, getCategoryName } from "../utils/tasks";
 
 const chartColors = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"];
 
@@ -52,7 +45,6 @@ export default function Reports() {
 
   const categoryData = useMemo(() => dashboard?.tasks_by_category ?? [], [dashboard]);
   const productivity = useMemo(() => dashboard?.weekly_productivity ?? [], [dashboard]);
-  const productivityRows = useMemo(() => buildProductivityRows(productivity), [productivity]);
   const ranking = useMemo(() => dashboard?.ranking ?? [], [dashboard]);
   const stats = useMemo(() => dashboard?.stats ?? [], [dashboard]);
   const doneTasks = stats.find((item) => item.key === "done")?.value ?? 0;
@@ -150,33 +142,15 @@ export default function Reports() {
         </Card>
 
         <Card className="overflow-visible">
-          <h2 className="section-title">Produtividade semanal</h2>
-          <div className="chart-frame mt-5">
-            <div className="chart-canvas-sm">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={productivityRows} margin={{ top: 18, right: 24, left: 2, bottom: 18 }}>
-                  <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
-                  <XAxis dataKey="label" interval={0} minTickGap={4} height={34} tickMargin={10} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
-                  <YAxis width={34} tickMargin={8} allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
-                  <Tooltip content={<MemberProductivityTooltip />} {...staticChartTooltipProps} />
-                  <Legend verticalAlign="bottom" height={32} iconType="circle" wrapperStyle={{ paddingTop: 8 }} />
-                  {ranking.map((item, index) => (
-                    <Line
-                      key={item.user.id}
-                      type="monotone"
-                      dataKey={`member_${item.user.id}`}
-                      name={item.user.name}
-                      stroke={memberChartColors[index % memberChartColors.length]}
-                      strokeWidth={3}
-                      dot={{ r: 4 }}
-                      activeDot={{ r: 6 }}
-                      connectNulls
-                    />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="section-title">Produtividade da semana</h2>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold">
+              <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">Concluidas</span>
+              <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">Pendentes</span>
+              <span className="rounded-full bg-rose-50 px-2.5 py-1 text-rose-700">Atrasadas</span>
             </div>
           </div>
+          <WeeklyProductivityChart productivity={productivity} compact />
         </Card>
 
         <Card>
@@ -228,22 +202,6 @@ export default function Reports() {
         </div>
       </div>
 
-      <Card className="mt-6 overflow-visible">
-        <h2 className="section-title">Desempenho por dia da semana</h2>
-        <div className="chart-frame mt-5">
-          <div className="chart-canvas">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={productivity} margin={{ top: 18, right: 24, left: 2, bottom: 16 }} barCategoryGap="24%" maxBarSize={64}>
-                <CartesianGrid vertical={false} stroke="var(--chart-grid)" />
-                <XAxis dataKey="label" interval={0} minTickGap={4} height={34} tickMargin={10} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
-                <YAxis width={34} tickMargin={8} allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
-                <Tooltip cursor={{ fill: "rgb(var(--color-blush) / 0.08)" }} content={<WeeklyTasksTooltip />} {...staticChartTooltipProps} />
-                <Bar dataKey="total" fill="var(--chart-1)" radius={[12, 12, 0, 0]} minPointSize={4} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </Card>
     </>
   );
 }

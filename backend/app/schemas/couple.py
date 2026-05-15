@@ -43,7 +43,7 @@ class DateIdeaCreate(BaseModel):
     location: str | None = Field(default=None, max_length=180)
     budget: str | None = Field(default=None, max_length=80)
     external_url: str | None = Field(default=None, max_length=2048)
-    image_url: str | None = Field(default=None, max_length=2048)
+    image_url: str | None = Field(default=None, max_length=300000)
     suggested_date: datetime | None = None
     mood: str = "romantico"
     pinned: bool = False
@@ -55,7 +55,7 @@ class DateIdeaUpdate(BaseModel):
     location: str | None = Field(default=None, max_length=180)
     budget: str | None = Field(default=None, max_length=80)
     external_url: str | None = Field(default=None, max_length=2048)
-    image_url: str | None = Field(default=None, max_length=2048)
+    image_url: str | None = Field(default=None, max_length=300000)
     suggested_date: datetime | None = None
     mood: str | None = Field(default=None, max_length=40)
     is_done: bool | None = None

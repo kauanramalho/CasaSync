@@ -11,6 +11,7 @@ import TaskEditorModal from "../components/TaskEditorModal";
 import TaskList from "../components/TaskList";
 import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
+import { useToast } from "../hooks/useToast";
 import { categoriesApi, familiesApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError, priorityLabels, statusLabels } from "../utils/formatters";
@@ -45,6 +46,7 @@ function taskSearchText(task) {
 export default function Tasks() {
   const { user } = useAuth();
   const { addNotification } = useNotifications();
+  const { showToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [tasks, setTasks] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -54,7 +56,6 @@ export default function Tasks() {
   const [assignee, setAssignee] = useState("");
   const [search, setSearch] = useState(searchParams.get("search") || "");
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [editError, setEditError] = useState("");
   const [editingTask, setEditingTask] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -67,9 +68,11 @@ export default function Tasks() {
       setCategories(categoryRows);
       setMembers(memberRows);
     } catch (err) {
-      setError(normalizeApiError(err));
+      const message = normalizeApiError(err);
+      setError(message);
+      showToast({ type: "error", message });
     }
-  }, []);
+  }, [showToast]);
 
   useEffect(() => {
     load();
@@ -140,7 +143,6 @@ export default function Tasks() {
     setSavingEdit(true);
     setEditError("");
     setError("");
-    setSuccess("");
     try {
       const updated = await tasksApi.update(editingTask.id, payload);
       setTasks((current) => current.map((task) => (task.id === updated.id ? updated : task)));
@@ -159,15 +161,17 @@ export default function Tasks() {
         type: updated.reminder_enabled || editingTask.reminder_enabled ? "reminder" : "task",
         actor: user?.name
       });
-      setSuccess(message);
+      showToast({ type: "success", message: "Tarefa editada com sucesso." });
       setEditingTask(null);
       emitAppDataChanged();
     } catch (err) {
-      setEditError(normalizeApiError(err));
+      const message = normalizeApiError(err);
+      setEditError(message);
+      showToast({ type: "error", message });
     } finally {
       setSavingEdit(false);
     }
-  }, [addNotification, editingTask, user?.name]);
+  }, [addNotification, editingTask, showToast, user?.name]);
 
   const handleDelete = useCallback(async function handleDelete(task) {
     const confirmed = window.confirm(`Excluir a tarefa "${task.title}"? Essa acao tambem cancela o lembrete associado.`);
@@ -181,11 +185,14 @@ export default function Tasks() {
         actor: user?.name
       });
       setTasks((current) => current.filter((item) => item.id !== task.id));
+      showToast({ type: "success", message: "Tarefa excluida com sucesso." });
       emitAppDataChanged();
     } catch (err) {
-      setError(normalizeApiError(err));
+      const message = normalizeApiError(err);
+      setError(message);
+      showToast({ type: "error", message });
     }
-  }, [addNotification, user?.name]);
+  }, [addNotification, showToast, user?.name]);
 
   const clearFilters = useCallback(function clearFilters() {
     setCategory("");
@@ -214,7 +221,6 @@ export default function Tasks() {
       />
 
       {error && <p className="mb-5 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</p>}
-      {success && <p className="mb-5 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{success}</p>}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={Rows3} label="Todas" value={counts.all} hint="tarefas registradas" tone="blue" />

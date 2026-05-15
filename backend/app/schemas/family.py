@@ -27,7 +27,7 @@ class FamilyRead(ORMModel):
 class FamilyUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=140)
     description: str | None = Field(default=None, max_length=1200)
-    image_url: str | None = Field(default=None, max_length=2048)
+    image_url: str | None = Field(default=None, max_length=300000)
 
 
 class FamilyMemberUpdate(BaseModel):
