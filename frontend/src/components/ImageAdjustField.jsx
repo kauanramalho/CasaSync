@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { ImagePlus, SlidersHorizontal, Trash2, X } from "lucide-react";
 
-import { uploadsApi } from "../services/api";
+import { resolveApiAssetUrl, uploadsApi } from "../services/api";
 import {
   cropImageFileToBlob,
   defaultCrop,
@@ -51,6 +51,8 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
   const [removed, setRemoved] = useState(false);
   const [crop, setCrop] = useState(defaultCrop);
   const [fieldError, setFieldError] = useState("");
+  const [processing, setProcessing] = useState(false);
+  const [previewBroken, setPreviewBroken] = useState(false);
 
   const revokeDraftUrl = useCallback(() => {
     if (draftUrlRef.current) {
@@ -74,12 +76,15 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
     setRemoved(false);
     setCrop(defaultCrop);
     setFieldError("");
+    setPreviewBroken(false);
   }, [clearDraft, value]);
 
   const previewUrl = useMemo(() => {
     if (removed) return "";
-    return draftUrl || value || "";
-  }, [draftUrl, removed, value]);
+    if (draftUrl) return draftUrl;
+    if (previewBroken) return "";
+    return resolveApiAssetUrl(value);
+  }, [draftUrl, previewBroken, removed, value]);
 
   useImperativeHandle(
     ref,
@@ -91,6 +96,7 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
         }
 
         try {
+          setProcessing(true);
           const optimizedFile = await cropImageFileToBlob(draftFile, crop, {
             width: outputWidth,
             height: outputHeight,
@@ -102,12 +108,17 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
             scope: uploadScope,
             familyId: uploadFamilyId
           });
+          if (!uploaded?.url) {
+            throw new Error("O servidor nao confirmou a URL da imagem enviada.");
+          }
           return uploaded.url;
         } catch (error) {
           const message = error?.message || "Nao foi possivel otimizar e enviar a imagem.";
           setFieldError(message);
           onError?.(message);
           throw error;
+        } finally {
+          setProcessing(false);
         }
       },
       resetDraft() {
@@ -115,6 +126,8 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
         setRemoved(false);
         setCrop(defaultCrop);
         setFieldError("");
+        setProcessing(false);
+        setPreviewBroken(false);
         if (inputRef.current) inputRef.current.value = "";
       }
     }),
@@ -165,6 +178,7 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
       setDraftUrl(objectUrl);
       setDraftFile(file);
       setRemoved(false);
+      setPreviewBroken(false);
       setCrop(defaultCrop);
       setFieldError("");
     } catch {
@@ -181,6 +195,7 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
     setRemoved(false);
     setCrop(defaultCrop);
     setFieldError("");
+    setPreviewBroken(false);
     clearInput();
   }
 
@@ -189,36 +204,56 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
     setRemoved(true);
     setCrop(defaultCrop);
     setFieldError("");
+    setPreviewBroken(false);
     clearInput();
     onRemove?.();
   }
 
-  const previewStyle = previewUrl
+  const previewStyle = draftUrl && previewUrl
     ? {
         backgroundImage: `url(${previewUrl})`,
-        backgroundSize: draftUrl ? `${Math.max(100, crop.zoom * 100)}%` : "cover",
-        backgroundPosition: draftUrl ? backgroundPosition(crop) : "center"
+        backgroundSize: `${Math.max(100, crop.zoom * 100)}%`,
+        backgroundPosition: backgroundPosition(crop)
       }
     : undefined;
+  const controlsDisabled = disabled || processing;
+  const hasRemovableImage = Boolean(previewUrl || (!removed && value && !isInlineImage(value)));
 
   return (
     <div className={className}>
       {label && <p className="text-sm font-bold text-ink">{label}</p>}
       <div
-        className={`overflow-hidden bg-gradient-to-br from-rose-100 to-violet-100 bg-cover bg-center shadow-card ${previewClassName}`}
+        className={`relative overflow-hidden bg-gradient-to-br from-rose-100 to-violet-100 bg-cover bg-center shadow-card ${previewClassName}`}
         style={previewStyle}
+        aria-busy={processing}
       >
+        {!draftUrl && previewUrl && (
+          <img
+            src={previewUrl}
+            alt=""
+            className="h-full w-full object-cover"
+            onError={() => {
+              setPreviewBroken(true);
+              setFieldError("A imagem salva nao carregou. Escolha outra foto ou remova a atual.");
+            }}
+          />
+        )}
         {!previewUrl && <div className="grid h-full w-full place-items-center text-4xl font-bold text-ink">{emptyLabel || <ImagePlus className="h-7 w-7 text-blush" />}</div>}
+        {processing && (
+          <div className="absolute inset-0 grid place-items-center bg-white/75 px-3 text-center text-xs font-black text-blush backdrop-blur-sm">
+            Enviando...
+          </div>
+        )}
       </div>
 
       <div className="mt-4 flex flex-wrap gap-3">
-        <label className={`inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-bold text-blush shadow-card transition hover:-translate-y-0.5 hover:bg-rose-50 ${disabled ? "pointer-events-none opacity-60" : "cursor-pointer"}`}>
+        <label className={`inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-bold text-blush shadow-card transition hover:-translate-y-0.5 hover:bg-rose-50 ${controlsDisabled ? "pointer-events-none opacity-60" : "cursor-pointer"}`}>
           <ImagePlus className="h-4 w-4" />
-          {chooseLabel}
-          <input ref={inputRef} type="file" accept={imageFileAccept} className="hidden" onChange={handleFile} disabled={disabled} />
+          {processing ? "Enviando..." : chooseLabel}
+          <input ref={inputRef} type="file" accept={imageFileAccept} className="hidden" onChange={handleFile} disabled={controlsDisabled} />
         </label>
 
-        {previewUrl && !disabled && (
+        {hasRemovableImage && !controlsDisabled && (
           <button
             type="button"
             onClick={removeImage}
@@ -233,7 +268,7 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
       {helper && <p className="mt-3 text-xs font-semibold text-muted">{helper}</p>}
       {fieldError && <p className="mt-3 rounded-2xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600">{fieldError}</p>}
 
-      {draftUrl && !disabled && (
+      {draftUrl && !controlsDisabled && (
         <div className="mt-5 space-y-3 rounded-2xl bg-white/80 p-4">
           <div className="flex items-center gap-2 text-xs font-bold text-muted">
             <SlidersHorizontal className="h-4 w-4 text-blush" />

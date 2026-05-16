@@ -81,6 +81,29 @@ function apiPath(path) {
   return path.startsWith("/") ? path : `/${path}`;
 }
 
+function isRawNotFound(message) {
+  return String(message || "").trim().toLowerCase() === "not found";
+}
+
+function responseErrorMessage(data, fallback) {
+  const detail = extractApiErrorMessage(data);
+  return isRawNotFound(detail) ? fallback : detail || fallback;
+}
+
+export function resolveApiAssetUrl(value) {
+  const cleaned = String(value || "").trim();
+  if (!cleaned || cleaned.toLowerCase().startsWith("data:image/")) return "";
+  if (/^(https?:|blob:)/i.test(cleaned)) return cleaned;
+  if (!cleaned.startsWith("/")) return cleaned;
+
+  try {
+    const apiUrl = new URL(getApiUrl());
+    return `${apiUrl.origin}${cleaned}`;
+  } catch {
+    return cleaned;
+  }
+}
+
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(SESSION_TOKEN_KEY);
 }
@@ -178,8 +201,10 @@ async function performRequest(path, { method = "GET", body, auth = true } = {}) 
       clearToken();
       window.dispatchEvent(new Event(AUTH_SESSION_CHANGED_EVENT));
     }
-    const detail = extractApiErrorMessage(data);
-    throw new Error(detail || "Nao foi possivel concluir a acao.");
+    const fallback = response.status === 404
+      ? "Nao encontramos esse recurso no servidor. Atualize a pagina e tente novamente."
+      : "Nao foi possivel concluir a acao.";
+    throw new Error(responseErrorMessage(data, fallback));
   }
 
   return data;
@@ -191,6 +216,10 @@ async function uploadRequest(path, { formData, auth = true } = {}) {
   const token = getToken();
   if (auth && token) {
     headers.Authorization = `Bearer ${token}`;
+  }
+
+  if (import.meta.env.DEV) {
+    console.info("[CasaSync API]", "POST", url);
   }
 
   let response;
@@ -208,10 +237,20 @@ async function uploadRequest(path, { formData, auth = true } = {}) {
     throw new Error("Nao foi possivel enviar a imagem. Verifique sua conexao e tente novamente.");
   }
 
+  if (import.meta.env.DEV) {
+    console.info("[CasaSync API]", response.status, "POST", url);
+  }
+
   const data = response.status === 204 ? null : await response.json().catch(() => null);
   if (!response.ok) {
-    const detail = extractApiErrorMessage(data);
-    throw new Error(detail || "Nao foi possivel enviar a imagem.");
+    if (auth && response.status === 401) {
+      clearToken();
+      window.dispatchEvent(new Event(AUTH_SESSION_CHANGED_EVENT));
+    }
+    const fallback = response.status === 404
+      ? "O servidor de upload de imagens nao esta disponivel. Tente novamente apos atualizar o app."
+      : "Nao foi possivel enviar a imagem.";
+    throw new Error(responseErrorMessage(data, fallback));
   }
   return data;
 }
