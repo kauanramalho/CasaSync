@@ -3,7 +3,7 @@ from sqlalchemy.orm import relationship
 
 from app.database.base import Base
 from app.models.base import TimestampMixin, UUIDPrimaryKeyMixin
-from app.models.enums import TaskPriority, TaskStatus
+from app.models.enums import TaskPriority, TaskStatus, TaskType
 
 
 class TaskAssignee(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -30,6 +30,7 @@ class Task(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     due_date = Column(DateTime(timezone=True), nullable=True)
     priority = Column(String(16), default=TaskPriority.MEDIUM.value, nullable=False)
     status = Column(String(24), default=TaskStatus.PENDING.value, nullable=False)
+    task_type = Column(String(24), default=TaskType.TASK.value, nullable=False)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     archived_at = Column(DateTime(timezone=True), nullable=True)
     score_recorded_at = Column(DateTime(timezone=True), nullable=True)
@@ -39,6 +40,11 @@ class Task(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     reminder_unit = Column(String(16), nullable=True)
     reminder_at = Column(DateTime(timezone=True), nullable=True)
     reminder_sent = Column(Boolean, default=False, nullable=False)
+    automation_source = Column(String(80), nullable=True)
+    automation_external_id = Column(String(160), nullable=True)
+    automation_source_label = Column(String(180), nullable=True)
+    automation_source_reference = Column(Text, nullable=True)
+    recurrence_rule = Column(String(255), nullable=True)
 
     family = relationship("Family", back_populates="tasks")
     assignee = relationship("User", back_populates="assigned_tasks", foreign_keys=[assignee_id])

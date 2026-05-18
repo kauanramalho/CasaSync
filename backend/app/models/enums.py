@@ -20,6 +20,14 @@ class TaskStatus(str, Enum):
     OVERDUE = "atrasada"
 
 
+class TaskType(str, Enum):
+    TASK = "tarefa"
+    EXAM = "prova"
+    APPOINTMENT = "consulta"
+    EVENT = "evento"
+    REMINDER = "lembrete"
+
+
 class GoalStatus(str, Enum):
     ACTIVE = "ativa"
     DONE = "concluida"

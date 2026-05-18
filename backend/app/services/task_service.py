@@ -315,6 +315,12 @@ def create_task(db: Session, family_id: str, creator_id: str, payload: TaskCreat
         due_date=payload.due_date,
         priority=payload.priority.value,
         status=TaskStatus.PENDING.value,
+        task_type=payload.task_type.value,
+        automation_source=payload.automation_source,
+        automation_external_id=payload.automation_external_id,
+        automation_source_label=payload.automation_source_label,
+        automation_source_reference=payload.automation_source_reference,
+        recurrence_rule=payload.recurrence_rule,
     )
     _configure_task_reminder(
         task,
@@ -361,6 +367,7 @@ def update_task(db: Session, family_id: str, task_id: str, payload: TaskUpdate) 
 
     status_value = data.pop("status", None)
     priority_value = data.pop("priority", None)
+    task_type_value = data.pop("task_type", None)
     reminder_enabled = data.pop("reminder_enabled", None)
     reminder_value = data.pop("reminder_value", None)
     reminder_unit = data.pop("reminder_unit", None)
@@ -392,6 +399,8 @@ def update_task(db: Session, family_id: str, task_id: str, payload: TaskUpdate) 
         _set_task_assignees(db, task, assignee_ids)
     if priority_value:
         task.priority = priority_value.value
+    if task_type_value:
+        task.task_type = task_type_value.value
 
     if status_value == TaskStatus.DONE or (status_value is None and was_done):
         _complete_task_without_commit(db, task, previous_completed_at if was_done else None)

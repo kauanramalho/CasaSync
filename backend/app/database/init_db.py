@@ -74,8 +74,21 @@ def _upgrade_existing_tables() -> None:
         if "tasks" in existing_tables:
             _add_column_if_missing(connection, "tasks", "archived_at", f"archived_at {_timestamp_with_timezone_type()}")
             _add_column_if_missing(connection, "tasks", "score_recorded_at", f"score_recorded_at {_timestamp_with_timezone_type()}")
+            _add_column_if_missing(connection, "tasks", "task_type", "task_type VARCHAR(24) DEFAULT 'tarefa' NOT NULL")
             _add_column_if_missing(connection, "tasks", "reminder_enabled", "reminder_enabled BOOLEAN DEFAULT FALSE NOT NULL")
             _add_column_if_missing(connection, "tasks", "reminder_value", "reminder_value INTEGER")
             _add_column_if_missing(connection, "tasks", "reminder_unit", "reminder_unit VARCHAR(16)")
             _add_column_if_missing(connection, "tasks", "reminder_at", f"reminder_at {_timestamp_with_timezone_type()}")
             _add_column_if_missing(connection, "tasks", "reminder_sent", "reminder_sent BOOLEAN DEFAULT FALSE NOT NULL")
+            _add_column_if_missing(connection, "tasks", "automation_source", "automation_source VARCHAR(80)")
+            _add_column_if_missing(connection, "tasks", "automation_external_id", "automation_external_id VARCHAR(160)")
+            _add_column_if_missing(connection, "tasks", "automation_source_label", "automation_source_label VARCHAR(180)")
+            _add_column_if_missing(connection, "tasks", "automation_source_reference", "automation_source_reference TEXT")
+            _add_column_if_missing(connection, "tasks", "recurrence_rule", "recurrence_rule VARCHAR(255)")
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS ix_tasks_automation_external_unique "
+                    "ON tasks (family_id, automation_source, automation_external_id) "
+                    "WHERE automation_external_id IS NOT NULL"
+                )
+            )

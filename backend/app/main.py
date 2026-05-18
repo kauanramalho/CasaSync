@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.database.init_db import create_database_tables
-from app.routes import auth, categories, couple, dashboard, families, integrations, planner, tasks, uploads
+from app.routes import automation, auth, categories, couple, dashboard, families, integrations, planner, tasks, uploads
 
 
 settings = get_settings()
@@ -52,6 +52,7 @@ app.include_router(auth.router, prefix=settings.api_v1_prefix)
 app.include_router(families.router, prefix=settings.api_v1_prefix)
 app.include_router(categories.router, prefix=settings.api_v1_prefix)
 app.include_router(tasks.router, prefix=settings.api_v1_prefix)
+app.include_router(automation.router, prefix=settings.api_v1_prefix)
 app.include_router(dashboard.router, prefix=settings.api_v1_prefix)
 app.include_router(couple.router, prefix=settings.api_v1_prefix)
 app.include_router(planner.router, prefix=settings.api_v1_prefix)
