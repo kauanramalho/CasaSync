@@ -2,7 +2,7 @@
 
 Esta camada permite que ferramentas externas, como o Codex, criem e mantenham tarefas e compromissos no CasaSync depois de interpretarem textos, prints ou listas fora do app.
 
-O CasaSync nao faz OCR, nao le imagens, nao usa IA propria, nao cria OAuth do Google, nao usa Google Agenda e nao sincroniza calendarios externos.
+O CasaSync nao faz OCR, nao le imagens e nao usa IA propria. A base do Google Agenda existe em camada separada, mas a escrita real em calendarios externos fica desativada por padrao e exige confirmacao explicita do usuario.
 
 ## Endpoints
 

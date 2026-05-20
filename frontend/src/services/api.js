@@ -346,5 +346,6 @@ export const coupleApi = {
 
 export const integrationsApi = {
   googleCalendarStatus: () => request("/integrations/google-calendar/status"),
-  googleCalendarConnectUrl: () => request("/integrations/google-calendar/connect-url")
+  googleCalendarConnectUrl: () => request("/integrations/google-calendar/connect-url"),
+  syncGoogleCalendarTask: (taskId) => request(`/integrations/google-calendar/tasks/${taskId}/sync`, { method: "POST" })
 };

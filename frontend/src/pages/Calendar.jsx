@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import clsx from "clsx";
-import { CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, Edit3, Plus, X } from "lucide-react";
+import { CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, Edit3, Plus, Send, X } from "lucide-react";
 
 import AssigneeStack from "../components/AssigneeStack";
 import { CategoryBadge, CategoryGlyph, PriorityBadge, StatusBadge } from "../components/Badges";
@@ -14,7 +14,7 @@ import { useAppPreferences } from "../hooks/useAppPreferences";
 import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
 import { useToast } from "../hooks/useToast";
-import { categoriesApi, familiesApi, tasksApi } from "../services/api";
+import { categoriesApi, familiesApi, integrationsApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { formatDate, normalizeApiError } from "../utils/formatters";
 import { buildMonthDays, getStoredPreferences, getWeekdayLabels, startOfWeek as getPreferenceStartOfWeek } from "../utils/preferences";
@@ -256,6 +256,8 @@ export default function Calendar() {
   const [preview, setPreview] = useState(null);
   const [editingTask, setEditingTask] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [calendarStatus, setCalendarStatus] = useState(null);
+  const [syncingTaskId, setSyncingTaskId] = useState("");
   const [error, setError] = useState("");
   const [editError, setEditError] = useState("");
   const previewTimer = useRef(null);
@@ -263,10 +265,24 @@ export default function Calendar() {
   const load = useCallback(async function load() {
     setError("");
     try {
-      const [taskRows, categoryRows, memberRows] = await Promise.all([tasksApi.list(), categoriesApi.list(), familiesApi.members()]);
-      setTasks(taskRows);
-      setCategories(categoryRows);
-      setMembers(memberRows);
+      const [taskResult, categoryResult, memberResult, calendarResult] = await Promise.allSettled([
+        tasksApi.list(),
+        categoriesApi.list(),
+        familiesApi.members(),
+        integrationsApi.googleCalendarStatus()
+      ]);
+      if (taskResult.status === "rejected") throw taskResult.reason;
+      if (categoryResult.status === "rejected") throw categoryResult.reason;
+      if (memberResult.status === "rejected") throw memberResult.reason;
+
+      setTasks(taskResult.value);
+      setCategories(categoryResult.value);
+      setMembers(memberResult.value);
+      if (calendarResult.status === "fulfilled") {
+        setCalendarStatus(calendarResult.value);
+      } else {
+        setCalendarStatus(null);
+      }
     } catch (err) {
       const message = normalizeApiError(err);
       setError(message);
@@ -417,6 +433,22 @@ export default function Calendar() {
       setSavingEdit(false);
     }
   }, [addNotification, editingTask, showToast, user?.name]);
+
+  const handleSyncCalendar = useCallback(async function handleSyncCalendar(task) {
+    setSyncingTaskId(task.id);
+    try {
+      const response = await integrationsApi.syncGoogleCalendarTask(task.id);
+      showToast({
+        type: response.synced ? "success" : "info",
+        message: response.message
+      });
+    } catch (err) {
+      const message = normalizeApiError(err);
+      showToast({ type: "error", message });
+    } finally {
+      setSyncingTaskId("");
+    }
+  }, [showToast]);
 
   function renderMonthView() {
     return (
@@ -608,15 +640,34 @@ export default function Calendar() {
           <h2 className="section-title">Próximos compromissos</h2>
           <div className="mt-5 max-h-[640px] space-y-4 overflow-y-auto pr-1">
             {upcoming.map((task) => (
-              <button key={task.id} type="button" onClick={() => setEditingTask(task)} className="w-full border-b border-slate-100 pb-4 text-left last:border-0">
-                <p className="text-xs font-bold text-muted">{formatDate(task.due_date)}</p>
-                <p className="mt-2 font-semibold text-ink">{task.title}</p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <CategoryBadge category={task.category} compact />
-                  <PriorityBadge priority={task.priority} />
-                </div>
-                <AssigneeStack task={task} className="mt-3" />
-              </button>
+              <div key={task.id} className="border-b border-slate-100 pb-4 last:border-0">
+                <button type="button" onClick={() => setEditingTask(task)} className="w-full text-left">
+                  <p className="text-xs font-bold text-muted">{formatDate(task.due_date)}</p>
+                  <p className="mt-2 font-semibold text-ink">{task.title}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <CategoryBadge category={task.category} compact />
+                    <PriorityBadge priority={task.priority} />
+                  </div>
+                  <AssigneeStack task={task} className="mt-3" />
+                </button>
+                {calendarStatus?.is_enabled && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="mt-3 w-full px-3 py-2 text-xs"
+                    onClick={() => handleSyncCalendar(task)}
+                    disabled={syncingTaskId === task.id}
+                  >
+                    <Send className="h-4 w-4" />
+                    {syncingTaskId === task.id ? "Verificando Agenda" : "Sincronizar com Google Agenda"}
+                  </Button>
+                )}
+                {calendarStatus?.is_enabled && !calendarStatus?.can_sync && (
+                  <p className="mt-2 rounded-2xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+                    {calendarStatus.message}
+                  </p>
+                )}
+              </div>
             ))}
             {!upcoming.length && <p className="rounded-2xl bg-white/75 px-4 py-6 text-center text-sm text-muted">Nenhum compromisso pendente.</p>}
           </div>

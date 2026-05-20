@@ -92,7 +92,7 @@ export default function Settings() {
   async function connectCalendar() {
     try {
       const response = await integrationsApi.googleCalendarConnectUrl();
-      setCalendarMessage(response.message);
+      setCalendarMessage(response.url ? `${response.message} Nenhum token sera salvo nesta etapa.` : response.message);
     } catch (err) {
       const message = normalizeApiError(err);
       setError(message);
@@ -256,9 +256,14 @@ export default function Settings() {
               <h2 className="section-title">Google Agenda</h2>
             </div>
             <p className="mt-4 text-sm text-muted">{calendarStatus?.message || "Verificando conexao..."}</p>
+            {calendarStatus?.is_enabled && !calendarStatus?.is_connected && (
+              <p className="mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+                A sincronizacao real so deve ser ativada depois do OAuth e do armazenamento seguro de tokens.
+              </p>
+            )}
             {calendarMessage && <p className="mt-4 rounded-2xl bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-600">{calendarMessage}</p>}
-            <Button onClick={connectCalendar} className="mt-6">
-              Conectar Google Agenda
+            <Button onClick={connectCalendar} className="mt-6" disabled={!calendarStatus?.is_enabled || !calendarStatus?.can_connect}>
+              {calendarStatus?.is_enabled ? "Conectar Google Agenda" : "Google Agenda desativado"}
             </Button>
           </Card>
         </div>

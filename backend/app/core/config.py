@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     google_client_id: str | None = None
     google_client_secret: str | None = None
     google_redirect_uri: str | None = None
+    google_calendar_enabled: bool = False
+    google_calendar_default_timezone: str = "America/Sao_Paulo"
+    google_calendar_default_event_minutes: int = 60
 
     ai_provider: str = "mock"
     ai_api_key: str | None = None
@@ -109,7 +112,14 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in cleaned.split(",") if origin.strip()]
         return value
 
-    @field_validator("frontend_url", "cors_origin_regex", mode="before")
+    @field_validator(
+        "frontend_url",
+        "cors_origin_regex",
+        "google_client_id",
+        "google_client_secret",
+        "google_redirect_uri",
+        mode="before",
+    )
     @classmethod
     def blank_to_none(cls, value):
         if isinstance(value, str) and not value.strip():
@@ -141,6 +151,10 @@ class Settings(BaseSettings):
     @property
     def smtp_configured(self) -> bool:
         return bool(self.smtp_host)
+
+    @property
+    def google_calendar_configured(self) -> bool:
+        return bool(self.google_client_id and self.google_client_secret and self.google_redirect_uri)
 
 
 @lru_cache

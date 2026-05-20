@@ -1,32 +1,67 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings, get_settings
 from app.core.deps import get_current_user, get_family_id
 from app.database.session import get_db
 from app.models.user import User
-from app.schemas.integration import GoogleCalendarConnectUrl, GoogleCalendarStatus
-from app.services.calendar_service import build_google_connect_url, get_google_calendar_status
+from app.schemas.integration import (
+    GoogleCalendarCallbackResponse,
+    GoogleCalendarConnectUrl,
+    GoogleCalendarStatus,
+    GoogleCalendarTaskSyncResponse,
+)
+from app.services.calendar_service import (
+    get_google_auth_url,
+    get_google_calendar_status,
+    handle_google_callback,
+    sync_task_to_calendar,
+)
 
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
 
 
 @router.get("/google-calendar/status", response_model=GoogleCalendarStatus)
-def google_calendar_status(family_id: str = Depends(get_family_id), db: Session = Depends(get_db)):
-    connection = get_google_calendar_status(db, family_id)
-    if not connection:
-        return GoogleCalendarStatus(is_connected=False, message="Google Agenda ainda não conectado.")
-    return GoogleCalendarStatus(
-        is_connected=connection.is_connected,
-        calendar_id=connection.calendar_id,
-        message="Google Agenda conectado." if connection.is_connected else "Conexão criada, mas não autorizada.",
-    )
+def google_calendar_status(
+    family_id: str = Depends(get_family_id),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    return get_google_calendar_status(db, family_id, settings)
 
 
 @router.get("/google-calendar/connect-url", response_model=GoogleCalendarConnectUrl)
 def google_calendar_connect_url(
-    _current_user: User = Depends(get_current_user),
-    _family_id: str = Depends(get_family_id),
+    current_user: User = Depends(get_current_user),
+    family_id: str = Depends(get_family_id),
+    settings: Settings = Depends(get_settings),
 ):
-    url, message = build_google_connect_url()
-    return GoogleCalendarConnectUrl(url=url, message=message)
+    return get_google_auth_url(current_user_id=current_user.id, family_id=family_id, settings=settings)
+
+
+@router.get("/google-calendar/callback", response_model=GoogleCalendarCallbackResponse)
+def google_calendar_callback(
+    code: str | None = Query(default=None, max_length=4096),
+    state: str | None = Query(default=None, max_length=4096),
+    error: str | None = Query(default=None, max_length=200),
+    settings: Settings = Depends(get_settings),
+):
+    return handle_google_callback(code=code, state=state, error=error, settings=settings)
+
+
+@router.post("/google-calendar/tasks/{task_id}/sync", response_model=GoogleCalendarTaskSyncResponse)
+def google_calendar_sync_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+    family_id: str = Depends(get_family_id),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    return sync_task_to_calendar(
+        db,
+        family_id=family_id,
+        user_id=current_user.id,
+        task_id=task_id,
+        settings=settings,
+    )
