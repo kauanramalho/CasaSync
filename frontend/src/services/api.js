@@ -320,6 +320,7 @@ export const tasksApi = {
     return request(`/tasks${query ? `?${query}` : ""}`);
   },
   create: (payload) => request("/tasks", { method: "POST", body: payload }),
+  importSuggestions: (payload) => request("/tasks/import-suggestions", { method: "POST", body: payload }),
   update: (id, payload) => request(`/tasks/${id}`, { method: "PATCH", body: payload }),
   complete: (id) => request(`/tasks/${id}/complete`, { method: "POST" }),
   delete: (id) => request(`/tasks/${id}`, { method: "DELETE" }),

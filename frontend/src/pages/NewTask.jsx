@@ -116,7 +116,7 @@ export default function NewTask() {
     <>
       <PageHeader title="Nova tarefa" subtitle="Crie uma responsabilidade com contexto, prazo, prioridade e pontuacao." user={user} />
 
-      <ImageTaskImportPanel />
+      <ImageTaskImportPanel categories={categories} members={members} />
 
       <Card className="mx-auto max-w-4xl">
         <form onSubmit={handleSubmit} className="grid gap-5 md:grid-cols-2">

@@ -1,10 +1,13 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, get_family_id
 from app.database.session import get_db
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskRead, TaskUpdate
+from app.schemas.task_import import TaskSuggestionsImportRequest, TaskSuggestionsImportResponse
+from app.services.family_service import get_primary_family, require_family_member
+from app.services.task_import_service import import_task_suggestions
 from app.services.task_service import complete_task, create_task, delete_task, get_task, list_due_reminder_tasks, list_tasks, update_task
 
 
@@ -36,6 +39,19 @@ def create(
 @router.get("/reminders/due", response_model=list[TaskRead])
 def due_reminders(family_id: str = Depends(get_family_id), db: Session = Depends(get_db)):
     return list_due_reminder_tasks(db, family_id)
+
+
+@router.post("/import-suggestions", response_model=TaskSuggestionsImportResponse)
+def import_suggestions(
+    payload: TaskSuggestionsImportRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    family = get_primary_family(db, current_user.id)
+    if not family:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Crie ou entre em uma familia para continuar.")
+    require_family_member(db, family.id, current_user.id)
+    return import_task_suggestions(db, family_id=family.id, creator_id=current_user.id, items=payload.items)
 
 
 @router.get("/{task_id}", response_model=TaskRead)
