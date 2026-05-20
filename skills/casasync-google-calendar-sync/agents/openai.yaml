@@ -1,0 +1,4 @@
+interface:
+  display_name: "CasaSync Google Calendar Sync"
+  short_description: "Prepare safe Calendar integration"
+  default_prompt: "Use $casasync-google-calendar-sync to prepare a safe CasaSync Google Agenda integration."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "CasaSync Architecture Guardian"
+  short_description: "Protect structural CasaSync changes"
+  default_prompt: "Use $casasync-architecture-guardian to map a CasaSync structural change before editing."

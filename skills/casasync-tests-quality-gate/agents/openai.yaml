@@ -1,0 +1,4 @@
+interface:
+  display_name: "CasaSync Tests Quality Gate"
+  short_description: "Verify CasaSync changes before handoff"
+  default_prompt: "Use $casasync-tests-quality-gate to finish a CasaSync task with checks and a concise report."

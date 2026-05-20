@@ -1,0 +1,4 @@
+interface:
+  display_name: "CasaSync Security Privacy"
+  short_description: "Guard personal data and secrets"
+  default_prompt: "Use $casasync-security-privacy to review a CasaSync change involving private data."

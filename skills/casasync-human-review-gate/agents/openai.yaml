@@ -1,0 +1,4 @@
+interface:
+  display_name: "CasaSync Human Review Gate"
+  short_description: "Require approval before AI saves data"
+  default_prompt: "Use $casasync-human-review-gate to add a human review step before saving AI suggestions."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "CasaSync Task Creation Service"
+  short_description: "Create tasks through shared services"
+  default_prompt: "Use $casasync-task-creation-service to add CasaSync task creation without duplicating logic."

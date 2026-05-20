@@ -1,0 +1,4 @@
+interface:
+  display_name: "CasaSync AI Image Ingestion"
+  short_description: "Validate AI image intake safely"
+  default_prompt: "Use $casasync-ai-image-ingestion to design a safe CasaSync image intake flow."

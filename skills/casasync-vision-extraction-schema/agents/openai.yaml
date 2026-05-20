@@ -1,0 +1,4 @@
+interface:
+  display_name: "CasaSync Vision Extraction Schema"
+  short_description: "Convert images into reviewable JSON"
+  default_prompt: "Use $casasync-vision-extraction-schema to extract reviewable task data from an image."
