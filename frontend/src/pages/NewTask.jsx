@@ -6,6 +6,7 @@ import AssigneePicker from "../components/AssigneePicker";
 import Button from "../components/Button";
 import Card from "../components/Card";
 import DateTimePicker from "../components/DateTimePicker";
+import ImageTaskImportPanel from "../components/ImageTaskImportPanel";
 import PageHeader from "../components/PageHeader";
 import SelectMenu from "../components/SelectMenu";
 import TaskReminderFields from "../components/TaskReminderFields";
@@ -114,6 +115,8 @@ export default function NewTask() {
   return (
     <>
       <PageHeader title="Nova tarefa" subtitle="Crie uma responsabilidade com contexto, prazo, prioridade e pontuacao." user={user} />
+
+      <ImageTaskImportPanel />
 
       <Card className="mx-auto max-w-4xl">
         <form onSubmit={handleSubmit} className="grid gap-5 md:grid-cols-2">

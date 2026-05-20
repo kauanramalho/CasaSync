@@ -279,6 +279,14 @@ export const uploadsApi = {
   }
 };
 
+export const imageAnalysisApi = {
+  analyzeTaskSuggestions: (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return uploadRequest("/image-analysis/task-suggestions", { formData });
+  }
+};
+
 export const familiesApi = {
   list: () => request("/families"),
   current: () => request("/families/current"),

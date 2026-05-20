@@ -1,3 +1,6 @@
+from dataclasses import dataclass
+from pathlib import PurePath
+
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
@@ -5,11 +8,21 @@ from app.models.image_asset import ImageAsset
 
 
 MAX_IMAGE_UPLOAD_BYTES = 600 * 1024
+MAX_IMAGE_ANALYSIS_BYTES = 8 * 1024 * 1024
 ALLOWED_IMAGE_TYPES = {
     "image/webp": "webp",
     "image/jpeg": "jpeg",
     "image/png": "png",
 }
+ALLOWED_IMAGE_EXTENSIONS = {".webp", ".jpg", ".jpeg", ".png"}
+
+
+@dataclass(frozen=True)
+class ValidatedImageUpload:
+    filename: str | None
+    content_type: str
+    byte_size: int
+    content: bytes
 
 
 def _detect_image_type(data: bytes) -> str | None:
@@ -22,26 +35,36 @@ def _detect_image_type(data: bytes) -> str | None:
     return None
 
 
-async def create_image_asset(
-    db: Session,
-    *,
+def _validate_image_extension(filename: str | None) -> None:
+    if not filename:
+        return
+    suffix = PurePath(filename).suffix.lower()
+    if suffix not in ALLOWED_IMAGE_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Use uma imagem PNG, JPG, JPEG ou WEBP.",
+        )
+
+
+async def read_validated_image_upload(
     file: UploadFile,
-    owner_user_id: str,
-    scope: str,
-    family_id: str | None = None,
-) -> ImageAsset:
+    *,
+    max_bytes: int = MAX_IMAGE_UPLOAD_BYTES,
+    max_bytes_detail: str = "A imagem otimizada deve ter no maximo 600 KB.",
+) -> ValidatedImageUpload:
     declared_type = (file.content_type or "").split(";")[0].strip().lower()
     if declared_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail="Use uma imagem PNG, JPG ou WEBP.",
         )
+    _validate_image_extension(file.filename)
 
-    data = await file.read(MAX_IMAGE_UPLOAD_BYTES + 1)
-    if len(data) > MAX_IMAGE_UPLOAD_BYTES:
+    data = await file.read(max_bytes + 1)
+    if len(data) > max_bytes:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="A imagem otimizada deve ter no maximo 600 KB.",
+            detail=max_bytes_detail,
         )
     if not data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selecione uma imagem para enviar.")
@@ -52,14 +75,32 @@ async def create_image_asset(
     if detected_type != declared_type:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="O tipo real da imagem nao confere com o arquivo enviado.")
 
+    return ValidatedImageUpload(
+        filename=(file.filename or "")[:255] or None,
+        content_type=detected_type,
+        byte_size=len(data),
+        content=data,
+    )
+
+
+async def create_image_asset(
+    db: Session,
+    *,
+    file: UploadFile,
+    owner_user_id: str,
+    scope: str,
+    family_id: str | None = None,
+) -> ImageAsset:
+    upload = await read_validated_image_upload(file)
+
     asset = ImageAsset(
         owner_user_id=owner_user_id,
         family_id=family_id,
         scope=scope,
-        content_type=detected_type,
-        original_filename=(file.filename or "")[:255] or None,
-        byte_size=len(data),
-        content=data,
+        content_type=upload.content_type,
+        original_filename=upload.filename,
+        byte_size=upload.byte_size,
+        content=upload.content,
     )
     db.add(asset)
     db.commit()

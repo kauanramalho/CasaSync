@@ -1,5 +1,6 @@
 export const imageFileTypes = ["image/png", "image/jpeg", "image/webp"];
-export const imageFileAccept = imageFileTypes.join(",");
+export const imageFileExtensions = [".png", ".jpg", ".jpeg", ".webp"];
+export const imageFileAccept = [...imageFileTypes, ...imageFileExtensions].join(",");
 export const defaultImageMaxBytes = 8 * 1024 * 1024;
 export const optimizedImageMaxBytes = 560 * 1024;
 export const maxImagePixels = 36_000_000;
@@ -8,6 +9,8 @@ export const defaultCrop = { zoom: 1, x: 0, y: 0 };
 
 export function validateImageFile(file, maxBytes = defaultImageMaxBytes) {
   if (!file) return "Selecione uma imagem.";
+  const extension = `.${(file.name || "").split(".").pop() || ""}`.toLowerCase();
+  if (!imageFileExtensions.includes(extension)) return "Use uma imagem PNG, JPG, JPEG ou WEBP.";
   if (!imageFileTypes.includes(file.type)) return "Use uma imagem PNG, JPG, JPEG ou WEBP.";
   if (file.size > maxBytes) return "A imagem deve ter no maximo 8 MB antes da otimizacao.";
   return "";

@@ -83,6 +83,8 @@ class Settings(BaseSettings):
 
     ai_provider: str = "mock"
     ai_api_key: str | None = None
+    ai_image_analysis_enabled: bool = True
+    ai_vision_provider: str = "mock"
 
     model_config = SettingsConfigDict(
         env_file=(REPO_ROOT / ".env", BACKEND_DIR / ".env"),
