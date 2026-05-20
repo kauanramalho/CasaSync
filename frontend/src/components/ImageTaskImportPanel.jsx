@@ -21,68 +21,18 @@ import { imageAnalysisApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { imageFileAccept, validateImageDimensions, validateImageFile } from "../utils/files";
 import { normalizeApiError } from "../utils/formatters";
+import {
+  LOW_CONFIDENCE_THRESHOLD,
+  buildReviewItem,
+  buildTaskImportPayload,
+  formatPercent,
+  formatSchedule,
+  getUncertainReviewWarnings,
+  priorityOptions,
+  typeLabels,
+  validateReviewItemsBeforeImport
+} from "../utils/taskSuggestionReview";
 import { useToast } from "../hooks/useToast";
-
-const LOW_CONFIDENCE_THRESHOLD = 0.5;
-
-const typeLabels = {
-  task: "Tarefa",
-  event: "Evento",
-  reminder: "Lembrete"
-};
-
-const priorityOptions = [
-  { value: "low", label: "Baixa" },
-  { value: "medium", label: "Media" },
-  { value: "high", label: "Alta" },
-  { value: "urgent", label: "Urgente" }
-];
-
-function createSuggestionId(index) {
-  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
-  return `suggestion-${Date.now()}-${index}`;
-}
-
-function formatPercent(value) {
-  return `${Math.round(Math.max(0, Math.min(1, Number(value) || 0)) * 100)}%`;
-}
-
-function formatSchedule(item) {
-  const start = [item.date, item.time].filter(Boolean).join(" ");
-  const end = [item.endDate, item.endTime].filter(Boolean).join(" ");
-  if (start && end) return `${start} ate ${end}`;
-  return start || "Sem data definida";
-}
-
-function findCategoryId(categoryName, categories) {
-  const normalized = String(categoryName || "").trim().toLowerCase();
-  if (!normalized) return "";
-  return categories.find((category) => category.name.trim().toLowerCase() === normalized)?.id || "";
-}
-
-function buildReviewItem(item, index, categories) {
-  const confidence = Number(item.confidence ?? 0);
-  return {
-    suggestionId: item.suggestionId || createSuggestionId(index),
-    selected: true,
-    type: item.type || "task",
-    title: item.title || "",
-    description: item.description || "",
-    date: item.date || "",
-    time: item.time || "",
-    endDate: item.endDate || "",
-    endTime: item.endTime || "",
-    category: item.category || "",
-    categoryId: findCategoryId(item.category, categories),
-    priority: item.priority || "medium",
-    responsible: item.responsible || "",
-    assigneeIds: [],
-    confidence,
-    warnings: item.warnings || [],
-    acceptedLowConfidence: confidence >= LOW_CONFIDENCE_THRESHOLD,
-    reminderEnabled: false
-  };
-}
 
 export default function ImageTaskImportPanel({ categories = [], members = [], onImported }) {
   const { showToast } = useToast();
@@ -94,6 +44,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
   const [analysis, setAnalysis] = useState(null);
   const [reviewItems, setReviewItems] = useState([]);
   const [importReport, setImportReport] = useState(null);
+  const [itemErrors, setItemErrors] = useState({});
   const [analyzing, setAnalyzing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -119,6 +70,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
     setAnalysis(null);
     setReviewItems([]);
     setImportReport(null);
+    setItemErrors({});
     setError("");
     setDragging(false);
     if (inputRef.current) inputRef.current.value = "";
@@ -130,6 +82,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
       setAnalysis(null);
       setReviewItems([]);
       setImportReport(null);
+      setItemErrors({});
 
       const validationError = validateImageFile(nextFile);
       if (validationError) {
@@ -186,6 +139,30 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
 
   function updateReviewItem(suggestionId, patch) {
     setReviewItems((current) => current.map((item) => (item.suggestionId === suggestionId ? { ...item, ...patch } : item)));
+    setItemErrors((current) => {
+      if (!current[suggestionId]) return current;
+      const next = { ...current };
+      delete next[suggestionId];
+      return next;
+    });
+  }
+
+  function removeReviewItem(suggestionId) {
+    setReviewItems((current) => current.filter((item) => item.suggestionId !== suggestionId));
+    setItemErrors((current) => {
+      if (!current[suggestionId]) return current;
+      const next = { ...current };
+      delete next[suggestionId];
+      return next;
+    });
+  }
+
+  function cancelReview() {
+    setAnalysis(null);
+    setReviewItems([]);
+    setImportReport(null);
+    setItemErrors({});
+    setError("");
   }
 
   async function handleAnalyze() {
@@ -195,6 +172,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
     setAnalysis(null);
     setReviewItems([]);
     setImportReport(null);
+    setItemErrors({});
     try {
       const response = await imageAnalysisApi.analyzeTaskSuggestions(file);
       setAnalysis(response);
@@ -212,6 +190,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
   async function handleImportSuggestions() {
     setError("");
     setImportReport(null);
+    setItemErrors({});
 
     if (!selectedItems.length) {
       const message = "Selecione pelo menos uma sugestao revisada.";
@@ -219,8 +198,11 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
       showToast({ type: "error", message });
       return;
     }
-    if (hasLowConfidencePendingReview) {
-      const message = "Confirme a revisao dos itens de baixa confianca antes de criar tarefas.";
+
+    const validationErrors = validateReviewItemsBeforeImport(selectedItems);
+    if (Object.keys(validationErrors).length) {
+      const message = "Corrija os itens destacados antes de criar tarefas.";
+      setItemErrors(validationErrors);
       setError(message);
       showToast({ type: "error", message });
       return;
@@ -228,29 +210,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
 
     setImporting(true);
     try {
-      const report = await tasksApi.importSuggestions({
-        items: selectedItems.map((item) => ({
-          suggestionId: item.suggestionId,
-          type: item.type,
-          title: item.title,
-          description: item.description || null,
-          date: item.date || null,
-          time: item.time || null,
-          endDate: item.endDate || null,
-          endTime: item.endTime || null,
-          category: item.category || null,
-          categoryId: item.categoryId || null,
-          priority: item.priority || null,
-          responsible: item.responsible || null,
-          assigneeIds: item.assigneeIds,
-          confidence: item.confidence,
-          warnings: item.warnings,
-          acceptedLowConfidence: item.acceptedLowConfidence,
-          reminderEnabled: item.reminderEnabled,
-          reminderValue: item.reminderEnabled ? 1 : null,
-          reminderUnit: item.reminderEnabled ? "hours" : null
-        }))
-      });
+      const report = await tasksApi.importSuggestions(buildTaskImportPayload(selectedItems));
       setImportReport(report);
       if (report.created?.length) {
         emitAppDataChanged();
@@ -375,128 +335,198 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
                 </div>
               )}
 
+              {reviewItems.length === 0 && (
+                <div className="rounded-[20px] border border-dashed border-slate-200 bg-white/80 px-4 py-6 text-center">
+                  <p className="text-sm font-black text-ink">Nenhuma sugestao encontrada.</p>
+                  <p className="mt-2 text-sm font-semibold text-muted">Tente uma imagem mais nitida ou cadastre a tarefa manualmente.</p>
+                </div>
+              )}
+
               <div className="space-y-4">
-                {reviewItems.map((item, index) => (
-                  <article key={item.suggestionId} className="rounded-[20px] border border-slate-200/80 bg-white p-4">
-                    <div className="mb-3 flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => updateReviewItem(item.suggestionId, { selected: !item.selected })}
-                        className={`rounded-full px-3 py-1 text-xs font-black transition ${
-                          item.selected ? "bg-blush/10 text-blush" : "bg-slate-100 text-muted"
-                        }`}
-                      >
-                        {item.selected ? "Selecionada" : "Ignorada"}
-                      </button>
-                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-muted">{typeLabels[item.type] || item.type}</span>
-                      <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">{formatPercent(item.confidence)}</span>
-                    </div>
+                {reviewItems.map((item, index) => {
+                  const uncertainWarnings = getUncertainReviewWarnings(item);
+                  return (
+                    <article
+                      key={item.suggestionId}
+                      className={`rounded-[20px] border bg-white p-4 ${
+                        itemErrors[item.suggestionId] ? "border-rose-200 ring-2 ring-rose-100" : "border-slate-200/80"
+                      }`}
+                    >
+                      <div className="mb-3 flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => updateReviewItem(item.suggestionId, { selected: !item.selected })}
+                          className={`rounded-full px-3 py-1 text-xs font-black transition ${
+                            item.selected ? "bg-blush/10 text-blush" : "bg-slate-100 text-muted"
+                          }`}
+                        >
+                          {item.selected ? "Selecionada" : "Ignorada"}
+                        </button>
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-muted">{typeLabels[item.type] || item.type}</span>
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-black ${
+                            item.confidence < LOW_CONFIDENCE_THRESHOLD ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"
+                          }`}
+                        >
+                          {formatPercent(item.confidence)}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="ml-auto px-3 py-1.5 text-xs"
+                          onClick={() => removeReviewItem(item.suggestionId)}
+                          disabled={importing}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Remover sugestao
+                        </Button>
+                      </div>
 
-                    <div className="grid gap-3">
-                      <label className="block">
-                        <span className="mb-1 block text-xs font-black text-muted">Titulo</span>
-                        <input className="soft-input" value={item.title} onChange={(event) => updateReviewItem(item.suggestionId, { title: event.target.value })} />
-                      </label>
-                      <label className="block">
-                        <span className="mb-1 block text-xs font-black text-muted">Descricao</span>
-                        <textarea className="soft-input min-h-20 resize-none" value={item.description} onChange={(event) => updateReviewItem(item.suggestionId, { description: event.target.value })} />
-                      </label>
-                      <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="grid gap-3">
                         <label className="block">
-                          <span className="mb-1 block text-xs font-black text-muted">Data</span>
-                          <input className="soft-input" type="date" value={item.date} onChange={(event) => updateReviewItem(item.suggestionId, { date: event.target.value })} />
-                        </label>
-                        <label className="block">
-                          <span className="mb-1 block text-xs font-black text-muted">Horario</span>
-                          <input className="soft-input" type="time" value={item.time} onChange={(event) => updateReviewItem(item.suggestionId, { time: event.target.value })} />
-                        </label>
-                        <label className="block">
-                          <span className="mb-1 block text-xs font-black text-muted">Categoria</span>
-                          <select
+                          <span className="mb-1 block text-xs font-black text-muted">Titulo</span>
+                          <input
                             className="soft-input"
-                            value={item.categoryId}
-                            onChange={(event) => {
-                              const category = categories.find((candidate) => candidate.id === event.target.value);
-                              updateReviewItem(item.suggestionId, {
-                                categoryId: event.target.value,
-                                category: category?.name || item.category
-                              });
-                            }}
-                          >
-                            <option value="">Sem categoria</option>
-                            {categories.map((category) => (
-                              <option key={category.id} value={category.id}>
-                                {category.name}
-                              </option>
-                            ))}
-                          </select>
+                            value={item.title}
+                            aria-invalid={Boolean(itemErrors[item.suggestionId])}
+                            onChange={(event) => updateReviewItem(item.suggestionId, { title: event.target.value })}
+                          />
+                          {itemErrors[item.suggestionId] && (
+                            <span className="mt-2 block rounded-2xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">
+                              {itemErrors[item.suggestionId]}
+                            </span>
+                          )}
                         </label>
                         <label className="block">
-                          <span className="mb-1 block text-xs font-black text-muted">Prioridade</span>
-                          <select className="soft-input" value={item.priority} onChange={(event) => updateReviewItem(item.suggestionId, { priority: event.target.value })}>
-                            {priorityOptions.map((priority) => (
-                              <option key={priority.value} value={priority.value}>
-                                {priority.label}
-                              </option>
-                            ))}
-                          </select>
+                          <span className="mb-1 block text-xs font-black text-muted">Descricao</span>
+                          <textarea
+                            className="soft-input min-h-20 resize-none"
+                            value={item.description}
+                            onChange={(event) => updateReviewItem(item.suggestionId, { description: event.target.value })}
+                          />
                         </label>
-                      </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label className="block">
+                            <span className="mb-1 block text-xs font-black text-muted">Data</span>
+                            <input className="soft-input" type="date" value={item.date} onChange={(event) => updateReviewItem(item.suggestionId, { date: event.target.value })} />
+                          </label>
+                          <label className="block">
+                            <span className="mb-1 block text-xs font-black text-muted">Horario</span>
+                            <input className="soft-input" type="time" value={item.time} onChange={(event) => updateReviewItem(item.suggestionId, { time: event.target.value })} />
+                          </label>
+                          <label className="block">
+                            <span className="mb-1 block text-xs font-black text-muted">Categoria</span>
+                            <select
+                              className="soft-input"
+                              value={item.categoryId}
+                              onChange={(event) => {
+                                const category = categories.find((candidate) => candidate.id === event.target.value);
+                                updateReviewItem(item.suggestionId, {
+                                  categoryId: event.target.value,
+                                  category: category?.name || item.category
+                                });
+                              }}
+                            >
+                              <option value="">Sem categoria</option>
+                              {categories.map((category) => (
+                                <option key={category.id} value={category.id}>
+                                  {category.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="block">
+                            <span className="mb-1 block text-xs font-black text-muted">Prioridade</span>
+                            <select className="soft-input" value={item.priority} onChange={(event) => updateReviewItem(item.suggestionId, { priority: event.target.value })}>
+                              {priorityOptions.map((priority) => (
+                                <option key={priority.value} value={priority.value}>
+                                  {priority.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
 
-                      <div>
-                        <span className="mb-2 block text-xs font-black text-muted">Responsaveis</span>
-                        <AssigneePicker members={members} value={item.assigneeIds} onChange={(assigneeIds) => updateReviewItem(item.suggestionId, { assigneeIds })} />
-                        {item.responsible && <p className="mt-2 text-xs font-bold text-muted">Sugestao original: {item.responsible}</p>}
-                      </div>
+                        <div>
+                          <span className="mb-2 block text-xs font-black text-muted">Responsaveis</span>
+                          <AssigneePicker members={members} value={item.assigneeIds} onChange={(assigneeIds) => updateReviewItem(item.suggestionId, { assigneeIds })} />
+                          {item.responsible && <p className="mt-2 text-xs font-bold text-muted">Sugestao original: {item.responsible}</p>}
+                        </div>
 
-                      <label className="flex items-start gap-3 rounded-2xl bg-blue-50/70 px-3 py-2 text-xs font-bold text-blue-700">
-                        <input
-                          type="checkbox"
-                          className="mt-0.5 accent-blue-600"
-                          checked={item.reminderEnabled}
-                          onChange={(event) => updateReviewItem(item.suggestionId, { reminderEnabled: event.target.checked })}
-                          disabled={!item.date}
-                        />
-                        <span>Ativar lembrete 1 hora antes quando houver data.</span>
-                      </label>
-
-                      {item.confidence < LOW_CONFIDENCE_THRESHOLD && (
-                        <label className="flex items-start gap-3 rounded-2xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">
+                        <label className="flex items-start gap-3 rounded-2xl bg-blue-50/70 px-3 py-2 text-xs font-bold text-blue-700">
                           <input
                             type="checkbox"
-                            className="mt-0.5 accent-amber-600"
-                            checked={item.acceptedLowConfidence}
-                            onChange={(event) => updateReviewItem(item.suggestionId, { acceptedLowConfidence: event.target.checked })}
+                            className="mt-0.5 accent-blue-600"
+                            checked={item.reminderEnabled}
+                            onChange={(event) => updateReviewItem(item.suggestionId, { reminderEnabled: event.target.checked })}
+                            disabled={!item.date}
                           />
-                          <span>Revisei este item de baixa confianca e confirmo que ele pode ser criado.</span>
+                          <span>Ativar lembrete 1 hora antes quando houver data.</span>
                         </label>
-                      )}
 
-                      <p className="inline-flex items-center gap-2 text-xs font-bold text-muted">
-                        <CalendarDays className="h-4 w-4 text-blush" />
-                        {formatSchedule(item)}
-                      </p>
+                        {item.confidence < LOW_CONFIDENCE_THRESHOLD && (
+                          <label className="flex items-start gap-3 rounded-2xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5 accent-amber-600"
+                              checked={item.acceptedLowConfidence}
+                              onChange={(event) => updateReviewItem(item.suggestionId, { acceptedLowConfidence: event.target.checked })}
+                            />
+                            <span>Revisei este item de baixa confianca e confirmo que ele pode ser criado.</span>
+                          </label>
+                        )}
 
-                      {item.warnings?.length > 0 && (
-                        <div className="space-y-2">
-                          {item.warnings.map((warning) => (
-                            <p key={`${item.suggestionId}-${warning}`} className="rounded-2xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">
-                              {warning}
-                            </p>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                        <p className="inline-flex items-center gap-2 text-xs font-bold text-muted">
+                          <CalendarDays className="h-4 w-4 text-blush" />
+                          {formatSchedule(item)}
+                        </p>
 
-                    <p className="mt-3 text-right text-xs font-bold text-muted">Sugestao {index + 1}</p>
-                  </article>
-                ))}
+                        {uncertainWarnings.length > 0 && (
+                          <div className="space-y-2">
+                            {uncertainWarnings.map((warning) => (
+                              <p key={`${item.suggestionId}-review-${warning}`} className="rounded-2xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">
+                                {warning}
+                              </p>
+                            ))}
+                          </div>
+                        )}
+
+                        {item.warnings?.length > 0 && (
+                          <div className="space-y-2">
+                            {item.warnings.map((warning) => (
+                              <p key={`${item.suggestionId}-${warning}`} className="rounded-2xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">
+                                {warning}
+                              </p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <p className="mt-3 text-right text-xs font-bold text-muted">Sugestao {index + 1}</p>
+                    </article>
+                  );
+                })}
               </div>
 
-              <Button type="button" className="mt-4 w-full" onClick={handleImportSuggestions} disabled={importing || !selectedItems.length || hasLowConfidencePendingReview}>
-                {importing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
-                {importing ? "Criando tarefas" : `Criar ${selectedItems.length} tarefa(s) revisada(s)`}
-              </Button>
+              {hasLowConfidencePendingReview && (
+                <p className="mt-4 rounded-2xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">
+                  Ha sugestoes de baixa confianca selecionadas. Marque a confirmacao de revisao nelas antes de criar.
+                </p>
+              )}
+
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                <Button type="button" variant="secondary" className="w-full sm:flex-1" onClick={cancelReview} disabled={importing}>
+                  Cancelar
+                </Button>
+                <Button type="button" variant="secondary" className="w-full sm:flex-1" onClick={() => inputRef.current?.click()} disabled={importing}>
+                  <RefreshCw className="h-4 w-4" />
+                  Trocar imagem
+                </Button>
+                <Button type="button" className="w-full sm:flex-[1.5]" onClick={handleImportSuggestions} disabled={importing || !selectedItems.length}>
+                  {importing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
+                  {importing ? "Criando tarefas" : `Criar ${selectedItems.length} tarefa(s) selecionada(s)`}
+                </Button>
+              </div>
             </div>
           )}
 
