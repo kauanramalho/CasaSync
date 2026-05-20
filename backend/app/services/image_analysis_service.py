@@ -23,5 +23,10 @@ async def parse_image_to_task_suggestions(
         VisionAnalysisContext(
             family_id=family_id,
             provider=settings.ai_vision_provider,
+            enabled=settings.ai_vision_enabled,
+            openai_api_key=settings.openai_api_key,
+            openai_vision_model=settings.openai_vision_model,
+            openai_vision_timeout_seconds=settings.openai_vision_timeout_seconds,
+            openai_vision_max_output_tokens=settings.openai_vision_max_output_tokens,
         ),
     )

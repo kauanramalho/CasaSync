@@ -32,7 +32,6 @@ def _unique_invite_code(db: Session) -> str:
 def _join_request_expiration() -> datetime:
     return datetime.now(timezone.utc) + timedelta(days=JOIN_REQUEST_TTL_DAYS)
 
-
 def _as_aware_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)

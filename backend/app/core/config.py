@@ -87,7 +87,12 @@ class Settings(BaseSettings):
     ai_provider: str = "mock"
     ai_api_key: str | None = None
     ai_image_analysis_enabled: bool = True
+    ai_vision_enabled: bool = False
     ai_vision_provider: str = "mock"
+    openai_api_key: str | None = None
+    openai_vision_model: str = "gpt-4.1-mini"
+    openai_vision_timeout_seconds: float = 20.0
+    openai_vision_max_output_tokens: int = 1200
 
     model_config = SettingsConfigDict(
         env_file=(REPO_ROOT / ".env", BACKEND_DIR / ".env"),
@@ -118,6 +123,8 @@ class Settings(BaseSettings):
         "google_client_id",
         "google_client_secret",
         "google_redirect_uri",
+        "ai_api_key",
+        "openai_api_key",
         mode="before",
     )
     @classmethod
@@ -155,6 +162,10 @@ class Settings(BaseSettings):
     @property
     def google_calendar_configured(self) -> bool:
         return bool(self.google_client_id and self.google_client_secret and self.google_redirect_uri)
+
+    @property
+    def openai_vision_configured(self) -> bool:
+        return bool(self.openai_api_key)
 
 
 @lru_cache
