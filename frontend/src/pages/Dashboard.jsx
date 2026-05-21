@@ -16,6 +16,7 @@ import { categoriesApi, coupleApi, dashboardApi, familiesApi, tasksApi } from ".
 import { emitAppDataChanged } from "../utils/events";
 import { formatDate, normalizeApiError } from "../utils/formatters";
 import { getHiddenRecentTaskIds, hideRecentTask } from "../utils/recentTasks";
+import { applyTaskAttachmentChanges, hasTaskAttachmentChanges } from "../utils/taskAttachments";
 import { isTaskOpen, sortTasksForDisplay } from "../utils/tasks";
 
 const statMeta = {
@@ -212,14 +213,17 @@ export default function Dashboard() {
     load();
   }, [addNotification, load, user?.name]);
 
-  const handleSaveEdit = useCallback(async function handleSaveEdit(payload) {
+  const handleSaveEdit = useCallback(async function handleSaveEdit(payload, attachmentChanges = {}) {
     if (!editingTask) return;
     setSavingEdit(true);
     try {
       const updated = await tasksApi.update(editingTask.id, payload);
+      await applyTaskAttachmentChanges(updated.id, attachmentChanges);
       addNotification({
         title: "Tarefa editada",
-        description: `${updated.title} foi atualizada nas recentes e nos relatórios.`,
+        description: hasTaskAttachmentChanges(attachmentChanges)
+          ? `${updated.title} foi atualizada com anexos.`
+          : `${updated.title} foi atualizada nas recentes e nos relatórios.`,
         type: "task",
         actor: user?.name
       });

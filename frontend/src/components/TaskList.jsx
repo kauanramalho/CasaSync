@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowDownUp, ArrowUp, BellRing, Check, Edit3, MoreHorizontal, RotateCcw, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowDownUp, ArrowUp, BellRing, Check, Edit3, MoreHorizontal, Paperclip, RotateCcw, Trash2 } from "lucide-react";
 
 import AssigneeStack from "./AssigneeStack";
 import { CategoryBadge, PriorityBadge, StatusBadge } from "./Badges";
@@ -30,6 +30,7 @@ function SortHeaderButton({ column, activeSort, onSort }) {
 }
 
 function TaskRow({ task, compact, menuOpen, onToggleMenu, onRunAction, onComplete, onEdit, onDelete, onRemoveRecent }) {
+  const attachmentCount = task.attachments?.length || 0;
   const hasActiveReminder =
     task.reminder_enabled &&
     !task.reminder_sent &&
@@ -61,6 +62,12 @@ function TaskRow({ task, compact, menuOpen, onToggleMenu, onRunAction, onComplet
           <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-600">
             <BellRing className="h-3 w-3" />
             Lembrete: {formatReminderLead(task.reminder_value, task.reminder_unit)}
+          </span>
+        )}
+        {attachmentCount > 0 && (
+          <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-muted">
+            <Paperclip className="h-3 w-3" />
+            {attachmentCount} {attachmentCount === 1 ? "anexo" : "anexos"}
           </span>
         )}
       </div>

@@ -25,3 +25,4 @@ Thumbs.db
 coverage/
 
 postgres-data/
+backend/storage/

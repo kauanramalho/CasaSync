@@ -9,6 +9,7 @@ import DateTimePicker from "../components/DateTimePicker";
 import ImageTaskImportPanel from "../components/ImageTaskImportPanel";
 import PageHeader from "../components/PageHeader";
 import SelectMenu from "../components/SelectMenu";
+import TaskAttachmentField from "../components/TaskAttachmentField";
 import TaskReminderFields from "../components/TaskReminderFields";
 import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
@@ -16,6 +17,7 @@ import { useToast } from "../hooks/useToast";
 import { categoriesApi, familiesApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError, toIsoOrNull } from "../utils/formatters";
+import { applyTaskAttachmentChanges } from "../utils/taskAttachments";
 import { formatReminderLead, getReminderPayload, getReminderValidationError } from "../utils/taskReminders";
 
 export default function NewTask() {
@@ -26,6 +28,8 @@ export default function NewTask() {
   const [categories, setCategories] = useState([]);
   const [members, setMembers] = useState([]);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState([]);
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -85,6 +89,7 @@ export default function NewTask() {
       setError(reminderError);
       return;
     }
+    setSaving(true);
     try {
       const created = await tasksApi.create({
         ...form,
@@ -94,11 +99,17 @@ export default function NewTask() {
         due_date: toIsoOrNull(form.due_date),
         ...getReminderPayload(form)
       });
+      if (pendingFiles.length) {
+        await applyTaskAttachmentChanges(created.id, { pendingFiles });
+      }
+      const notificationDescription = created.reminder_enabled
+        ? `Lembrete ativado para ${formatReminderLead(created.reminder_value, created.reminder_unit)}.`
+        : pendingFiles.length
+          ? `${created.title} entrou na lista da casa com anexo.`
+          : `${created.title} entrou na lista da casa.`;
       addNotification({
         title: "Nova tarefa criada",
-        description: created.reminder_enabled
-          ? `Lembrete ativado para ${formatReminderLead(created.reminder_value, created.reminder_unit)}.`
-          : `${created.title} entrou na lista da casa.`,
+        description: notificationDescription,
         type: created.reminder_enabled ? "reminder" : "task",
         actor: user?.name
       });
@@ -109,6 +120,8 @@ export default function NewTask() {
       const message = normalizeApiError(err);
       setError(message);
       showToast({ type: "error", message });
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -142,6 +155,7 @@ export default function NewTask() {
             <DateTimePicker value={form.due_date} onChange={(value) => updateField("due_date", value)} />
           </div>
           <TaskReminderFields form={form} onChange={updateReminder} />
+          <TaskAttachmentField pendingFiles={pendingFiles} onPendingFilesChange={setPendingFiles} disabled={saving} onError={setError} />
           <div>
             <label className="mb-2 block text-sm font-semibold text-ink">Prioridade</label>
             <SelectMenu
@@ -168,9 +182,9 @@ export default function NewTask() {
           </div>
           {error && <p className="md:col-span-2 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</p>}
           <div className="md:col-span-2 flex flex-col sm:flex-row sm:justify-end">
-            <Button type="submit" className="w-full sm:w-auto">
+            <Button type="submit" className="w-full sm:w-auto" disabled={saving}>
               <Plus className="h-5 w-5" />
-              Criar tarefa
+              {saving ? "Criando..." : "Criar tarefa"}
             </Button>
           </div>
         </form>

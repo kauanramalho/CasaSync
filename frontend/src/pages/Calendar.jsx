@@ -18,6 +18,7 @@ import { categoriesApi, familiesApi, integrationsApi, tasksApi } from "../servic
 import { emitAppDataChanged } from "../utils/events";
 import { formatDate, normalizeApiError } from "../utils/formatters";
 import { buildMonthDays, getStoredPreferences, getWeekdayLabels, startOfWeek as getPreferenceStartOfWeek } from "../utils/preferences";
+import { applyTaskAttachmentChanges, hasTaskAttachmentChanges } from "../utils/taskAttachments";
 import { getCategoryHex, getTaskPointLabel, sortTasksForDisplay } from "../utils/tasks";
 
 const weekdays = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
@@ -409,19 +410,24 @@ export default function Calendar() {
     }
   }, [addNotification, showToast, user?.name]);
 
-  const handleSaveEdit = useCallback(async function handleSaveEdit(payload) {
+  const handleSaveEdit = useCallback(async function handleSaveEdit(payload, attachmentChanges = {}) {
     if (!editingTask) return;
     setSavingEdit(true);
     setEditError("");
     try {
       const updated = await tasksApi.update(editingTask.id, payload);
+      setTasks((current) => current.map((task) => (task.id === updated.id ? updated : task)));
+      const changedAttachments = await applyTaskAttachmentChanges(updated.id, attachmentChanges);
+      const persisted = changedAttachments ? await tasksApi.retrieve(updated.id) : updated;
       addNotification({
         title: "Tarefa editada",
-        description: `${updated.title} foi atualizada no calendário.`,
+        description: hasTaskAttachmentChanges(attachmentChanges)
+          ? `${updated.title} foi atualizada com anexos.`
+          : `${updated.title} foi atualizada no calendário.`,
         type: "task",
         actor: user?.name
       });
-      setTasks((current) => current.map((task) => (task.id === updated.id ? updated : task)));
+      setTasks((current) => current.map((task) => (task.id === persisted.id ? persisted : task)));
       showToast({ type: "success", message: "Tarefa editada com sucesso." });
       setEditingTask(null);
       emitAppDataChanged();

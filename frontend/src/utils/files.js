@@ -7,12 +7,33 @@ export const maxImagePixels = 36_000_000;
 export const maxImageSide = 8000;
 export const defaultCrop = { zoom: 1, x: 0, y: 0 };
 
+export const taskAttachmentMaxBytes = 8 * 1024 * 1024;
+export const taskAttachmentFileTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "application/pdf"];
+export const taskAttachmentFileExtensions = [".png", ".jpg", ".jpeg", ".webp", ".pdf"];
+export const taskAttachmentAccept = [...taskAttachmentFileTypes, ...taskAttachmentFileExtensions].join(",");
+
 export function validateImageFile(file, maxBytes = defaultImageMaxBytes) {
   if (!file) return "Selecione uma imagem.";
   const extension = `.${(file.name || "").split(".").pop() || ""}`.toLowerCase();
   if (!imageFileExtensions.includes(extension)) return "Use uma imagem PNG, JPG, JPEG ou WEBP.";
   if (!imageFileTypes.includes(file.type)) return "Use uma imagem PNG, JPG, JPEG ou WEBP.";
   if (file.size > maxBytes) return "A imagem deve ter no maximo 8 MB antes da otimizacao.";
+  return "";
+}
+
+export function formatFileSize(bytes = 0) {
+  if (!bytes) return "0 KB";
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
+}
+
+export function validateTaskAttachmentFile(file, maxBytes = taskAttachmentMaxBytes) {
+  if (!file) return "Selecione um arquivo.";
+  const extension = `.${(file.name || "").split(".").pop() || ""}`.toLowerCase();
+  const mimeType = (file.type || "").toLowerCase();
+  if (!taskAttachmentFileExtensions.includes(extension)) return "Use apenas imagem PNG, JPG, JPEG, WEBP ou PDF.";
+  if (!taskAttachmentFileTypes.includes(mimeType)) return "Use apenas imagem PNG, JPG, JPEG, WEBP ou PDF.";
+  if (file.size > maxBytes) return "O anexo deve ter no maximo 8 MB.";
   return "";
 }
 

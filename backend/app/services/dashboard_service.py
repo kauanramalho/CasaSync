@@ -25,6 +25,7 @@ def _recent_task_query(db: Session):
         selectinload(Task.assignee_links).selectinload(TaskAssignee.user),
         selectinload(Task.creator),
         selectinload(Task.category),
+        selectinload(Task.attachments),
     )
 
 

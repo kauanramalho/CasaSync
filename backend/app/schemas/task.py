@@ -7,6 +7,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from app.models.enums import TaskPriority, TaskStatus, TaskType
 from app.schemas.category import CategoryRead
 from app.schemas.common import ORMModel
+from app.schemas.task_attachment import TaskAttachmentRead
 from app.schemas.user import UserSummary
 
 
@@ -101,3 +102,4 @@ class TaskRead(ORMModel):
     assignee_points: list[TaskAssigneeAwardRead] = []
     creator: UserSummary | None = None
     category: CategoryRead | None = None
+    attachments: list[TaskAttachmentRead] = []

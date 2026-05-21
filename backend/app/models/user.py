@@ -25,3 +25,4 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     created_tasks = relationship("Task", back_populates="creator", foreign_keys="Task.creator_id")
     assigned_tasks = relationship("Task", back_populates="assignee", foreign_keys="Task.assignee_id")
     task_assignment_links = relationship("TaskAssignee", back_populates="user", cascade="all, delete-orphan")
+    task_attachments = relationship("TaskAttachment", back_populates="uploaded_by", foreign_keys="TaskAttachment.uploaded_by_id")

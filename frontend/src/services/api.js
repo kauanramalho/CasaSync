@@ -185,7 +185,15 @@ async function performRequest(path, { method = "GET", body, auth = true } = {}) 
   return data;
 }
 
-async function uploadRequest(path, { formData, auth = true } = {}) {
+async function uploadRequest(
+  path,
+  {
+    formData,
+    auth = true,
+    networkErrorMessage = "Nao foi possivel enviar a imagem. Verifique sua conexao e tente novamente.",
+    fallbackErrorMessage = "Nao foi possivel enviar a imagem."
+  } = {}
+) {
   const url = `${getApiUrl()}${apiPath(path)}`;
   const headers = {};
   const token = getToken();
@@ -205,15 +213,53 @@ async function uploadRequest(path, { formData, auth = true } = {}) {
     if (import.meta.env.DEV) {
       console.error("[CasaSync API]", "upload-network-error", url, error);
     }
-    throw new Error("Nao foi possivel enviar a imagem. Verifique sua conexao e tente novamente.");
+    throw new Error(networkErrorMessage);
   }
 
   const data = response.status === 204 ? null : await response.json().catch(() => null);
   if (!response.ok) {
     const detail = extractApiErrorMessage(data);
-    throw new Error(detail || "Nao foi possivel enviar a imagem.");
+    throw new Error(detail || fallbackErrorMessage);
   }
   return data;
+}
+
+async function downloadRequest(path, { auth = true } = {}) {
+  const url = `${getApiUrl()}${apiPath(path)}`;
+  const headers = {};
+  const token = getToken();
+  if (auth && token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  let response;
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      headers,
+      credentials: "omit"
+    });
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error("[CasaSync API]", "download-network-error", url, error);
+    }
+    throw new Error("Nao foi possivel abrir o anexo. Verifique sua conexao e tente novamente.");
+  }
+
+  if (!response.ok) {
+    if (auth && response.status === 401) {
+      clearToken();
+      window.dispatchEvent(new Event(AUTH_SESSION_CHANGED_EVENT));
+    }
+    const data = await response.json().catch(() => null);
+    const detail = extractApiErrorMessage(data);
+    throw new Error(detail || "Nao foi possivel abrir o anexo.");
+  }
+
+  return {
+    blob: await response.blob(),
+    contentType: response.headers.get("content-type") || "application/octet-stream"
+  };
 }
 
 function assertPayloadHasNoInlineImages(value, path = "") {
@@ -319,11 +365,24 @@ export const tasksApi = {
     const query = search.toString();
     return request(`/tasks${query ? `?${query}` : ""}`);
   },
+  retrieve: (id) => request(`/tasks/${id}`),
   create: (payload) => request("/tasks", { method: "POST", body: payload }),
   importSuggestions: (payload) => request("/tasks/import-suggestions", { method: "POST", body: payload }),
   update: (id, payload) => request(`/tasks/${id}`, { method: "PATCH", body: payload }),
   complete: (id) => request(`/tasks/${id}/complete`, { method: "POST" }),
   delete: (id) => request(`/tasks/${id}`, { method: "DELETE" }),
+  attachments: (id) => request(`/tasks/${id}/attachments`),
+  uploadAttachment: (id, file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return uploadRequest(`/tasks/${id}/attachments`, {
+      formData,
+      networkErrorMessage: "Nao foi possivel enviar o anexo. Verifique sua conexao e tente novamente.",
+      fallbackErrorMessage: "Nao foi possivel enviar o anexo."
+    });
+  },
+  downloadAttachment: (taskId, attachmentId) => downloadRequest(`/tasks/${taskId}/attachments/${attachmentId}/download`),
+  deleteAttachment: (taskId, attachmentId) => request(`/tasks/${taskId}/attachments/${attachmentId}`, { method: "DELETE" }),
   remindersDue: () => request("/tasks/reminders/due")
 };
 

@@ -96,6 +96,8 @@ class Settings(BaseSettings):
     openai_vision_timeout_seconds: float = 20.0
     openai_vision_max_output_tokens: int = 1200
 
+    task_attachment_storage_dir: Path = BACKEND_DIR / "storage" / "task_attachments"
+
     model_config = SettingsConfigDict(
         env_file=(REPO_ROOT / ".env", BACKEND_DIR / ".env"),
         env_file_encoding="utf-8",

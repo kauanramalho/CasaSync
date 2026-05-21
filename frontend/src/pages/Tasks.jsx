@@ -15,6 +15,7 @@ import { useToast } from "../hooks/useToast";
 import { categoriesApi, familiesApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError, priorityLabels, statusLabels } from "../utils/formatters";
+import { applyTaskAttachmentChanges, hasTaskAttachmentChanges } from "../utils/taskAttachments";
 import { formatReminderLead } from "../utils/taskReminders";
 import { getAssigneeNames, getTaskAssigneeIds, getTaskPointLabel, isTaskCompleted, isTaskOpen, sortTasksForDisplay } from "../utils/tasks";
 
@@ -143,7 +144,7 @@ export default function Tasks() {
     emitAppDataChanged();
   }, [addNotification, user?.name]);
 
-  const handleSaveEdit = useCallback(async function handleSaveEdit(payload) {
+  const handleSaveEdit = useCallback(async function handleSaveEdit(payload, attachmentChanges = {}) {
     if (!editingTask) return;
     setSavingEdit(true);
     setEditError("");
@@ -151,6 +152,9 @@ export default function Tasks() {
     try {
       const updated = await tasksApi.update(editingTask.id, payload);
       setTasks((current) => current.map((task) => (task.id === updated.id ? updated : task)));
+      const changedAttachments = await applyTaskAttachmentChanges(updated.id, attachmentChanges);
+      const persisted = changedAttachments ? await tasksApi.retrieve(updated.id) : updated;
+      setTasks((current) => current.map((task) => (task.id === persisted.id ? persisted : task)));
       const reminderChanged = Boolean(editingTask.reminder_enabled) !== Boolean(updated.reminder_enabled);
       const reminderLead = formatReminderLead(updated.reminder_value, updated.reminder_unit);
       const message = updated.reminder_enabled
@@ -159,7 +163,9 @@ export default function Tasks() {
           : `Tarefa atualizada com sucesso${reminderLead ? ` com lembrete de ${reminderLead}` : ""}.`
         : editingTask.reminder_enabled
           ? "Lembrete removido desta tarefa."
-          : "Tarefa atualizada com sucesso.";
+          : hasTaskAttachmentChanges(attachmentChanges)
+            ? "Tarefa e anexos atualizados com sucesso."
+            : "Tarefa atualizada com sucesso.";
       addNotification({
         title: updated.reminder_enabled ? "Lembrete da tarefa salvo" : "Tarefa editada",
         description: message,

@@ -5,6 +5,7 @@ import AssigneePicker from "./AssigneePicker";
 import Button from "./Button";
 import DateTimePicker from "./DateTimePicker";
 import SelectMenu from "./SelectMenu";
+import TaskAttachmentField from "./TaskAttachmentField";
 import TaskReminderFields from "./TaskReminderFields";
 import { formatDateTimeLocal, toIsoOrNull } from "../utils/formatters";
 import { getReminderPayload, getReminderValidationError } from "../utils/taskReminders";
@@ -13,6 +14,8 @@ import { normalizeTaskForForm, priorityPoints } from "../utils/tasks";
 export default function TaskEditorModal({ task, categories = [], members = [], onClose, onSave, saving = false, error = "" }) {
   const [form, setForm] = useState(() => normalizeTaskForForm(task));
   const [localError, setLocalError] = useState("");
+  const [pendingFiles, setPendingFiles] = useState([]);
+  const [removedAttachmentIds, setRemovedAttachmentIds] = useState([]);
 
   useEffect(() => {
     setForm({
@@ -20,6 +23,8 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
       due_date: formatDateTimeLocal(task?.due_date)
     });
     setLocalError("");
+    setPendingFiles([]);
+    setRemovedAttachmentIds([]);
   }, [task]);
 
   useEffect(() => {
@@ -69,6 +74,11 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
     setForm((current) => ({ ...current, ...values }));
   }
 
+  function removeExistingAttachment(attachmentId) {
+    setLocalError("");
+    setRemovedAttachmentIds((current) => (current.includes(attachmentId) ? current : [...current, attachmentId]));
+  }
+
   function handleSubmit(event) {
     event.preventDefault();
     const reminderError = getReminderValidationError(form);
@@ -76,17 +86,23 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
       setLocalError(reminderError);
       return;
     }
-    onSave?.({
-      title: form.title,
-      description: form.description || null,
-      assignee_ids: form.assignee_ids,
-      assignee_id: form.assignee_ids[0] || null,
-      category_id: form.category_id || null,
-      due_date: toIsoOrNull(form.due_date),
-      priority: form.priority,
-      status: form.status,
-      ...getReminderPayload(form)
-    });
+    onSave?.(
+      {
+        title: form.title,
+        description: form.description || null,
+        assignee_ids: form.assignee_ids,
+        assignee_id: form.assignee_ids[0] || null,
+        category_id: form.category_id || null,
+        due_date: toIsoOrNull(form.due_date),
+        priority: form.priority,
+        status: form.status,
+        ...getReminderPayload(form)
+      },
+      {
+        pendingFiles,
+        removedAttachmentIds
+      }
+    );
   }
 
   return (
@@ -151,6 +167,17 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
             </div>
 
             <TaskReminderFields form={form} onChange={updateReminder} />
+
+            <TaskAttachmentField
+              taskId={task.id}
+              existingAttachments={task.attachments || []}
+              removedAttachmentIds={removedAttachmentIds}
+              pendingFiles={pendingFiles}
+              onPendingFilesChange={setPendingFiles}
+              onRemoveExisting={removeExistingAttachment}
+              disabled={saving}
+              onError={setLocalError}
+            />
 
             <div>
               <label className="mb-2 block text-sm font-semibold text-ink">Status</label>

@@ -14,6 +14,7 @@ from app.services.category_service import get_category_by_name
 from app.services.family_service import require_family_member
 from app.services.ranking_service import record_task_score, revoke_task_score
 from app.services.retention_service import maintain_task_retention
+from app.services.task_attachment_service import collect_attachment_file_paths, delete_attachment_paths
 from app.services.task_metrics import get_task_assignee_ids, split_points, unique_user_ids
 
 
@@ -54,6 +55,7 @@ def _task_query(db: Session):
         selectinload(Task.assignee_links).selectinload(TaskAssignee.user),
         selectinload(Task.creator),
         selectinload(Task.category),
+        selectinload(Task.attachments),
     )
 
 
@@ -427,7 +429,9 @@ def complete_task(db: Session, family_id: str, task_id: str) -> Task:
 
 def delete_task(db: Session, family_id: str, task_id: str) -> None:
     task = get_task(db, family_id, task_id)
+    attachment_paths = collect_attachment_file_paths(list(task.attachments))
     if task.status == TaskStatus.DONE.value or task.points_awarded:
         _revoke_task_points(db, task)
     db.delete(task)
     db.commit()
+    delete_attachment_paths(attachment_paths)

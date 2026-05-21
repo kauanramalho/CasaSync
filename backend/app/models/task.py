@@ -18,6 +18,21 @@ class TaskAssignee(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     user = relationship("User", back_populates="task_assignment_links")
 
 
+class TaskAttachment(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "task_attachments"
+
+    task_id = Column(String(36), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    family_id = Column(String(36), ForeignKey("families.id", ondelete="CASCADE"), nullable=False, index=True)
+    uploaded_by_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    original_name = Column(String(180), nullable=False)
+    stored_name = Column(String(120), nullable=False, unique=True, index=True)
+    mime_type = Column(String(80), nullable=False)
+    size = Column(Integer, nullable=False)
+
+    task = relationship("Task", back_populates="attachments")
+    uploaded_by = relationship("User", back_populates="task_attachments", foreign_keys=[uploaded_by_id])
+
+
 class Task(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "tasks"
 
@@ -54,6 +69,7 @@ class Task(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     creator = relationship("User", back_populates="created_tasks", foreign_keys=[creator_id])
     category = relationship("Category", back_populates="tasks")
     assignee_links = relationship("TaskAssignee", back_populates="task", cascade="all, delete-orphan")
+    attachments = relationship("TaskAttachment", back_populates="task", cascade="all, delete-orphan", order_by="TaskAttachment.created_at")
 
     @property
     def assignees(self):
