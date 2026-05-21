@@ -30,12 +30,15 @@ class TaskSuggestionsImportRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[TaskSuggestionImportItem] = Field(min_length=1, max_length=20)
+    syncGoogleCalendar: bool = False
 
 
 class ImportedTaskResult(BaseModel):
     suggestionId: str
     taskId: str
     title: str
+    googleCalendarEventId: str | None = None
+    googleCalendarMessage: str | None = None
 
 
 class FailedTaskImportResult(BaseModel):

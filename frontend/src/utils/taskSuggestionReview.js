@@ -1,4 +1,5 @@
 export const LOW_CONFIDENCE_THRESHOLD = 0.5;
+export const HIGH_CONFIDENCE_THRESHOLD = 0.75;
 
 export const typeLabels = {
   task: "Tarefa",
@@ -24,6 +25,13 @@ export function normalizeConfidence(value) {
 
 export function formatPercent(value) {
   return `${Math.round(normalizeConfidence(value) * 100)}%`;
+}
+
+export function getConfidenceLabel(value) {
+  const confidence = normalizeConfidence(value);
+  if (confidence >= HIGH_CONFIDENCE_THRESHOLD) return "Alta confianca";
+  if (confidence >= LOW_CONFIDENCE_THRESHOLD) return "Media confianca";
+  return "Baixa confianca";
 }
 
 export function formatSchedule(item) {
@@ -67,7 +75,9 @@ export function buildReviewItem(rawItem = {}, index, categories = []) {
     confidence,
     warnings: Array.isArray(rawItem.warnings) ? rawItem.warnings : [],
     acceptedLowConfidence: confidence >= LOW_CONFIDENCE_THRESHOLD,
-    reminderEnabled: false
+    reminderEnabled: Boolean(rawItem.reminderEnabled && rawItem.reminderValue && rawItem.reminderUnit && rawItem.date),
+    reminderValue: rawItem.reminderValue || null,
+    reminderUnit: rawItem.reminderUnit || null
   };
 }
 
@@ -119,8 +129,9 @@ export function validateReviewItemsBeforeImport(items) {
   }, {});
 }
 
-export function buildTaskImportPayload(items) {
+export function buildTaskImportPayload(items, { syncGoogleCalendar = false } = {}) {
   return {
+    syncGoogleCalendar,
     items: items.map((item) => ({
       suggestionId: item.suggestionId,
       type: item.type,
@@ -139,8 +150,8 @@ export function buildTaskImportPayload(items) {
       warnings: item.warnings,
       acceptedLowConfidence: item.acceptedLowConfidence,
       reminderEnabled: item.reminderEnabled,
-      reminderValue: item.reminderEnabled ? 1 : null,
-      reminderUnit: item.reminderEnabled ? "hours" : null
+      reminderValue: item.reminderEnabled ? item.reminderValue || 1 : null,
+      reminderUnit: item.reminderEnabled ? item.reminderUnit || "hours" : null
     }))
   };
 }

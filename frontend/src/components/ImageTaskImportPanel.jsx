@@ -17,9 +17,9 @@ import {
 import AssigneePicker from "./AssigneePicker";
 import Button from "./Button";
 import Card from "./Card";
-import { imageAnalysisApi, tasksApi } from "../services/api";
+import { imageAnalysisApi, integrationsApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
-import { imageFileAccept, validateImageDimensions, validateImageFile } from "../utils/files";
+import { imageFileAccept, optimizeImageForAnalysis, validateImageDimensions, validateImageFile } from "../utils/files";
 import { normalizeApiError } from "../utils/formatters";
 import {
   LOW_CONFIDENCE_THRESHOLD,
@@ -27,12 +27,19 @@ import {
   buildTaskImportPayload,
   formatPercent,
   formatSchedule,
+  getConfidenceLabel,
   getUncertainReviewWarnings,
   priorityOptions,
   typeLabels,
   validateReviewItemsBeforeImport
 } from "../utils/taskSuggestionReview";
 import { useToast } from "../hooks/useToast";
+
+function formatReminderSuggestion(value, unit) {
+  const labels = { minutes: "minuto(s)", hours: "hora(s)", days: "dia(s)" };
+  if (!value || !unit) return "1 hora antes";
+  return `${value} ${labels[unit] || unit} antes`;
+}
 
 export default function ImageTaskImportPanel({ categories = [], members = [], onImported }) {
   const { showToast } = useToast();
@@ -48,6 +55,8 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
   const [analyzing, setAnalyzing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [calendarStatus, setCalendarStatus] = useState(null);
+  const [syncGoogleCalendar, setSyncGoogleCalendar] = useState(false);
 
   const selectedItems = useMemo(() => reviewItems.filter((item) => item.selected), [reviewItems]);
   const hasLowConfidencePendingReview = selectedItems.some(
@@ -63,6 +72,25 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
 
   useEffect(() => () => revokePreview(), [revokePreview]);
 
+  useEffect(() => {
+    let alive = true;
+    integrationsApi.googleCalendarStatus().then(
+      (status) => {
+        if (alive) setCalendarStatus(status);
+      },
+      () => {
+        if (alive) setCalendarStatus(null);
+      }
+    );
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!calendarStatus?.can_sync) setSyncGoogleCalendar(false);
+  }, [calendarStatus?.can_sync]);
+
   const clearSelection = useCallback(() => {
     revokePreview();
     setFile(null);
@@ -73,6 +101,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
     setItemErrors({});
     setError("");
     setDragging(false);
+    setSyncGoogleCalendar(false);
     if (inputRef.current) inputRef.current.value = "";
   }, [revokePreview]);
 
@@ -174,12 +203,16 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
     setImportReport(null);
     setItemErrors({});
     try {
-      const response = await imageAnalysisApi.analyzeTaskSuggestions(file);
+      const optimizedFile = await optimizeImageForAnalysis(file);
+      const response = await imageAnalysisApi.analyzeTaskSuggestions(optimizedFile);
       setAnalysis(response);
       setReviewItems((response.items || []).map((item, index) => buildReviewItem(item, index, categories)));
-      showToast({ type: "success", message: "Sugestoes geradas para revisao." });
+      showToast({
+        type: response.items?.length ? "success" : "info",
+        message: response.items?.length ? "Imagem interpretada com IA real." : "Nenhuma tarefa encontrada na imagem."
+      });
     } catch (err) {
-      const message = normalizeApiError(err);
+      const message = normalizeApiError(err) || "Erro ao interpretar imagem.";
       setError(message);
       showToast({ type: "error", message });
     } finally {
@@ -210,7 +243,9 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
 
     setImporting(true);
     try {
-      const report = await tasksApi.importSuggestions(buildTaskImportPayload(selectedItems));
+      const report = await tasksApi.importSuggestions(
+        buildTaskImportPayload(selectedItems, { syncGoogleCalendar: Boolean(syncGoogleCalendar && calendarStatus?.can_sync) })
+      );
       setImportReport(report);
       if (report.created?.length) {
         emitAppDataChanged();
@@ -241,7 +276,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
           </div>
           <h2 className="text-xl font-black text-ink">Criar sugestoes por imagem</h2>
           <p className="mt-1 max-w-2xl text-sm font-semibold text-muted">
-            Revise e confirme antes de transformar sugestoes em tarefas reais.
+            A OpenAI interpreta a imagem no backend. Revise e confirme antes de transformar sugestoes em tarefas reais.
           </p>
         </div>
         {analysis?.needsUserReview && (
@@ -312,16 +347,16 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
 
             <Button type="button" className="mt-4 w-full" onClick={handleAnalyze} disabled={!file || analyzing || importing}>
               {analyzing ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImagePlus className="h-5 w-5" />}
-              {analyzing ? "Analisando" : "Gerar sugestoes"}
+              {analyzing ? "IA analisando imagem..." : "Interpretar imagem com IA real"}
             </Button>
           </div>
 
           {analysis && (
             <div className="rounded-[22px] bg-white/75 p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-base font-black text-ink">Sugestoes para revisar</h3>
+                <h3 className="text-base font-black text-ink">Sugestoes geradas</h3>
                 <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">
-                  confianca {formatPercent(analysis.overallConfidence)}
+                  Imagem interpretada com IA real - {formatPercent(analysis.overallConfidence)}
                 </span>
               </div>
 
@@ -368,7 +403,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
                             item.confidence < LOW_CONFIDENCE_THRESHOLD ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"
                           }`}
                         >
-                          {formatPercent(item.confidence)}
+                          {getConfidenceLabel(item.confidence)} - {formatPercent(item.confidence)}
                         </span>
                         <Button
                           type="button"
@@ -461,7 +496,9 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
                             onChange={(event) => updateReviewItem(item.suggestionId, { reminderEnabled: event.target.checked })}
                             disabled={!item.date}
                           />
-                          <span>Ativar lembrete 1 hora antes quando houver data.</span>
+                          <span>
+                            Ativar lembrete {formatReminderSuggestion(item.reminderValue, item.reminderUnit)} quando houver data.
+                          </span>
                         </label>
 
                         {item.confidence < LOW_CONFIDENCE_THRESHOLD && (
@@ -514,6 +551,26 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
                 </p>
               )}
 
+              {calendarStatus?.is_enabled && (
+                <label
+                  className={`mt-4 flex items-start gap-3 rounded-2xl px-3 py-2 text-xs font-bold ${
+                    calendarStatus?.can_sync ? "bg-blue-50/70 text-blue-700" : "bg-slate-100 text-muted"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 accent-blue-600"
+                    checked={syncGoogleCalendar}
+                    onChange={(event) => setSyncGoogleCalendar(event.target.checked)}
+                    disabled={!calendarStatus?.can_sync || importing}
+                  />
+                  <span>
+                    Tambem adicionar tarefas criadas ao Google Agenda.
+                    {!calendarStatus?.can_sync ? ` ${calendarStatus?.message || "Conecte o Google Agenda nas configuracoes."}` : ""}
+                  </span>
+                </label>
+              )}
+
               <div className="mt-4 flex flex-col gap-3 sm:flex-row">
                 <Button type="button" variant="secondary" className="w-full sm:flex-1" onClick={cancelReview} disabled={importing}>
                   Cancelar
@@ -537,7 +594,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
                 {importReport.created?.map((item) => (
                   <p key={item.taskId} className="flex items-start gap-2 rounded-2xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">
                     <CheckCircle2 className="h-4 w-4 shrink-0" />
-                    {item.title} foi criada.
+                    {item.title} foi criada.{item.googleCalendarMessage ? ` ${item.googleCalendarMessage}` : ""}
                   </p>
                 ))}
                 {importReport.failed?.map((item) => (

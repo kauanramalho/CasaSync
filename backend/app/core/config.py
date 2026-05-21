@@ -89,11 +89,11 @@ class Settings(BaseSettings):
     google_calendar_request_timeout_seconds: float = 20.0
     integration_token_encryption_key: str | None = None
 
-    ai_provider: str = "mock"
+    ai_provider: str = "openai"
     ai_api_key: str | None = None
     ai_image_analysis_enabled: bool = True
     ai_vision_enabled: bool = False
-    ai_vision_provider: str = "mock"
+    ai_vision_provider: str = "openai"
     openai_api_key: str | None = None
     openai_vision_model: str = "gpt-4.1-mini"
     openai_vision_timeout_seconds: float = 20.0

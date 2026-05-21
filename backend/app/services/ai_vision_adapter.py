@@ -7,9 +7,10 @@ from typing import Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from fastapi import HTTPException, status
 from pydantic import ValidationError
 
-from app.schemas.image_analysis import ImageAnalysisItem, ImageAnalysisResponse
+from app.schemas.image_analysis import ImageAnalysisResponse
 from app.services.image_service import ValidatedImageUpload
 
 
@@ -46,6 +47,9 @@ IMAGE_ANALYSIS_JSON_SCHEMA = {
                         "type": "array",
                         "items": {"type": "string"},
                     },
+                    "reminderEnabled": {"type": "boolean"},
+                    "reminderValue": {"anyOf": [{"type": "integer", "minimum": 1, "maximum": 365}, {"type": "null"}]},
+                    "reminderUnit": {"anyOf": [{"type": "string", "enum": ["minutes", "hours", "days"]}, {"type": "null"}]},
                 },
                 "required": [
                     "type",
@@ -60,6 +64,9 @@ IMAGE_ANALYSIS_JSON_SCHEMA = {
                     "responsible",
                     "confidence",
                     "warnings",
+                    "reminderEnabled",
+                    "reminderValue",
+                    "reminderUnit",
                 ],
             },
         },
@@ -71,6 +78,7 @@ IMAGE_ANALYSIS_JSON_SCHEMA = {
     },
     "required": ["sourceType", "overallConfidence", "items", "warnings", "needsUserReview"],
 }
+REMINDER_UNITS = {"minutes", "hours", "days"}
 
 
 @dataclass(frozen=True)
@@ -100,6 +108,10 @@ def _warning_response(*warnings: str) -> ImageAnalysisResponse:
         warnings=[warning for warning in warnings if warning][:10],
         needsUserReview=True,
     )
+
+
+def _provider_unavailable(detail: str, *, status_code: int = status.HTTP_503_SERVICE_UNAVAILABLE) -> HTTPException:
+    return HTTPException(status_code=status_code, detail=detail)
 
 
 def _clean_optional_text(value, max_length: int) -> str | None:
@@ -151,6 +163,18 @@ def _sanitize_openai_payload(payload: dict) -> dict:
         item_type = str(raw_item.get("type") or "task").strip().lower()
         priority = raw_item.get("priority")
         priority = str(priority).strip().lower() if priority is not None else None
+        reminder_unit = raw_item.get("reminderUnit")
+        reminder_unit = str(reminder_unit).strip().lower() if reminder_unit is not None else None
+        reminder_value = raw_item.get("reminderValue")
+        try:
+            reminder_value = int(reminder_value) if reminder_value is not None else None
+        except (TypeError, ValueError):
+            reminder_value = None
+        if reminder_value is not None and not (1 <= reminder_value <= 365):
+            reminder_value = None
+        if reminder_unit not in REMINDER_UNITS:
+            reminder_unit = None
+        reminder_enabled = bool(raw_item.get("reminderEnabled")) and bool(reminder_value and reminder_unit)
         items.append(
             {
                 "type": item_type if item_type in TYPE_VALUES else "task",
@@ -169,6 +193,9 @@ def _sanitize_openai_payload(payload: dict) -> dict:
                     for warning in _as_list(raw_item.get("warnings"))
                     if str(warning).strip()
                 ][:10],
+                "reminderEnabled": reminder_enabled,
+                "reminderValue": reminder_value if reminder_enabled else None,
+                "reminderUnit": reminder_unit if reminder_enabled else None,
             }
         )
 
@@ -181,62 +208,6 @@ def _sanitize_openai_payload(payload: dict) -> dict:
     }
 
 
-class MockAiVisionAdapter:
-    provider = "mock"
-
-    def parse_image_to_task_suggestions(
-        self,
-        image: ValidatedImageUpload,
-        context: VisionAnalysisContext,
-    ) -> ImageAnalysisResponse:
-        filename = (image.filename or "").lower()
-        item_type = "event" if any(token in filename for token in ["agenda", "calendario", "evento"]) else "task"
-        title = "Revisar compromisso encontrado na imagem"
-        category = "Agenda" if item_type == "event" else "Pessoal"
-        priority = "medium"
-
-        if "prova" in filename or "exam" in filename:
-            item_type = "event"
-            title = "Preparar estudo para prova"
-            category = "Estudos"
-            priority = "high"
-        elif "compras" in filename or "lista" in filename:
-            title = "Revisar lista enviada por imagem"
-            category = "Compras"
-
-        warnings = [
-            "Modo mock ativo. A imagem foi validada, mas o conteudo nao foi interpretado por IA real.",
-            "Nenhuma tarefa foi criada no banco.",
-        ]
-        if context.provider != self.provider:
-            warnings.insert(0, f"Provider '{context.provider}' indisponivel; mock seguro utilizado.")
-
-        return ImageAnalysisResponse(
-            overallConfidence=0.42,
-            items=[
-                ImageAnalysisItem(
-                    type=item_type,
-                    title=title,
-                    description="Sugestao gerada em modo demonstracao. Revise antes de salvar qualquer tarefa.",
-                    date=None,
-                    time=None,
-                    endDate=None,
-                    endTime=None,
-                    category=category,
-                    priority=priority,
-                    responsible=None,
-                    confidence=0.42,
-                    warnings=[
-                        "Analise simulada: nenhum OCR ou modelo de visao real foi chamado.",
-                        "Campos de data, horario e responsavel precisam de revisao humana.",
-                    ],
-                )
-            ],
-            warnings=warnings,
-            needsUserReview=True,
-        )
-
-
 class OpenAIVisionAdapter:
     provider = "openai"
 
@@ -246,9 +217,9 @@ class OpenAIVisionAdapter:
         context: VisionAnalysisContext,
     ) -> ImageAnalysisResponse:
         if not context.enabled:
-            return MockAiVisionAdapter().parse_image_to_task_suggestions(image, context)
+            raise _provider_unavailable("IA real por imagem esta desativada. Configure AI_VISION_ENABLED=true no backend.")
         if not context.openai_api_key:
-            return MockAiVisionAdapter().parse_image_to_task_suggestions(image, context)
+            raise _provider_unavailable("OPENAI_API_KEY nao configurada no backend.")
 
         payload = self._build_payload(image, context)
         request = Request(
@@ -266,14 +237,14 @@ class OpenAIVisionAdapter:
             with urlopen(request, timeout=timeout) as response:
                 response_body = json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
-            return _warning_response(
-                "Nao foi possivel analisar a imagem com IA agora.",
-                f"OpenAI retornou status {exc.code}. Tente novamente ou use o modo mock.",
-            )
+            raise _provider_unavailable(_openai_http_error_message(exc), status_code=status.HTTP_502_BAD_GATEWAY) from exc
         except (URLError, TimeoutError, socket.timeout):
-            return _warning_response("Tempo esgotado ao analisar a imagem com IA. Tente novamente com uma imagem menor ou mais nitida.")
+            raise _provider_unavailable(
+                "Tempo esgotado ao analisar a imagem com IA. Tente novamente com uma imagem menor ou mais nitida.",
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            )
         except (json.JSONDecodeError, UnicodeDecodeError):
-            return _warning_response("A IA retornou uma resposta invalida. Nenhuma tarefa foi criada.")
+            raise _provider_unavailable("A OpenAI retornou uma resposta invalida. Nenhuma tarefa foi criada.", status_code=status.HTTP_502_BAD_GATEWAY)
 
         return self._parse_response(response_body)
 
@@ -308,8 +279,12 @@ class OpenAIVisionAdapter:
                         {
                             "type": "text",
                             "text": (
-                                "Analise esta imagem enviada pelo usuario. Extraia no maximo 20 sugestoes revisaveis. "
+                                "Analise esta imagem real enviada pelo usuario. Ela pode ser screenshot, foto de calendario, "
+                                "print de WhatsApp, lista escrita, cronograma, planner, prova, atividade escolar/faculdade "
+                                "ou agenda inclinada/escura. Extraia no maximo 20 sugestoes revisaveis. "
                                 "Use datas em YYYY-MM-DD, horarios em HH:mm e prioridades low, medium, high ou urgent. "
+                                "Inclua observacoes relevantes em description, categoria provavel em category, responsavel quando aparecer "
+                                "e lembrete sugerido em reminderEnabled/reminderValue/reminderUnit apenas quando fizer sentido. "
                                 "Se a imagem estiver ruim, vazia, ilegivel ou ambigua, retorne items vazio, baixa confianca e warnings claros."
                             ),
                         },
@@ -348,12 +323,24 @@ class OpenAIVisionAdapter:
             return _warning_response("A IA retornou dados fora do schema esperado. Nenhuma tarefa foi criada.")
 
         warnings = list(result.warnings or [])
-        warnings.append("Sugestoes geradas por IA real. Revise tudo antes de criar tarefas.")
+        warnings.append("Imagem interpretada com IA real. Revise tudo antes de criar tarefas.")
         return result.model_copy(update={"needsUserReview": True, "warnings": warnings[:10]})
 
 
 def get_ai_vision_adapter(provider: str) -> AiVisionAdapter:
-    normalized_provider = (provider or "mock").strip().lower()
+    normalized_provider = (provider or "openai").strip().lower()
     if normalized_provider == "openai":
         return OpenAIVisionAdapter()
-    return MockAiVisionAdapter()
+    raise _provider_unavailable("Provider de IA por imagem nao suportado. Configure AI_VISION_PROVIDER=openai.")
+
+
+def _openai_http_error_message(exc: HTTPError) -> str:
+    if exc.code == 401:
+        return "A OpenAI recusou a autenticacao. Verifique a OPENAI_API_KEY no backend."
+    if exc.code == 429:
+        return "A OpenAI limitou temporariamente as requisicoes. Tente novamente em instantes."
+    if exc.code in {400, 415}:
+        return "A OpenAI nao conseguiu processar esta imagem. Tente uma imagem mais nitida ou menor."
+    if exc.code >= 500:
+        return "A OpenAI esta indisponivel agora. Tente novamente em instantes."
+    return f"Nao foi possivel interpretar a imagem com OpenAI agora. Status {exc.code}."

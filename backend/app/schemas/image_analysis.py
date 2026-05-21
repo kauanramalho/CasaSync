@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 ImageSuggestionType = Literal["task", "event", "reminder"]
 ImageSuggestionPriority = Literal["low", "medium", "high", "urgent"]
+ImageSuggestionReminderUnit = Literal["minutes", "hours", "days"]
 
 
 class ImageAnalysisItem(BaseModel):
@@ -20,6 +21,9 @@ class ImageAnalysisItem(BaseModel):
     responsible: str | None = Field(default=None, max_length=120)
     confidence: float = Field(ge=0.0, le=1.0)
     warnings: list[str] = Field(default_factory=list, max_length=10)
+    reminderEnabled: bool = False
+    reminderValue: int | None = Field(default=None, gt=0, le=365)
+    reminderUnit: ImageSuggestionReminderUnit | None = None
 
 
 class ImageAnalysisResponse(BaseModel):

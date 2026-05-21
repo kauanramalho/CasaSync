@@ -6,6 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings
 from app.models.enums import TaskPriority, TaskStatus, TaskType
 from app.models.family import FamilyMember
 from app.models.task import Task
@@ -19,6 +20,7 @@ from app.schemas.task_import import (
 from app.services.family_service import require_family_member
 from app.services.task_metrics import unique_user_ids
 from app.services.task_service import create_task
+from app.services.calendar_service import sync_task_to_calendar
 
 
 LOW_CONFIDENCE_THRESHOLD = 0.5
@@ -166,6 +168,8 @@ def import_task_suggestions(
     family_id: str,
     creator_id: str,
     items: list[TaskSuggestionImportItem],
+    sync_google_calendar: bool = False,
+    settings: Settings | None = None,
 ) -> TaskSuggestionsImportResponse:
     require_family_member(db, family_id, creator_id)
 
@@ -221,7 +225,33 @@ def import_task_suggestions(
                     reminder_unit=item.reminderUnit,
                 ),
             )
-            created.append(ImportedTaskResult(suggestionId=_suggestion_id(item, index), taskId=task.id, title=task.title))
+            calendar_event_id = None
+            calendar_message = None
+            if sync_google_calendar:
+                if settings is None:
+                    calendar_message = "Google Agenda nao foi sincronizado porque a configuracao do backend nao foi carregada."
+                else:
+                    sync_result = sync_task_to_calendar(
+                        db,
+                        family_id=family_id,
+                        user_id=creator_id,
+                        task_id=task.id,
+                        settings=settings,
+                    )
+                    calendar_event_id = sync_result.event_id
+                    calendar_message = sync_result.message
+                    if not sync_result.synced:
+                        warnings.append(f"Google Agenda: {task.title}: {sync_result.message}")
+
+            created.append(
+                ImportedTaskResult(
+                    suggestionId=_suggestion_id(item, index),
+                    taskId=task.id,
+                    title=task.title,
+                    googleCalendarEventId=calendar_event_id,
+                    googleCalendarMessage=calendar_message,
+                )
+            )
         except (HTTPException, ValueError, ValidationError, IntegrityError) as exc:
             db.rollback()
             reason = getattr(exc, "detail", None) or str(exc)

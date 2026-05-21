@@ -3,6 +3,8 @@ export const imageFileExtensions = [".png", ".jpg", ".jpeg", ".webp"];
 export const imageFileAccept = [...imageFileTypes, ...imageFileExtensions].join(",");
 export const defaultImageMaxBytes = 8 * 1024 * 1024;
 export const optimizedImageMaxBytes = 560 * 1024;
+export const imageAnalysisMaxBytes = 2 * 1024 * 1024;
+export const imageAnalysisMaxSide = 2200;
 export const maxImagePixels = 36_000_000;
 export const maxImageSide = 8000;
 export const defaultCrop = { zoom: 1, x: 0, y: 0 };
@@ -134,6 +136,63 @@ export async function cropImageFileToBlob(
       throw new Error("Mesmo otimizada, a imagem ficou grande demais. Tente outra foto.");
     }
     throw new Error("Nao foi possivel otimizar a imagem.");
+  } finally {
+    URL.revokeObjectURL(sourceUrl);
+  }
+}
+
+function extensionlessName(filename = "imagem") {
+  const value = String(filename || "imagem");
+  const index = value.lastIndexOf(".");
+  return index > 0 ? value.slice(0, index) : value;
+}
+
+export async function optimizeImageForAnalysis(file, { maxBytes = imageAnalysisMaxBytes, maxSide = imageAnalysisMaxSide } = {}) {
+  const { width, height } = await inspectImageFile(file);
+  if (!width || !height) {
+    throw new Error("Nao foi possivel ler a imagem para otimizar.");
+  }
+  if (file.size <= maxBytes && width <= maxSide && height <= maxSide) {
+    return file;
+  }
+
+  const sourceUrl = URL.createObjectURL(file);
+  try {
+    const image = await loadImageFromUrl(sourceUrl);
+    const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+    let targetWidth = Math.max(1, Math.round(image.width * scale));
+    let targetHeight = Math.max(1, Math.round(image.height * scale));
+    const qualities = [0.92, 0.84, 0.76, 0.68, 0.58];
+    let lastBlob = null;
+
+    for (let resizeAttempt = 0; resizeAttempt < 5; resizeAttempt += 1) {
+      const canvas = document.createElement("canvas");
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      const ctx = canvas.getContext("2d");
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(image, 0, 0, targetWidth, targetHeight);
+
+      for (const quality of qualities) {
+        const blob = await canvasToBlob(canvas, "image/webp", quality);
+        lastBlob = blob;
+        if (blob.size <= maxBytes) {
+          return new File([blob], `${extensionlessName(file.name)}-ia-casasync.webp`, {
+            type: "image/webp",
+            lastModified: Date.now()
+          });
+        }
+      }
+
+      targetWidth = Math.max(1, Math.round(targetWidth * 0.86));
+      targetHeight = Math.max(1, Math.round(targetHeight * 0.86));
+    }
+
+    if (lastBlob) {
+      throw new Error("Mesmo otimizada, a imagem ficou grande demais para analise.");
+    }
+    throw new Error("Nao foi possivel otimizar a imagem para analise.");
   } finally {
     URL.revokeObjectURL(sourceUrl);
   }

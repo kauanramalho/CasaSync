@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings, get_settings
 from app.core.deps import get_current_user, get_family_id
 from app.database.session import get_db
 from app.models.user import User
@@ -55,12 +56,20 @@ def import_suggestions(
     payload: TaskSuggestionsImportRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ):
     family = get_primary_family(db, current_user.id)
     if not family:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Crie ou entre em uma familia para continuar.")
     require_family_member(db, family.id, current_user.id)
-    return import_task_suggestions(db, family_id=family.id, creator_id=current_user.id, items=payload.items)
+    return import_task_suggestions(
+        db,
+        family_id=family.id,
+        creator_id=current_user.id,
+        items=payload.items,
+        sync_google_calendar=payload.syncGoogleCalendar,
+        settings=settings,
+    )
 
 
 @router.post("/{task_id}/attachments", response_model=TaskAttachmentRead, status_code=201)
