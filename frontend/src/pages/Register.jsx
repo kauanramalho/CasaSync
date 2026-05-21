@@ -8,10 +8,12 @@ import AuthLayout from "../layouts/AuthLayout";
 import { useAuth } from "../hooks/useAuth";
 import { normalizeApiError } from "../utils/formatters";
 
+const usernamePattern = /^(?=.*[a-z0-9])[a-z0-9._-]{3,30}$/;
+
 export default function Register() {
   const navigate = useNavigate();
   const { register, user } = useAuth();
-  const [form, setForm] = useState({ name: "", email: "", password: "", confirmPassword: "" });
+  const [form, setForm] = useState({ name: "", username: "", email: "", password: "", confirmPassword: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -24,10 +26,15 @@ export default function Register() {
       setError("As senhas nao conferem. Confira os dois campos antes de criar a conta.");
       return;
     }
+    if (!usernamePattern.test(form.username.trim().toLowerCase())) {
+      setError("Username deve ter 3 a 30 caracteres e usar apenas letras, numeros, ponto, underline ou hifen.");
+      return;
+    }
 
     setLoading(true);
     try {
       const { confirmPassword: _confirmPassword, ...registerPayload } = form;
+      registerPayload.username = registerPayload.username.trim().toLowerCase();
       const response = await register(registerPayload);
       if (response?.requires_two_factor) {
         navigate("/verificacao", { replace: true });
@@ -50,6 +57,19 @@ export default function Register() {
           value={form.name}
           onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
           minLength={2}
+          required
+        />
+        <input
+          className="soft-input"
+          type="text"
+          placeholder="Username"
+          aria-label="Username"
+          value={form.username}
+          onChange={(event) => setForm((current) => ({ ...current, username: event.target.value.trim().toLowerCase() }))}
+          autoComplete="username"
+          minLength={3}
+          maxLength={30}
+          pattern="(?=.*[a-z0-9])[a-z0-9._-]{3,30}"
           required
         />
         <input

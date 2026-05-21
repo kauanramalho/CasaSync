@@ -11,7 +11,7 @@ import { normalizeApiError } from "../utils/formatters";
 export default function Login() {
   const navigate = useNavigate();
   const { login, user } = useAuth();
-  const [form, setForm] = useState({ email: "", password: "" });
+  const [form, setForm] = useState({ identifier: "", password: "" });
   const [rememberSession, setRememberSession] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -41,10 +41,12 @@ export default function Login() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <input
           className="soft-input"
-          type="email"
-          placeholder="E-mail"
-          value={form.email}
-          onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+          type="text"
+          placeholder="Digite seu email ou username"
+          aria-label="Email ou username"
+          value={form.identifier}
+          onChange={(event) => setForm((current) => ({ ...current, identifier: event.target.value }))}
+          autoComplete="username"
           required
         />
         <PasswordInput

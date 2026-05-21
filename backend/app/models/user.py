@@ -9,7 +9,7 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "users"
 
     name = Column(String(120), nullable=False)
-    username = Column(String(80), unique=True, index=True, nullable=True)
+    username = Column(String(30), unique=True, index=True, nullable=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
     avatar_url = Column(Text, nullable=True)

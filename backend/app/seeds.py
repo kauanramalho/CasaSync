@@ -19,8 +19,8 @@ def run() -> None:
             print("Seed já existe. Use kauan@casasync.app / 12345678 para entrar.")
             return
 
-        kauan = User(name="Kauan", email="kauan@casasync.app", hashed_password=hash_password("12345678"))
-        bia = User(name="Bia", email="bia@casasync.app", hashed_password=hash_password("12345678"))
+        kauan = User(name="Kauan", username="kauan", email="kauan@casasync.app", hashed_password=hash_password("12345678"))
+        bia = User(name="Bia", username="bia", email="bia@casasync.app", hashed_password=hash_password("12345678"))
         db.add_all([kauan, bia])
         db.flush()
 
@@ -89,11 +89,10 @@ def run() -> None:
             ]
         )
         db.commit()
-        print("Seed criada. Login: kauan@casasync.app / 12345678 ou bia@casasync.app / 12345678")
+        print("Seed criada. Login: kauan@casasync.app ou kauan / 12345678; bia@casasync.app ou bia / 12345678")
     finally:
         db.close()
 
 
 if __name__ == "__main__":
     run()
-

@@ -34,11 +34,11 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
 
 
-def _email_fingerprint(email: str | None) -> str:
-    normalized_email = (email or "").strip().lower()
-    if not normalized_email:
+def _identifier_fingerprint(identifier: str | None) -> str:
+    normalized_identifier = (identifier or "").strip().lower()
+    if not normalized_identifier:
         return "missing"
-    return hashlib.sha256(normalized_email.encode("utf-8")).hexdigest()[:12]
+    return hashlib.sha256(normalized_identifier.encode("utf-8")).hexdigest()[:12]
 
 
 def _two_factor_response(user: User, purpose: str, db: Session) -> TwoFactorRequiredResponse:
@@ -66,12 +66,12 @@ def register(payload: UserCreate, request: Request, db: Session = Depends(get_db
         logger.warning(
             "Register request failed status=%s email_hash=%s detail=%s",
             exc.status_code,
-            _email_fingerprint(payload.email),
+            _identifier_fingerprint(payload.email),
             exc.detail,
         )
         raise
     except Exception as exc:
-        logger.exception("Unexpected register error email_hash=%s", _email_fingerprint(payload.email))
+        logger.exception("Unexpected register error email_hash=%s", _identifier_fingerprint(payload.email))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Nao foi possivel criar sua conta agora. Tente novamente em alguns minutos.",
@@ -81,10 +81,10 @@ def register(payload: UserCreate, request: Request, db: Session = Depends(get_db
 @router.post("/login", response_model=AuthResponse | TwoFactorRequiredResponse)
 def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
     client_id = client_identifier(request)
-    normalized_email = payload.email.strip().lower()
+    identifier_hash = _identifier_fingerprint(payload.identifier)
     check_rate_limit(f"auth:login:ip:{client_id}", limit=30, window_seconds=300)
-    check_rate_limit(f"auth:login:account:{client_id}:{normalized_email}", limit=10, window_seconds=300)
-    user = authenticate_user(db, payload.email, payload.password)
+    check_rate_limit(f"auth:login:account:{client_id}:{identifier_hash}", limit=10, window_seconds=300)
+    user = authenticate_user(db, payload.identifier, payload.password)
     purpose = login_two_factor_purpose(user)
     if purpose == "signup" or should_require_login_two_factor(user):
         return _two_factor_response(user, purpose, db)

@@ -1,13 +1,15 @@
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.schemas.common import ORMModel
 from app.schemas.image import MAX_IMAGE_URL_LENGTH, validate_image_url
+from app.services.username_service import normalize_login_identifier, normalize_username
 
 
 class UserCreate(BaseModel):
     name: str = Field(min_length=2, max_length=120)
+    username: str | None = Field(default=None, max_length=30)
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
 
@@ -24,15 +26,26 @@ class UserCreate(BaseModel):
     def normalize_email(cls, value: EmailStr) -> str:
         return str(value).strip().lower()
 
+    @field_validator("username")
+    @classmethod
+    def normalize_create_username(cls, value: str | None) -> str | None:
+        return normalize_username(value, required=False)
+
 
 class UserLogin(BaseModel):
-    email: EmailStr
+    model_config = ConfigDict(populate_by_name=True)
+
+    identifier: str = Field(
+        min_length=3,
+        max_length=255,
+        validation_alias=AliasChoices("identifier", "email"),
+    )
     password: str = Field(min_length=8, max_length=128)
 
-    @field_validator("email")
+    @field_validator("identifier")
     @classmethod
-    def normalize_email(cls, value: EmailStr) -> str:
-        return str(value).strip().lower()
+    def normalize_identifier(cls, value: str) -> str:
+        return normalize_login_identifier(value)
 
 
 class UserRead(ORMModel):
@@ -56,7 +69,7 @@ class UserSummary(ORMModel):
 
 class UserUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=120)
-    username: str | None = Field(default=None, min_length=2, max_length=80)
+    username: str | None = Field(default=None, max_length=30)
     email: EmailStr | None = None
     avatar_url: str | None = Field(default=None, max_length=MAX_IMAGE_URL_LENGTH)
 
@@ -73,10 +86,7 @@ class UserUpdate(BaseModel):
     @field_validator("username")
     @classmethod
     def normalize_optional_username(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        normalized = value.strip().lower()
-        return normalized or None
+        return normalize_username(value, required=False)
 
     @field_validator("email")
     @classmethod

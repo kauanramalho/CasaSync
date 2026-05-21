@@ -10,6 +10,8 @@ import { authApi, clearToken } from "../services/api";
 import { emitAuthSessionChanged } from "../utils/events";
 import { normalizeApiError } from "../utils/formatters";
 
+const usernamePattern = /^(?=.*[a-z0-9])[a-z0-9._-]{3,30}$/;
+
 export default function ProfileModal({ user, onClose, onSaved }) {
   const navigate = useNavigate();
   const { beginTwoFactor } = useAuth();
@@ -48,12 +50,16 @@ export default function ProfileModal({ user, onClose, onSaved }) {
     setError("");
     setMessage("");
     try {
+      const nextUsername = form.username.trim().toLowerCase();
+      if (nextUsername && !usernamePattern.test(nextUsername)) {
+        throw new Error("Username deve ter 3 a 30 caracteres e usar apenas letras, numeros, ponto, underline ou hifen.");
+      }
       const avatarUrl = await avatarFieldRef.current?.getValue();
 
       const updated = await authApi.updateMe({
         name: form.name,
         email: form.email,
-        username: form.username || null,
+        username: nextUsername || null,
         avatar_url: avatarUrl
       });
 
@@ -135,7 +141,16 @@ export default function ProfileModal({ user, onClose, onSaved }) {
                     <AtSign className="h-4 w-4 text-violet-500" />
                     Username
                   </span>
-                  <input className="soft-input" value={form.username} onChange={(event) => updateField("username", event.target.value)} placeholder="seu_usuario" />
+                  <input
+                    className="soft-input"
+                    value={form.username}
+                    onChange={(event) => updateField("username", event.target.value.trim().toLowerCase())}
+                    placeholder="seu_usuario"
+                    autoComplete="username"
+                    minLength={3}
+                    maxLength={30}
+                    pattern="(?=.*[a-z0-9])[a-z0-9._-]{3,30}"
+                  />
                 </label>
 
                 <label className="block md:col-span-2">

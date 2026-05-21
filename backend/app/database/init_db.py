@@ -1,5 +1,6 @@
 from app.database.base import Base
 from app.database.session import engine
+from app.services.username_service import unique_username_from_email
 from sqlalchemy import inspect, text
 
 # Importing models here registers them in SQLAlchemy metadata.
@@ -26,20 +27,40 @@ def _timestamp_with_timezone_type() -> str:
     return "DATETIME"
 
 
+def _backfill_missing_usernames(connection) -> None:
+    rows = connection.execute(text("SELECT id, email, username FROM users")).mappings().all()
+    used_usernames = {
+        row["username"].strip().lower()
+        for row in rows
+        if row["username"] and row["username"].strip()
+    }
+    for row in rows:
+        if row["username"] and row["username"].strip():
+            continue
+        username = unique_username_from_email(row["email"], used_usernames)
+        used_usernames.add(username)
+        connection.execute(
+            text("UPDATE users SET username = :username WHERE id = :user_id"),
+            {"username": username, "user_id": row["id"]},
+        )
+
+
 def _upgrade_existing_tables() -> None:
     # create_all does not alter existing MVP databases. These additive upgrades keep
     # local/dev installs compatible without requiring Alembic for this project.
     with engine.begin() as connection:
         existing_tables = set(inspect(connection).get_table_names())
         if "users" in existing_tables:
-            _add_column_if_missing(connection, "users", "username", "username VARCHAR(80)")
+            _add_column_if_missing(connection, "users", "username", "username VARCHAR(30)")
             _add_column_if_missing(connection, "users", "token_version", "token_version INTEGER DEFAULT 0 NOT NULL")
             _add_column_if_missing(connection, "users", "email_verified", "email_verified BOOLEAN DEFAULT TRUE NOT NULL")
             _add_column_if_missing(connection, "users", "email_verified_at", f"email_verified_at {_timestamp_with_timezone_type()}")
             _add_column_if_missing(connection, "users", "two_factor_enabled", "two_factor_enabled BOOLEAN DEFAULT TRUE NOT NULL")
             _add_column_if_missing(connection, "users", "last_login_at", f"last_login_at {_timestamp_with_timezone_type()}")
             _add_column_if_missing(connection, "users", "last_2fa_verified_at", f"last_2fa_verified_at {_timestamp_with_timezone_type()}")
+            _backfill_missing_usernames(connection)
             connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username_unique ON users (username) WHERE username IS NOT NULL"))
+            connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username_lower_unique ON users (LOWER(username)) WHERE username IS NOT NULL"))
             if engine.dialect.name == "postgresql":
                 connection.execute(text("ALTER TABLE users ALTER COLUMN avatar_url TYPE TEXT"))
 
