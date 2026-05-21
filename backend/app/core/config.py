@@ -68,10 +68,13 @@ class Settings(BaseSettings):
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_username: str | None = None
+    smtp_user: str | None = None
     smtp_password: str | None = None
     smtp_use_tls: bool = True
     email_from: str = "CasaSync <no-reply@casasync.app>"
+    smtp_from: str | None = None
     email_dev_mode: bool = False
+    email_notifications_enabled: bool = False
 
     frontend_url: str | None = None
     cors_origins: list[str] = Field(default_factory=list)
@@ -97,6 +100,11 @@ class Settings(BaseSettings):
     openai_vision_max_output_tokens: int = 1200
 
     task_attachment_storage_dir: Path = BACKEND_DIR / "storage" / "task_attachments"
+
+    web_push_enabled: bool = False
+    vapid_public_key: str | None = None
+    vapid_private_key: str | None = None
+    vapid_subject: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=(REPO_ROOT / ".env", BACKEND_DIR / ".env"),
@@ -130,6 +138,11 @@ class Settings(BaseSettings):
         "integration_token_encryption_key",
         "ai_api_key",
         "openai_api_key",
+        "smtp_user",
+        "smtp_from",
+        "vapid_public_key",
+        "vapid_private_key",
+        "vapid_subject",
         mode="before",
     )
     @classmethod
@@ -163,6 +176,18 @@ class Settings(BaseSettings):
     @property
     def smtp_configured(self) -> bool:
         return bool(self.smtp_host)
+
+    @property
+    def smtp_auth_username(self) -> str | None:
+        return self.smtp_username or self.smtp_user
+
+    @property
+    def smtp_sender(self) -> str:
+        return self.smtp_from or self.email_from
+
+    @property
+    def web_push_configured(self) -> bool:
+        return bool(self.vapid_public_key and self.vapid_private_key and self.vapid_subject)
 
     @property
     def google_calendar_configured(self) -> bool:

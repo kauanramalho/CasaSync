@@ -20,6 +20,8 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     two_factor_enabled = Column(Boolean, default=True, nullable=False)
     last_login_at = Column(DateTime(timezone=True), nullable=True)
     last_2fa_verified_at = Column(DateTime(timezone=True), nullable=True)
+    email_task_reminders_enabled = Column(Boolean, default=False, nullable=False)
+    push_task_reminders_enabled = Column(Boolean, default=False, nullable=False)
 
     memberships = relationship("FamilyMember", back_populates="user", cascade="all, delete-orphan")
     created_tasks = relationship("Task", back_populates="creator", foreign_keys="Task.creator_id")

@@ -2,14 +2,17 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   BadgeCheck,
+  BellRing,
   CalendarDays,
   Check,
   Database,
   LockKeyhole,
+  Mail,
   Palette,
   RefreshCw,
   Settings as SettingsIcon,
   ShieldAlert,
+  Smartphone,
   Unplug,
   User
 } from "lucide-react";
@@ -24,13 +27,15 @@ import { useAppPreferences } from "../hooks/useAppPreferences";
 import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 import { useToast } from "../hooks/useToast";
-import { familiesApi, integrationsApi } from "../services/api";
+import { familiesApi, integrationsApi, notificationsApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError } from "../utils/formatters";
 import { timezoneOptions, weekStartOptions } from "../utils/preferences";
+import { getBrowserPushSupport, getNotificationPermission, subscribeToBrowserPush, unsubscribeFromBrowserPush } from "../utils/pushNotifications";
 
 const tabs = [
   { key: "general", label: "Gerais", icon: SettingsIcon },
+  { key: "notifications", label: "Notificacoes", icon: BellRing },
   { key: "appearance", label: "Aparencia", icon: Palette },
   { key: "account", label: "Conta", icon: User },
   { key: "security", label: "Seguranca", icon: LockKeyhole }
@@ -51,6 +56,9 @@ export default function Settings() {
   const [calendarStatus, setCalendarStatus] = useState(null);
   const [calendarMessage, setCalendarMessage] = useState("");
   const [calendarBusy, setCalendarBusy] = useState(false);
+  const [notificationSettings, setNotificationSettings] = useState(null);
+  const [notificationBusy, setNotificationBusy] = useState("");
+  const [notificationMessage, setNotificationMessage] = useState("");
   const [family, setFamily] = useState(null);
   const [currentMember, setCurrentMember] = useState(null);
   const [familyForm, setFamilyForm] = useState({ name: "" });
@@ -62,14 +70,16 @@ export default function Settings() {
     let alive = true;
 
     async function loadSettings() {
-      const [calendarResult, familyResult, membersResult] = await Promise.allSettled([
+      const [calendarResult, notificationResult, familyResult, membersResult] = await Promise.allSettled([
         integrationsApi.googleCalendarStatus(),
+        notificationsApi.settings(),
         familiesApi.current(),
         familiesApi.members()
       ]);
       if (!alive) return;
 
       if (calendarResult.status === "fulfilled") setCalendarStatus(calendarResult.value);
+      if (notificationResult.status === "fulfilled") setNotificationSettings(notificationResult.value);
       if (familyResult.status === "fulfilled") {
         setFamily(familyResult.value);
         setFamilyForm({ name: familyResult.value?.name || "" });
@@ -113,6 +123,91 @@ export default function Settings() {
     const nextStatus = await integrationsApi.googleCalendarStatus();
     setCalendarStatus(nextStatus);
     return nextStatus;
+  }
+
+  async function refreshNotificationSettings() {
+    const nextSettings = await notificationsApi.settings();
+    setNotificationSettings(nextSettings);
+    return nextSettings;
+  }
+
+  async function updateNotificationPreferences(payload) {
+    setNotificationBusy("preferences");
+    setNotificationMessage("");
+    try {
+      const nextSettings = await notificationsApi.updatePreferences(payload);
+      setNotificationSettings(nextSettings);
+      updateUser({
+        ...user,
+        email_task_reminders_enabled: nextSettings.email_task_reminders_enabled,
+        push_task_reminders_enabled: nextSettings.push_task_reminders_enabled
+      });
+      showToast({ type: "success", message: "Preferencias de notificacao salvas." });
+    } catch (err) {
+      const message = normalizeApiError(err);
+      setNotificationMessage(message);
+      showToast({ type: "error", message });
+    } finally {
+      setNotificationBusy("");
+    }
+  }
+
+  async function enableBrowserPush() {
+    setNotificationBusy("push");
+    setNotificationMessage("");
+    try {
+      const settings = notificationSettings || (await refreshNotificationSettings());
+      if (!settings.push_feature_enabled || !settings.push_configured) {
+        throw new Error("Notificacoes do navegador estao desativadas no servidor.");
+      }
+      const subscription = await subscribeToBrowserPush(settings.vapid_public_key);
+      const response = await notificationsApi.savePushSubscription(subscription);
+      const nextSettings = await refreshNotificationSettings();
+      updateUser({ ...user, push_task_reminders_enabled: nextSettings.push_task_reminders_enabled });
+      setNotificationMessage(response.message);
+      showToast({ type: "success", message: response.message });
+    } catch (err) {
+      const message = normalizeApiError(err);
+      setNotificationMessage(message);
+      showToast({ type: "error", message });
+    } finally {
+      setNotificationBusy("");
+    }
+  }
+
+  async function disableBrowserPush() {
+    setNotificationBusy("push");
+    setNotificationMessage("");
+    try {
+      const subscription = await unsubscribeFromBrowserPush();
+      const response = await notificationsApi.deletePushSubscription(subscription);
+      const nextSettings = await refreshNotificationSettings();
+      updateUser({ ...user, push_task_reminders_enabled: nextSettings.push_task_reminders_enabled });
+      setNotificationMessage(response.message);
+      showToast({ type: "success", message: response.message });
+    } catch (err) {
+      const message = normalizeApiError(err);
+      setNotificationMessage(message);
+      showToast({ type: "error", message });
+    } finally {
+      setNotificationBusy("");
+    }
+  }
+
+  async function runReminderCheck() {
+    setNotificationBusy("reminders");
+    setNotificationMessage("");
+    try {
+      await notificationsApi.processReminders();
+      emitAppDataChanged();
+      showToast({ type: "success", message: "Verificacao de lembretes executada." });
+    } catch (err) {
+      const message = normalizeApiError(err);
+      setNotificationMessage(message);
+      showToast({ type: "error", message });
+    } finally {
+      setNotificationBusy("");
+    }
   }
 
   async function connectCalendar() {
@@ -196,6 +291,9 @@ export default function Settings() {
       showToast({ type: "error", message });
     }
   }
+
+  const pushSupported = getBrowserPushSupport();
+  const pushPermission = getNotificationPermission();
 
   return (
     <>
@@ -327,6 +425,91 @@ export default function Settings() {
                 </Button>
               )}
             </div>
+          </Card>
+        </div>
+      )}
+
+      {activeTab === "notifications" && (
+        <div className="grid gap-6 xl:grid-cols-2">
+          <Card>
+            <div className="flex items-center gap-3">
+              <BellRing className="h-6 w-6 text-blush" />
+              <h2 className="section-title">Lembretes internos</h2>
+            </div>
+            <div className="mt-6 space-y-4">
+              <div className="rounded-2xl bg-white/75 px-4 py-4">
+                <p className="font-semibold text-ink">Barra de notificacoes</p>
+                <p className="mt-1 text-sm text-muted">
+                  Os lembretes internos sao gerados pelo backend e aparecem no sino do CasaSync quando a tarefa chega na hora configurada.
+                </p>
+              </div>
+              <Button variant="secondary" onClick={runReminderCheck} disabled={notificationBusy === "reminders"}>
+                <RefreshCw className="h-4 w-4" />
+                {notificationBusy === "reminders" ? "Verificando..." : "Verificar lembretes agora"}
+              </Button>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="flex items-center gap-3">
+              <Mail className="h-6 w-6 text-blue-600" />
+              <h2 className="section-title">Email</h2>
+            </div>
+            <p className="mt-4 text-sm text-muted">
+              {notificationSettings?.email_feature_enabled
+                ? notificationSettings?.email_configured
+                  ? "Email de lembrete disponivel para esta conta."
+                  : "Email esta habilitado, mas SMTP ainda nao foi configurado no servidor."
+                : "Email de lembrete esta desativado por configuracao."}
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Button
+                disabled={
+                  notificationBusy === "preferences" ||
+                  (!notificationSettings?.email_task_reminders_enabled &&
+                    (!notificationSettings?.email_feature_enabled || !notificationSettings?.email_configured))
+                }
+                onClick={() => updateNotificationPreferences({ email_task_reminders_enabled: !notificationSettings?.email_task_reminders_enabled })}
+              >
+                <Mail className="h-4 w-4" />
+                {notificationSettings?.email_task_reminders_enabled ? "Desativar email" : "Ativar email"}
+              </Button>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="flex items-center gap-3">
+              <Smartphone className="h-6 w-6 text-emerald-600" />
+              <h2 className="section-title">Notificacao do navegador</h2>
+            </div>
+            <div className="mt-4 space-y-3 text-sm text-muted">
+              <p>
+                {notificationSettings?.push_feature_enabled
+                  ? notificationSettings?.push_configured
+                    ? "Push esta configurado no servidor."
+                    : "Push esta habilitado, mas as chaves VAPID ainda nao foram configuradas."
+                  : "Push esta desativado por configuracao."}
+              </p>
+              <p>Permissao do navegador: {pushPermission === "unsupported" ? "nao suportado" : pushPermission}.</p>
+              {!pushSupported && <p className="rounded-2xl bg-amber-50 px-4 py-3 font-semibold text-amber-700">Este navegador nao oferece suporte completo a Web Push.</p>}
+            </div>
+            <div className="mt-6 flex flex-wrap gap-3">
+              {!notificationSettings?.push_task_reminders_enabled ? (
+                <Button
+                  disabled={notificationBusy === "push" || !pushSupported || !notificationSettings?.push_feature_enabled || !notificationSettings?.push_configured}
+                  onClick={enableBrowserPush}
+                >
+                  <Smartphone className="h-4 w-4" />
+                  {notificationBusy === "push" ? "Solicitando..." : "Ativar neste dispositivo"}
+                </Button>
+              ) : (
+                <Button variant="secondary" disabled={notificationBusy === "push"} onClick={disableBrowserPush}>
+                  <Unplug className="h-4 w-4" />
+                  {notificationBusy === "push" ? "Desativando..." : "Desativar neste dispositivo"}
+                </Button>
+              )}
+            </div>
+            {notificationMessage && <p className="mt-4 rounded-2xl bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-600">{notificationMessage}</p>}
           </Card>
         </div>
       )}

@@ -1,13 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "./useAuth";
-import { tasksApi } from "../services/api";
+import { notificationsApi } from "../services/api";
 import { APP_DATA_CHANGED_EVENT } from "../utils/events";
-import { formatReminderMessageLead } from "../utils/taskReminders";
 
 const STORAGE_KEY = "casasync_notifications";
-const REMINDER_CHECK_INTERVAL_MS = 30_000;
-const REMINDER_GRACE_MS = 2 * 60_000;
+const REMINDER_CHECK_INTERVAL_MS = 60_000;
 const NotificationsContext = createContext(null);
 
 function createId() {
@@ -15,7 +13,7 @@ function createId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function readNotifications() {
+function readLocalNotifications() {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
     return Array.isArray(stored) ? stored : [];
@@ -24,28 +22,55 @@ function readNotifications() {
   }
 }
 
-function saveNotifications(notifications) {
+function saveLocalNotifications(notifications) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(notifications));
+}
+
+function normalizeServerNotification(item) {
+  return {
+    ...item,
+    source: "server",
+    description: item.description || "",
+    actor: null
+  };
+}
+
+function normalizeLocalNotification(item) {
+  return { ...item, source: item.source || "local" };
 }
 
 export function NotificationsProvider({ children }) {
   const { user } = useAuth();
-  const [notifications, setNotifications] = useState(() => readNotifications());
+  const [localNotifications, setLocalNotifications] = useState(() => readLocalNotifications().map(normalizeLocalNotification));
+  const [serverNotifications, setServerNotifications] = useState([]);
 
-  const updateNotifications = useCallback((updater) => {
-    setNotifications((current) => {
+  const updateLocalNotifications = useCallback((updater) => {
+    setLocalNotifications((current) => {
       const next = updater(current);
-      saveNotifications(next);
+      saveLocalNotifications(next);
       return next;
     });
   }, []);
 
+  const refreshServerNotifications = useCallback(async ({ processReminders = false } = {}) => {
+    if (!user?.id) {
+      setServerNotifications([]);
+      return;
+    }
+    if (processReminders) {
+      await notificationsApi.processReminders();
+    }
+    const rows = await notificationsApi.list();
+    setServerNotifications(rows.map(normalizeServerNotification));
+  }, [user?.id]);
+
   const addNotification = useCallback(({ title, description, type = "info", actor, dedupe_key, family_id, user_id }) => {
-    updateNotifications((current) => {
+    updateLocalNotifications((current) => {
       if (dedupe_key && current.some((item) => item.dedupe_key === dedupe_key)) return current;
       return [
         {
           id: createId(),
+          source: "local",
           dedupe_key,
           title,
           description,
@@ -59,109 +84,73 @@ export function NotificationsProvider({ children }) {
         ...current
       ].slice(0, 80);
     });
-  }, [updateNotifications, user?.id]);
+  }, [updateLocalNotifications, user?.id]);
 
-  const markAsRead = useCallback((id) => {
-    updateNotifications((current) => current.map((item) => (item.id === id ? { ...item, read: true } : item)));
-  }, [updateNotifications]);
+  const markAsRead = useCallback((itemOrId) => {
+    const notification = typeof itemOrId === "object" ? itemOrId : null;
+    const id = notification?.id || itemOrId;
+    if (notification?.source === "server") {
+      setServerNotifications((current) => current.map((item) => (item.id === id ? { ...item, read: true } : item)));
+      notificationsApi.markRead(id).catch(() => refreshServerNotifications());
+      return;
+    }
+    updateLocalNotifications((current) => current.map((item) => (item.id === id ? { ...item, read: true } : item)));
+  }, [refreshServerNotifications, updateLocalNotifications]);
+
+  const markAllAsRead = useCallback(() => {
+    updateLocalNotifications((current) =>
+      current.map((item) => (!user?.id || !item.user_id || item.user_id === user.id ? { ...item, read: true } : item))
+    );
+    setServerNotifications((current) => current.map((item) => ({ ...item, read: true })));
+    if (user?.id) notificationsApi.markAllRead().catch(() => refreshServerNotifications());
+  }, [refreshServerNotifications, updateLocalNotifications, user?.id]);
 
   const clearAll = useCallback(() => {
-    updateNotifications((current) => {
+    updateLocalNotifications((current) => {
       if (!user?.id) return [];
       return current.filter((item) => item.user_id && item.user_id !== user.id);
     });
-  }, [updateNotifications, user?.id]);
-
-  const markAllAsRead = useCallback(() => {
-    updateNotifications((current) =>
-      current.map((item) => (!user?.id || !item.user_id || item.user_id === user.id ? { ...item, read: true } : item))
-    );
-  }, [updateNotifications, user?.id]);
+    setServerNotifications([]);
+    if (user?.id) notificationsApi.clearAll().catch(() => refreshServerNotifications());
+  }, [refreshServerNotifications, updateLocalNotifications, user?.id]);
 
   useEffect(() => {
-    if (!user?.id) return undefined;
+    if (!user?.id) {
+      setServerNotifications([]);
+      return undefined;
+    }
     let alive = true;
 
-    function userCanSeeTask(task) {
-      const assigneeIds = task.assignee_ids?.length
-        ? task.assignee_ids
-        : task.assignee_id
-          ? [task.assignee_id]
-          : task.assignees?.map((assignee) => assignee.id).filter(Boolean) || [];
-      return assigneeIds.includes(user.id) || task.creator_id === user.id;
-    }
-
-    function formatDueDate(value) {
-      if (!value) return "";
-      return new Intl.DateTimeFormat("pt-BR", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit"
-      }).format(new Date(value));
-    }
-
-    async function markReminderSent(task) {
+    async function sync({ processReminders = false } = {}) {
       try {
-        await tasksApi.update(task.id, { reminder_sent: true });
-      } catch {
-        // The reminder will be checked again on the next refresh if the task still exists.
-      }
-    }
-
-    async function checkTaskReminders() {
-      try {
-        const tasks = await tasksApi.remindersDue();
         if (!alive) return;
-        const now = Date.now();
-
-        tasks
-          .filter((task) => task.reminder_enabled && task.reminder_at && !task.reminder_sent)
-          .filter((task) => ["pendente", "em_andamento"].includes(task.status))
-          .filter(userCanSeeTask)
-          .forEach((task) => {
-            const reminderAt = new Date(task.reminder_at).getTime();
-            const age = now - reminderAt;
-            if (age < 0) return;
-
-            if (age <= REMINDER_GRACE_MS) {
-              const lead = formatReminderMessageLead(task.reminder_value, task.reminder_unit);
-              const due = formatDueDate(task.due_date);
-              addNotification({
-                title: "Lembrete de tarefa",
-                description: `Em ${lead} voce tem: ${task.title}.${due ? ` Prazo: ${due}.` : ""}`,
-                type: "reminder",
-                family_id: task.family_id,
-                user_id: user.id,
-                dedupe_key: `task-reminder:${user.id}:${task.id}:${task.reminder_at}`
-              });
-            }
-
-            markReminderSent(task);
-          });
+        await refreshServerNotifications({ processReminders });
       } catch {
-        // Usuarios sem familia ou sessoes expiradas ja sao tratados nas telas principais.
+        // Main screens already handle expired sessions or missing family context.
       }
     }
 
-    checkTaskReminders();
-    const interval = window.setInterval(checkTaskReminders, REMINDER_CHECK_INTERVAL_MS);
-    window.addEventListener(APP_DATA_CHANGED_EVENT, checkTaskReminders);
+    sync({ processReminders: true });
+    const interval = window.setInterval(() => sync({ processReminders: true }), REMINDER_CHECK_INTERVAL_MS);
+    const handleAppDataChanged = () => sync({ processReminders: true });
+    window.addEventListener(APP_DATA_CHANGED_EVENT, handleAppDataChanged);
     return () => {
       alive = false;
       window.clearInterval(interval);
-      window.removeEventListener(APP_DATA_CHANGED_EVENT, checkTaskReminders);
+      window.removeEventListener(APP_DATA_CHANGED_EVENT, handleAppDataChanged);
     };
-  }, [addNotification, user?.id]);
+  }, [refreshServerNotifications, user?.id]);
 
   const value = useMemo(() => {
-    const visibleNotifications = user?.id
-      ? notifications.filter((item) => !item.user_id || item.user_id === user.id)
-      : notifications;
-    const unreadCount = visibleNotifications.filter((item) => !item.read).length;
-    return { notifications: visibleNotifications, unreadCount, addNotification, markAsRead, markAllAsRead, clearAll };
-  }, [notifications, addNotification, markAsRead, markAllAsRead, clearAll, user?.id]);
+    const visibleLocalNotifications = user?.id
+      ? localNotifications.filter((item) => !item.user_id || item.user_id === user.id)
+      : localNotifications;
+    const notifications = [...serverNotifications, ...visibleLocalNotifications].sort(
+      (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+    );
+    const unreadCount = notifications.filter((item) => !item.read).length;
+    return { notifications, unreadCount, addNotification, markAsRead, markAllAsRead, clearAll, refresh: refreshServerNotifications };
+  }, [addNotification, clearAll, localNotifications, markAllAsRead, markAsRead, refreshServerNotifications, serverNotifications, user?.id]);
 
   return <NotificationsContext.Provider value={value}>{children}</NotificationsContext.Provider>;
 }

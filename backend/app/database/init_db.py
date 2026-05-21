@@ -4,7 +4,7 @@ from app.services.username_service import unique_username_from_email
 from sqlalchemy import inspect, text
 
 # Importing models here registers them in SQLAlchemy metadata.
-from app.models import category, couple, family, image_asset, integration, ranking, task, two_factor, user  # noqa: F401
+from app.models import category, couple, family, image_asset, integration, notification, ranking, task, two_factor, user  # noqa: F401
 
 
 def create_database_tables() -> None:
@@ -58,6 +58,8 @@ def _upgrade_existing_tables() -> None:
             _add_column_if_missing(connection, "users", "two_factor_enabled", "two_factor_enabled BOOLEAN DEFAULT TRUE NOT NULL")
             _add_column_if_missing(connection, "users", "last_login_at", f"last_login_at {_timestamp_with_timezone_type()}")
             _add_column_if_missing(connection, "users", "last_2fa_verified_at", f"last_2fa_verified_at {_timestamp_with_timezone_type()}")
+            _add_column_if_missing(connection, "users", "email_task_reminders_enabled", "email_task_reminders_enabled BOOLEAN DEFAULT FALSE NOT NULL")
+            _add_column_if_missing(connection, "users", "push_task_reminders_enabled", "push_task_reminders_enabled BOOLEAN DEFAULT FALSE NOT NULL")
             _backfill_missing_usernames(connection)
             connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username_unique ON users (username) WHERE username IS NOT NULL"))
             connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username_lower_unique ON users (LOWER(username)) WHERE username IS NOT NULL"))

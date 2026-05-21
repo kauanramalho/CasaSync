@@ -56,6 +56,8 @@ class UserRead(ORMModel):
     avatar_url: str | None = None
     email_verified: bool
     two_factor_enabled: bool
+    email_task_reminders_enabled: bool = False
+    push_task_reminders_enabled: bool = False
     created_at: datetime
 
 

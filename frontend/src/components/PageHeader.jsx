@@ -170,7 +170,7 @@ export default function PageHeader({ title, subtitle, action, user }) {
                   notifications.map((item) => (
                     <button
                       key={item.id}
-                      onClick={() => markAsRead(item.id)}
+                      onClick={() => markAsRead(item)}
                       className={`w-full rounded-2xl px-3 py-3 text-left transition hover:bg-rose-50/60 ${item.read ? "opacity-70" : "bg-slate-50/70"}`}
                     >
                       <div className="flex items-start gap-3">

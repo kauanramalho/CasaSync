@@ -386,6 +386,18 @@ export const tasksApi = {
   remindersDue: () => request("/tasks/reminders/due")
 };
 
+export const notificationsApi = {
+  list: () => request("/notifications"),
+  markRead: (id) => request(`/notifications/${id}/read`, { method: "PATCH", body: {} }),
+  markAllRead: () => request("/notifications/read-all", { method: "POST", body: {} }),
+  clearAll: () => request("/notifications", { method: "DELETE" }),
+  settings: () => request("/notifications/settings"),
+  updatePreferences: (payload) => request("/notifications/preferences", { method: "PATCH", body: payload }),
+  savePushSubscription: (subscription) => request("/notifications/push-subscriptions", { method: "POST", body: subscription }),
+  deletePushSubscription: (subscription) => request("/notifications/push-subscriptions", { method: "DELETE", body: subscription }),
+  processReminders: () => request("/notifications/reminders/process", { method: "POST", body: {} })
+};
+
 export const dashboardApi = {
   get: () => request("/dashboard")
 };
