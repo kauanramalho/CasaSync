@@ -83,6 +83,8 @@ class Settings(BaseSettings):
     google_calendar_enabled: bool = False
     google_calendar_default_timezone: str = "America/Sao_Paulo"
     google_calendar_default_event_minutes: int = 60
+    google_calendar_request_timeout_seconds: float = 20.0
+    integration_token_encryption_key: str | None = None
 
     ai_provider: str = "mock"
     ai_api_key: str | None = None
@@ -123,6 +125,7 @@ class Settings(BaseSettings):
         "google_client_id",
         "google_client_secret",
         "google_redirect_uri",
+        "integration_token_encryption_key",
         "ai_api_key",
         "openai_api_key",
         mode="before",

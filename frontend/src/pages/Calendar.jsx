@@ -435,9 +435,29 @@ export default function Calendar() {
   }, [addNotification, editingTask, showToast, user?.name]);
 
   const handleSyncCalendar = useCallback(async function handleSyncCalendar(task) {
+    if (task.google_calendar_event_id) {
+      showToast({ type: "info", message: "Esta tarefa ja esta vinculada ao Google Agenda." });
+      return;
+    }
+    if (!calendarStatus?.can_sync) {
+      showToast({ type: "info", message: calendarStatus?.message || "Conecte o Google Agenda antes de sincronizar." });
+      return;
+    }
+    const confirmed = window.confirm(`Enviar "${task.title}" para o Google Agenda?`);
+    if (!confirmed) return;
+
     setSyncingTaskId(task.id);
     try {
       const response = await integrationsApi.syncGoogleCalendarTask(task.id);
+      if (response.event_id) {
+        setTasks((current) =>
+          current.map((item) =>
+            item.id === task.id
+              ? { ...item, google_calendar_event_id: response.event_id, google_calendar_synced_at: new Date().toISOString() }
+              : item
+          )
+        );
+      }
       showToast({
         type: response.synced ? "success" : "info",
         message: response.message
@@ -448,7 +468,7 @@ export default function Calendar() {
     } finally {
       setSyncingTaskId("");
     }
-  }, [showToast]);
+  }, [calendarStatus?.can_sync, calendarStatus?.message, showToast]);
 
   function renderMonthView() {
     return (
@@ -656,10 +676,10 @@ export default function Calendar() {
                     variant="secondary"
                     className="mt-3 w-full px-3 py-2 text-xs"
                     onClick={() => handleSyncCalendar(task)}
-                    disabled={syncingTaskId === task.id}
+                    disabled={syncingTaskId === task.id || !calendarStatus?.can_sync || Boolean(task.google_calendar_event_id)}
                   >
                     <Send className="h-4 w-4" />
-                    {syncingTaskId === task.id ? "Verificando Agenda" : "Sincronizar com Google Agenda"}
+                    {task.google_calendar_event_id ? "Ja no Google Agenda" : syncingTaskId === task.id ? "Sincronizando..." : "Sincronizar com Google Agenda"}
                   </Button>
                 )}
                 {calendarStatus?.is_enabled && !calendarStatus?.can_sync && (

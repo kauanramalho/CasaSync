@@ -87,6 +87,9 @@ class TaskRead(ORMModel):
     reminder_unit: Literal["minutes", "hours", "days"] | None = None
     reminder_at: datetime | None = None
     reminder_sent: bool
+    google_calendar_event_id: str | None = None
+    google_calendar_synced_at: datetime | None = None
+    google_calendar_synced_by_id: str | None = None
     automation_source: str | None = None
     automation_external_id: str | None = None
     automation_source_label: str | None = None

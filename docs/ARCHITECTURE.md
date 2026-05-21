@@ -25,6 +25,6 @@ O design segue os mockups do CasaSync: dashboard SaaS, sidebar clara, cartões s
 
 ## Integrações Futuras
 
-- Google Agenda já possui modelo, service e endpoints de status/connect-url.
+- Google Agenda possui OAuth backend, conexao por usuario/familia, tokens criptografados e sync confirmado por tarefa.
 - Planejador IA já possui service isolado. Hoje usa mock, mas pode ser substituído por OpenAI/agents sem alterar as telas.
 - Migrações Alembic devem substituir `create_all` antes de produção.

@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel
@@ -10,6 +11,7 @@ class GoogleCalendarStatus(BaseModel):
     can_connect: bool = False
     can_sync: bool = False
     calendar_id: str | None = None
+    connected_at: datetime | None = None
     message: str
 
 
@@ -33,3 +35,10 @@ class GoogleCalendarTaskSyncResponse(BaseModel):
     event_id: str | None = None
     message: str
     event: dict[str, Any] | None = None
+
+
+class GoogleCalendarDisconnectResponse(BaseModel):
+    provider: str = "google"
+    status: str
+    disconnected: bool = False
+    message: str

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   BadgeCheck,
   CalendarDays,
@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Settings as SettingsIcon,
   ShieldAlert,
+  Unplug,
   User
 } from "lucide-react";
 
@@ -42,12 +43,14 @@ function isAdminRole(role) {
 export default function Settings() {
   const { user, updateUser, deleteAccount } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { preferences, updatePreference, updatePreferences } = useAppPreferences();
   const { paletteId, palettes, selectPalette } = useTheme();
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState("general");
   const [calendarStatus, setCalendarStatus] = useState(null);
   const [calendarMessage, setCalendarMessage] = useState("");
+  const [calendarBusy, setCalendarBusy] = useState(false);
   const [family, setFamily] = useState(null);
   const [currentMember, setCurrentMember] = useState(null);
   const [familyForm, setFamilyForm] = useState({ name: "" });
@@ -87,16 +90,64 @@ export default function Settings() {
     };
   }, [showToast, user?.id]);
 
+  useEffect(() => {
+    const googleCalendarStatus = searchParams.get("googleCalendar");
+    const message = searchParams.get("message");
+    if (!googleCalendarStatus) return;
+
+    setActiveTab("general");
+    if (message) {
+      setCalendarMessage(message);
+      showToast({ type: googleCalendarStatus === "connected" ? "success" : "info", message });
+    }
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("googleCalendar");
+    nextParams.delete("message");
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams, showToast]);
+
   const canAdminFamily = isAdminRole(currentMember?.role);
 
+  async function refreshCalendarStatus() {
+    const nextStatus = await integrationsApi.googleCalendarStatus();
+    setCalendarStatus(nextStatus);
+    return nextStatus;
+  }
+
   async function connectCalendar() {
+    setCalendarBusy(true);
     try {
       const response = await integrationsApi.googleCalendarConnectUrl();
-      setCalendarMessage(response.url ? `${response.message} Nenhum token sera salvo nesta etapa.` : response.message);
+      if (response.url) {
+        window.location.assign(response.url);
+        return;
+      }
+      setCalendarMessage(response.message);
     } catch (err) {
       const message = normalizeApiError(err);
       setError(message);
       showToast({ type: "error", message });
+    } finally {
+      setCalendarBusy(false);
+    }
+  }
+
+  async function disconnectCalendar() {
+    if (!window.confirm("Desconectar o Google Agenda desta familia neste usuario?")) return;
+    setCalendarBusy(true);
+    setError("");
+    try {
+      const response = await integrationsApi.disconnectGoogleCalendar();
+      setCalendarMessage(response.message);
+      showToast({ type: response.disconnected ? "success" : "info", message: response.message });
+      await refreshCalendarStatus();
+    } catch (err) {
+      const message = normalizeApiError(err);
+      setError(message);
+      showToast({ type: "error", message });
+    } finally {
+      setCalendarBusy(false);
     }
   }
 
@@ -256,15 +307,26 @@ export default function Settings() {
               <h2 className="section-title">Google Agenda</h2>
             </div>
             <p className="mt-4 text-sm text-muted">{calendarStatus?.message || "Verificando conexao..."}</p>
-            {calendarStatus?.is_enabled && !calendarStatus?.is_connected && (
-              <p className="mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
-                A sincronizacao real so deve ser ativada depois do OAuth e do armazenamento seguro de tokens.
+            {calendarStatus?.is_connected && (
+              <p className="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+                Sua conta esta conectada. O envio de tarefas continua exigindo confirmacao manual.
               </p>
             )}
             {calendarMessage && <p className="mt-4 rounded-2xl bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-600">{calendarMessage}</p>}
-            <Button onClick={connectCalendar} className="mt-6" disabled={!calendarStatus?.is_enabled || !calendarStatus?.can_connect}>
-              {calendarStatus?.is_enabled ? "Conectar Google Agenda" : "Google Agenda desativado"}
-            </Button>
+            <div className="mt-6 flex flex-wrap gap-3">
+              {!calendarStatus?.is_connected && (
+                <Button onClick={connectCalendar} disabled={calendarBusy || !calendarStatus?.is_enabled || !calendarStatus?.can_connect}>
+                  <CalendarDays className="h-4 w-4" />
+                  {calendarBusy ? "Abrindo Google..." : calendarStatus?.is_enabled ? "Conectar Google Agenda" : "Google Agenda desativado"}
+                </Button>
+              )}
+              {calendarStatus?.is_connected && (
+                <Button variant="secondary" onClick={disconnectCalendar} disabled={calendarBusy}>
+                  <Unplug className="h-4 w-4" />
+                  {calendarBusy ? "Desconectando..." : "Desconectar"}
+                </Button>
+              )}
+            </div>
           </Card>
         </div>
       )}

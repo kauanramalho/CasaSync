@@ -80,15 +80,34 @@ def _upgrade_existing_tables() -> None:
             _add_column_if_missing(connection, "tasks", "reminder_unit", "reminder_unit VARCHAR(16)")
             _add_column_if_missing(connection, "tasks", "reminder_at", f"reminder_at {_timestamp_with_timezone_type()}")
             _add_column_if_missing(connection, "tasks", "reminder_sent", "reminder_sent BOOLEAN DEFAULT FALSE NOT NULL")
+            _add_column_if_missing(connection, "tasks", "google_calendar_event_id", "google_calendar_event_id VARCHAR(255)")
+            _add_column_if_missing(connection, "tasks", "google_calendar_synced_at", f"google_calendar_synced_at {_timestamp_with_timezone_type()}")
+            _add_column_if_missing(connection, "tasks", "google_calendar_synced_by_id", "google_calendar_synced_by_id VARCHAR(36)")
             _add_column_if_missing(connection, "tasks", "automation_source", "automation_source VARCHAR(80)")
             _add_column_if_missing(connection, "tasks", "automation_external_id", "automation_external_id VARCHAR(160)")
             _add_column_if_missing(connection, "tasks", "automation_source_label", "automation_source_label VARCHAR(180)")
             _add_column_if_missing(connection, "tasks", "automation_source_reference", "automation_source_reference TEXT")
             _add_column_if_missing(connection, "tasks", "recurrence_rule", "recurrence_rule VARCHAR(255)")
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_tasks_google_calendar_event_id ON tasks (google_calendar_event_id)"))
             connection.execute(
                 text(
                     "CREATE UNIQUE INDEX IF NOT EXISTS ix_tasks_automation_external_unique "
                     "ON tasks (family_id, automation_source, automation_external_id) "
                     "WHERE automation_external_id IS NOT NULL"
+                )
+            )
+
+        if "google_calendar_connections" in existing_tables:
+            _add_column_if_missing(connection, "google_calendar_connections", "access_token_expires_at", f"access_token_expires_at {_timestamp_with_timezone_type()}")
+            _add_column_if_missing(connection, "google_calendar_connections", "token_scope", "token_scope VARCHAR(1000)")
+            _add_column_if_missing(connection, "google_calendar_connections", "token_type", "token_type VARCHAR(40)")
+            _add_column_if_missing(connection, "google_calendar_connections", "disconnected_at", f"disconnected_at {_timestamp_with_timezone_type()}")
+            if engine.dialect.name == "postgresql":
+                connection.execute(text("ALTER TABLE google_calendar_connections DROP CONSTRAINT IF EXISTS google_calendar_connections_family_id_key"))
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS ix_google_calendar_connections_family_user_unique "
+                    "ON google_calendar_connections (family_id, user_id) "
+                    "WHERE user_id IS NOT NULL"
                 )
             )
