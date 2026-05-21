@@ -1,0 +1,4 @@
+interface:
+  display_name: "CasaSync Notifications Reminders"
+  short_description: "Handle reminders, notifications, email and push safely"
+  default_prompt: "Use $casasync-notifications-reminders when changing CasaSync reminders, notifications, email, push, PWA or background notification flows."

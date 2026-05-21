@@ -1,0 +1,4 @@
+interface:
+  display_name: "CasaSync Auth Login Username"
+  short_description: "Guard login, signup, username and credentials"
+  default_prompt: "Use $casasync-auth-login-username when changing CasaSync authentication, username, email, login or signup flows."

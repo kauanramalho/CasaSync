@@ -1,0 +1,4 @@
+interface:
+  display_name: "CasaSync Task Attachments"
+  short_description: "Secure task file uploads and attachment access"
+  default_prompt: "Use $casasync-task-attachments when changing CasaSync task attachments, uploads, previews, downloads or file storage."
