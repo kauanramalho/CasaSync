@@ -103,6 +103,7 @@ def get_dashboard(db: Session, family_id: str) -> DashboardRead:
         _recent_task_query(db)
         .filter(Task.family_id == family_id)
         .filter(Task.archived_at.is_(None))
+        .filter(Task.status != TaskStatus.DONE.value)
         .order_by(Task.created_at.desc())
         .limit(8)
         .all()

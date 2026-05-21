@@ -25,6 +25,14 @@ export const taskSortColumns = [
 
 export const memberChartColors = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"];
 
+export function isTaskCompleted(task) {
+  return task?.status === "concluida";
+}
+
+export function isTaskOpen(task) {
+  return !isTaskCompleted(task);
+}
+
 export const categoryToneClasses = {
   rose: "bg-rose-50 text-rose-600 border-rose-100",
   blush: "bg-rose-50 text-blush border-rose-100",

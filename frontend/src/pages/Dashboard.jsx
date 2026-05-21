@@ -16,7 +16,7 @@ import { categoriesApi, coupleApi, dashboardApi, familiesApi, tasksApi } from ".
 import { emitAppDataChanged } from "../utils/events";
 import { formatDate, normalizeApiError } from "../utils/formatters";
 import { getHiddenRecentTaskIds, hideRecentTask } from "../utils/recentTasks";
-import { sortTasksForDisplay } from "../utils/tasks";
+import { isTaskOpen, sortTasksForDisplay } from "../utils/tasks";
 
 const statMeta = {
   done: { icon: CheckCircle2, tone: "emerald" },
@@ -249,7 +249,7 @@ export default function Dashboard() {
   const ranking = useMemo(() => dashboard?.ranking ?? [], [dashboard]);
   const recentTasks = useMemo(() => {
     const hidden = new Set(hiddenRecentIds);
-    return sortTasksForDisplay((dashboard?.recent_tasks ?? []).filter((task) => !hidden.has(task.id)).slice(0, 6));
+    return sortTasksForDisplay((dashboard?.recent_tasks ?? []).filter((task) => isTaskOpen(task) && !hidden.has(task.id)).slice(0, 6));
   }, [dashboard, hiddenRecentIds]);
   const couplePreviewItems = useMemo(() => buildCouplePreviewItems(coupleSpace), [coupleSpace]);
 
@@ -297,7 +297,14 @@ export default function Dashboard() {
               Nova tarefa
             </Link>
           </div>
-          <TaskList tasks={recentTasks} onComplete={handleComplete} onEdit={setEditingTask} onRemoveRecent={handleRemoveRecent} compact />
+          <TaskList
+            tasks={recentTasks}
+            onComplete={handleComplete}
+            onEdit={setEditingTask}
+            onRemoveRecent={handleRemoveRecent}
+            compact
+            emptyMessage="Nenhuma tarefa pendente por aqui."
+          />
         </Card>
 
         <Card>

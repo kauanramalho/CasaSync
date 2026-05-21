@@ -1,6 +1,6 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { AlertCircle, CheckCircle2, Clock3, ListFilter, Plus, Rows3, Search } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Clock3, ListFilter, Plus, Rows3, Search } from "lucide-react";
 
 import Button from "../components/Button";
 import Card from "../components/Card";
@@ -16,7 +16,7 @@ import { categoriesApi, familiesApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError, priorityLabels, statusLabels } from "../utils/formatters";
 import { formatReminderLead } from "../utils/taskReminders";
-import { getAssigneeNames, getTaskAssigneeIds, getTaskPointLabel, sortTasksForDisplay } from "../utils/tasks";
+import { getAssigneeNames, getTaskAssigneeIds, getTaskPointLabel, isTaskCompleted, isTaskOpen, sortTasksForDisplay } from "../utils/tasks";
 
 const statusTabs = [
   { key: "all", label: "Todas" },
@@ -59,6 +59,7 @@ export default function Tasks() {
   const [editError, setEditError] = useState("");
   const [editingTask, setEditingTask] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [completedExpanded, setCompletedExpanded] = useState(true);
 
   const load = useCallback(async function load() {
     setError("");
@@ -101,6 +102,9 @@ export default function Tasks() {
     }, []);
     return sortTasksForDisplay(matches);
   }, [indexedTasks, status, category, assignee, deferredSearch]);
+
+  const pendingTasks = useMemo(() => filteredTasks.filter(isTaskOpen), [filteredTasks]);
+  const completedTasks = useMemo(() => filteredTasks.filter(isTaskCompleted), [filteredTasks]);
 
   const counts = useMemo(
     () =>
@@ -258,12 +262,61 @@ export default function Tasks() {
             </Button>
           </div>
         </div>
-        <TaskList
-          tasks={filteredTasks}
-          onComplete={handleComplete}
-          onEdit={openEditor}
-          onDelete={handleDelete}
-        />
+        <div className="space-y-6">
+          <section>
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="section-title">Tarefas pendentes</h2>
+                <p className="mt-1 text-sm font-semibold text-muted">Abertas, em andamento e atrasadas.</p>
+              </div>
+              <span className="inline-flex w-fit rounded-full bg-orange-50 px-3 py-1 text-xs font-bold text-orange-600">
+                {pendingTasks.length} {pendingTasks.length === 1 ? "tarefa" : "tarefas"}
+              </span>
+            </div>
+            <TaskList
+              tasks={pendingTasks}
+              onComplete={handleComplete}
+              onEdit={openEditor}
+              onDelete={handleDelete}
+              emptyMessage="Nenhuma tarefa pendente encontrada."
+            />
+          </section>
+
+          <section>
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="section-title">Tarefas concluidas</h2>
+                <p className="mt-1 text-sm font-semibold text-muted">Finalizadas pela familia.</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-600">
+                  {completedTasks.length} {completedTasks.length === 1 ? "tarefa" : "tarefas"}
+                </span>
+                <Button
+                  variant="secondary"
+                  className="px-3 py-2 text-sm"
+                  onClick={() => setCompletedExpanded((current) => !current)}
+                  aria-expanded={completedExpanded}
+                  aria-controls="completed-tasks-section"
+                >
+                  {completedExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                  {completedExpanded ? "Recolher" : "Expandir"}
+                </Button>
+              </div>
+            </div>
+            {completedExpanded && (
+              <div id="completed-tasks-section">
+                <TaskList
+                  tasks={completedTasks}
+                  onComplete={handleComplete}
+                  onEdit={openEditor}
+                  onDelete={handleDelete}
+                  emptyMessage="Nenhuma tarefa concluida encontrada."
+                />
+              </div>
+            )}
+          </section>
+        </div>
       </Card>
 
       <TaskEditorModal

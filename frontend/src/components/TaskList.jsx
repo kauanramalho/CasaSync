@@ -116,7 +116,7 @@ function TaskRow({ task, compact, menuOpen, onToggleMenu, onRunAction, onComplet
 
 const MemoTaskRow = memo(TaskRow);
 
-function TaskList({ tasks = [], onComplete, onEdit, onDelete, onRemoveRecent, compact = false }) {
+function TaskList({ tasks = [], onComplete, onEdit, onDelete, onRemoveRecent, compact = false, emptyMessage = "Nenhuma tarefa encontrada." }) {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [activeSort, setActiveSort] = useState(null);
   const orderedTasks = useMemo(() => sortTasksForDisplay(tasks, activeSort), [tasks, activeSort]);
@@ -213,7 +213,7 @@ function TaskList({ tasks = [], onComplete, onEdit, onDelete, onRemoveRecent, co
             onRemoveRecent={onRemoveRecent}
           />
         ))}
-        {orderedTasks.length === 0 && <div className="px-5 py-10 text-center text-sm text-muted">Nenhuma tarefa encontrada.</div>}
+        {orderedTasks.length === 0 && <div className="px-5 py-10 text-center text-sm text-muted">{emptyMessage}</div>}
       </div>
     </div>
   );
