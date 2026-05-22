@@ -1,11 +1,21 @@
 import re
 
 from fastapi import UploadFile
+from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.schemas.image_analysis import ImageAnalysisFileError, ImageAnalysisItem, ImageAnalysisResponse
 from app.services.ai_vision_adapter import VisionAnalysisContext, get_ai_vision_adapter
+from app.services.ai_task_suggestion_post_processor import (
+    AiSuggestionContext,
+    build_ai_suggestion_context,
+    categories_for_prompt,
+    current_backend_datetime_for_prompt,
+    members_for_prompt,
+    post_process_image_analysis_response,
+)
 from app.services.image_service import MAX_IMAGE_ANALYSIS_BYTES, ValidatedImageUpload, read_validated_image_upload
+from app.services.reminder_rules import normalize_reminder_entries
 
 
 MAX_IMAGE_ANALYSIS_FILES = 10
@@ -17,8 +27,9 @@ async def parse_image_to_task_suggestions(
     file: UploadFile,
     family_id: str,
     settings: Settings,
+    db: Session | None = None,
 ) -> ImageAnalysisResponse:
-    return await parse_images_to_task_suggestions(files=[file], family_id=family_id, settings=settings)
+    return await parse_images_to_task_suggestions(files=[file], family_id=family_id, settings=settings, db=db)
 
 
 async def parse_images_to_task_suggestions(
@@ -28,6 +39,7 @@ async def parse_images_to_task_suggestions(
     settings: Settings,
     custom_instructions: str | None = None,
     image_context: str | None = None,
+    db: Session | None = None,
 ) -> ImageAnalysisResponse:
     if not files:
         return _analysis_response(warnings=["Selecione pelo menos uma imagem para interpretar."])
@@ -64,6 +76,7 @@ async def parse_images_to_task_suggestions(
         settings=settings,
         custom_instructions=custom_instructions,
         image_context=image_context,
+        db=db,
         initial_image_errors=image_errors,
     )
 
@@ -75,9 +88,21 @@ def parse_validated_images_to_task_suggestions(
     settings: Settings,
     custom_instructions: str | None = None,
     image_context: str | None = None,
+    db: Session | None = None,
     initial_image_errors: list[ImageAnalysisFileError] | None = None,
 ) -> ImageAnalysisResponse:
     adapter = get_ai_vision_adapter(settings.ai_vision_provider)
+    suggestion_context = (
+        build_ai_suggestion_context(
+            db,
+            family_id,
+            custom_instructions=custom_instructions,
+            image_context=image_context,
+            timezone_name=settings.google_calendar_default_timezone or "America/Sao_Paulo",
+        )
+        if db is not None
+        else AiSuggestionContext(custom_instructions=custom_instructions, image_context=image_context)
+    )
     context = VisionAnalysisContext(
         family_id=family_id,
         provider=settings.ai_vision_provider,
@@ -88,6 +113,10 @@ def parse_validated_images_to_task_suggestions(
         openai_vision_max_output_tokens=settings.openai_vision_max_output_tokens,
         custom_instructions=custom_instructions,
         image_context=image_context,
+        members=members_for_prompt(suggestion_context),
+        categories=categories_for_prompt(suggestion_context),
+        timezone_name=suggestion_context.timezone_name,
+        current_datetime=current_backend_datetime_for_prompt(suggestion_context),
     )
     combined_instruction_context = _combined_instruction_context(custom_instructions, image_context)
 
@@ -118,7 +147,7 @@ def parse_validated_images_to_task_suggestions(
     confidence_values = [item.confidence for item in limited_items]
     overall_confidence = sum(confidence_values) / len(confidence_values) if confidence_values else 0.0
 
-    return ImageAnalysisResponse(
+    response = ImageAnalysisResponse(
         overallConfidence=overall_confidence,
         items=limited_items,
         warnings=list(dict.fromkeys(warnings))[:10],
@@ -127,6 +156,7 @@ def parse_validated_images_to_task_suggestions(
         totalImagesProcessed=processed,
         totalSuggestionsGenerated=len(limited_items),
     )
+    return post_process_image_analysis_response(response, suggestion_context)
 
 
 def _combined_instruction_context(custom_instructions: str | None, image_context: str | None) -> str | None:
@@ -190,41 +220,25 @@ def _apply_custom_instruction_defaults(items: list[ImageAnalysisItem], custom_in
 
         if warnings != list(item.warnings or []):
             patch["warnings"] = list(dict.fromkeys(warnings))[:10]
-        updated_items.append(item.model_copy(update=patch) if patch else item)
+        updated_items.append(ImageAnalysisItem.model_validate({**item.model_dump(), **patch}) if patch else item)
 
     return updated_items
 
 
-def _reminder_total_minutes(value: int, unit: str) -> int:
-    multipliers = {"minutes": 1, "hours": 60, "days": 24 * 60}
-    return int(value) * multipliers[unit]
-
-
 def _merge_reminders(*groups: list[tuple[int, str]]) -> list[tuple[int, str]]:
-    merged: list[tuple[int, str]] = []
-    seen_minutes: set[int] = set()
-    for group in groups:
-        for value, unit in group:
-            if unit not in {"minutes", "hours", "days"}:
-                continue
-            total_minutes = _reminder_total_minutes(value, unit)
-            if total_minutes <= 0 or total_minutes in seen_minutes:
-                continue
-            seen_minutes.add(total_minutes)
-            merged.append((value, unit))
-            if len(merged) >= 5:
-                return merged
-    return merged
+    raw = [{"value": value, "unit": unit} for group in groups for value, unit in group]
+    normalized, _, _ = normalize_reminder_entries(raw)
+    return normalized
 
 
 def _preferred_reminders(instructions: str) -> list[tuple[int, str]]:
     candidates: list[tuple[int, str]] = []
     normalized = instructions.replace("uma hora", "1 hora").replace("um dia", "1 dia")
-    for value, unit in re.findall(r"\b(\d{1,3})\s*(minutos?|mins?|min)\b", normalized):
+    for value, unit in re.findall(r"\b(\d{1,4})\s*(minutos?|mins?|min)\b", normalized):
         candidates.append((int(value), "minutes"))
-    for value, unit in re.findall(r"\b(\d{1,3})\s*(horas?|hrs?|h)\b", normalized):
+    for value, unit in re.findall(r"\b(\d{1,4})\s*(horas?|hrs?|h)\b", normalized):
         candidates.append((int(value), "hours"))
-    for value, unit in re.findall(r"\b(\d{1,3})\s*(dias?|d)\b", normalized):
+    for value, unit in re.findall(r"\b(\d{1,4})\s*(dias?|d)\b", normalized):
         candidates.append((int(value), "days"))
     if "60 minutos" in normalized:
         candidates.append((1, "hours"))

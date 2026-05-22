@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class TaskSuggestionReminder(BaseModel):
-    value: int = Field(gt=0, le=365)
+    value: int = Field(gt=0, le=4320)
     unit: Literal["minutes", "hours", "days"]
 
 
@@ -63,4 +63,5 @@ class TaskSuggestionsImportResponse(BaseModel):
     failed: list[FailedTaskImportResult] = Field(default_factory=list)
     ignored: list[FailedTaskImportResult] = Field(default_factory=list)
     pendingReview: list[FailedTaskImportResult] = Field(default_factory=list)
+    ignoredReminderCount: int = 0
     warnings: list[str] = Field(default_factory=list)

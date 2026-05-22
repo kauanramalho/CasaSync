@@ -1,12 +1,16 @@
-export const reminderOptions = [
-  { value: "15:minutes", label: "15 minutos antes", amount: 15, unit: "minutes" },
-  { value: "30:minutes", label: "30 minutos antes", amount: 30, unit: "minutes" },
-  { value: "1:hours", label: "1 hora antes", amount: 1, unit: "hours" },
-  { value: "3:hours", label: "3 horas antes", amount: 3, unit: "hours" },
-  { value: "12:hours", label: "12 horas antes", amount: 12, unit: "hours" },
-  { value: "1:days", label: "1 dia antes", amount: 1, unit: "days" },
-  { value: "3:days", label: "3 dias antes", amount: 3, unit: "days" }
-];
+export const allowedReminderMinutes = [15, 30, 60, 180, 720, 1440, 4320];
+
+const canonicalRemindersByMinutes = {
+  15: { value: "15:minutes", label: "15 minutos antes", amount: 15, unit: "minutes" },
+  30: { value: "30:minutes", label: "30 minutos antes", amount: 30, unit: "minutes" },
+  60: { value: "1:hours", label: "1 hora antes", amount: 1, unit: "hours" },
+  180: { value: "3:hours", label: "3 horas antes", amount: 3, unit: "hours" },
+  720: { value: "12:hours", label: "12 horas antes", amount: 12, unit: "hours" },
+  1440: { value: "1:days", label: "1 dia antes", amount: 1, unit: "days" },
+  4320: { value: "3:days", label: "3 dias antes", amount: 3, unit: "days" }
+};
+
+export const reminderOptions = allowedReminderMinutes.map((minutes) => canonicalRemindersByMinutes[minutes]);
 
 const unitLabels = {
   minutes: ["minuto", "minutos"],
@@ -28,19 +32,23 @@ export function parseReminderValue(value) {
   const [amount, unit] = String(value || "").split(":");
   const parsedAmount = Number(amount);
   if (!parsedAmount || !unitLabels[unit]) return reminderOptions[0];
-  return { amount: parsedAmount, value: parsedAmount, unit };
+  const totalMinutes = reminderTotalMinutes(parsedAmount, unit);
+  return canonicalRemindersByMinutes[totalMinutes] || reminderOptions[0];
 }
 
 export function formatReminderLead(value, unit) {
-  if (!value || !unitLabels[unit]) return "";
-  const [singular, plural] = unitLabels[unit];
-  return `${value} ${value === 1 ? singular : plural} antes`;
+  const totalMinutes = reminderTotalMinutes(value, unit);
+  return canonicalRemindersByMinutes[totalMinutes]?.label || "";
 }
 
 export function formatReminderMessageLead(value, unit) {
-  if (!value || !unitLabels[unit]) return "";
-  const [singular, plural] = unitLabels[unit];
-  return `${value} ${value === 1 ? singular : plural}`;
+  const totalMinutes = reminderTotalMinutes(value, unit);
+  const canonical = canonicalRemindersByMinutes[totalMinutes];
+  if (!canonical) return "";
+  const valueToDisplay = canonical.amount;
+  const unitToDisplay = canonical.unit;
+  const [singular, plural] = unitLabels[unitToDisplay];
+  return `${valueToDisplay} ${valueToDisplay === 1 ? singular : plural}`;
 }
 
 function reminderTotalMinutes(value, unit) {
@@ -48,8 +56,15 @@ function reminderTotalMinutes(value, unit) {
   return multiplier ? Number(value) * multiplier : 0;
 }
 
+function canonicalReminder(value, unit) {
+  const totalMinutes = reminderTotalMinutes(value, unit);
+  const option = canonicalRemindersByMinutes[totalMinutes];
+  if (!option) return null;
+  return { value: option.amount, amount: option.amount, unit: option.unit };
+}
+
 export function reminderKey(reminder) {
-  return `${reminder?.value || reminder?.amount}:${reminder?.unit}`;
+  return String(reminderTotalMinutes(reminder?.amount ?? reminder?.value, reminder?.unit) || "");
 }
 
 export function normalizeReminderList(source = {}) {
@@ -61,10 +76,12 @@ export function normalizeReminderList(source = {}) {
     const parsedValue = Number(rawReminder?.value ?? rawReminder?.amount ?? rawReminder?.reminder_value ?? rawReminder?.reminderValue);
     const unit = rawReminder?.unit ?? rawReminder?.reminder_unit ?? rawReminder?.reminderUnit;
     if (!parsedValue || !unitLabels[unit]) continue;
-    const totalMinutes = reminderTotalMinutes(parsedValue, unit);
+    const canonical = canonicalReminder(parsedValue, unit);
+    if (!canonical) continue;
+    const totalMinutes = reminderTotalMinutes(canonical.value, canonical.unit);
     if (!totalMinutes || seenMinutes.has(totalMinutes)) continue;
     seenMinutes.add(totalMinutes);
-    normalized.push({ value: parsedValue, amount: parsedValue, unit });
+    normalized.push(canonical);
     if (normalized.length >= 5) break;
   }
 
@@ -107,9 +124,6 @@ export function getReminderValidationError(form) {
   for (const reminder of reminders) {
     const reminderAt = calculateReminderAt(form.due_date, reminder.value, reminder.unit);
     if (!reminderAt) return "Escolha quando o lembrete deve acontecer.";
-    if (reminderAt.getTime() <= Date.now()) {
-      return "Esse lembrete ja ficou no passado. Escolha um prazo maior ou uma antecedencia menor.";
-    }
   }
   return "";
 }

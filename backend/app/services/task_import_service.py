@@ -1,4 +1,5 @@
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -9,7 +10,6 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.models.category import Category
 from app.models.enums import TaskPriority, TaskStatus, TaskType
-from app.models.family import FamilyMember
 from app.models.task import Task
 from app.schemas.task import TaskCreate
 from app.schemas.task_import import (
@@ -22,10 +22,19 @@ from app.services.family_service import require_family_member
 from app.services.task_metrics import unique_user_ids
 from app.services.task_service import create_task
 from app.services.calendar_service import sync_task_to_calendar
+from app.services.ai_task_suggestion_post_processor import (
+    build_ai_suggestion_context,
+    normalize_suggestion_date,
+    resolve_assignee_ids_for_suggestion,
+    resolve_category_id_for_suggestion,
+)
+from app.services.reminder_rules import normalize_reminder_entries
 
 
 LOW_CONFIDENCE_THRESHOLD = 0.5
 AUTO_CREATE_CONFIDENCE_THRESHOLD = 0.8
+DEFAULT_TASK_IMPORT_TIMEZONE = "America/Sao_Paulo"
+SAO_PAULO_FALLBACK_TZ = timezone(timedelta(hours=-3), name="America/Sao_Paulo")
 
 PRIORITY_ALIASES = {
     "low": TaskPriority.LOW,
@@ -79,7 +88,27 @@ def _parse_due_date(item: TaskSuggestionImportItem) -> datetime | None:
         except ValueError as exc:
             raise ValueError("Horario invalido. Use HH:mm.") from exc
 
-    return datetime.combine(parsed_date, parsed_time, tzinfo=timezone.utc)
+    try:
+        local_zone = ZoneInfo(DEFAULT_TASK_IMPORT_TIMEZONE)
+    except ZoneInfoNotFoundError:
+        local_zone = SAO_PAULO_FALLBACK_TZ
+
+    return datetime.combine(parsed_date, parsed_time, tzinfo=local_zone).astimezone(timezone.utc)
+
+
+def _normalize_import_item_date(
+    db: Session,
+    family_id: str,
+    item: TaskSuggestionImportItem,
+    warnings: list[str] | None = None,
+) -> TaskSuggestionImportItem:
+    context = build_ai_suggestion_context(db, family_id)
+    date_value, time_value, date_warnings = normalize_suggestion_date(item, context)
+    if warnings is not None:
+        warnings.extend(date_warnings)
+    if date_value == item.date and time_value == item.time:
+        return item
+    return item.model_copy(update={"date": date_value, "time": time_value})
 
 
 def _priority_from_suggestion(item: TaskSuggestionImportItem, warnings: list[str]) -> TaskPriority:
@@ -98,10 +127,6 @@ def _type_from_suggestion(item: TaskSuggestionImportItem) -> TaskType:
     return TYPE_ALIASES.get(value, TaskType.TASK)
 
 
-def _family_members(db: Session, family_id: str) -> list[FamilyMember]:
-    return db.query(FamilyMember).filter(FamilyMember.family_id == family_id).all()
-
-
 def _resolve_assignee_ids(
     db: Session,
     family_id: str,
@@ -114,20 +139,14 @@ def _resolve_assignee_ids(
     if assignee_ids:
         return assignee_ids
 
-    responsible = (item.responsible or "").strip().lower()
-    if not responsible:
+    context = build_ai_suggestion_context(db, family_id)
+    resolved, assignee_warnings = resolve_assignee_ids_for_suggestion(item, context)
+    warnings.extend(assignee_warnings)
+    if resolved:
+        return resolved
+
+    if not (item.responsible or "").strip():
         return [creator_id]
-
-    matches = []
-    for member in _family_members(db, family_id):
-        user = member.user
-        if not user:
-            continue
-        if responsible in {user.name.strip().lower(), user.email.strip().lower()}:
-            matches.append(member.user_id)
-
-    if len(matches) == 1:
-        return matches
 
     warnings.append(
         f"Responsavel sugerido em '{item.title or 'sem titulo'}' nao foi identificado com seguranca; a tarefa ficou para voce."
@@ -217,12 +236,38 @@ def _description_with_import_note(item: TaskSuggestionImportItem) -> str | None:
     return combined[:1200] or None
 
 
-def _reminders_from_suggestion(item: TaskSuggestionImportItem) -> list[dict] | None:
+def _resolve_category_id(
+    db: Session,
+    family_id: str,
+    item: TaskSuggestionImportItem,
+    warnings: list[str],
+) -> str | None:
+    if item.categoryId:
+        category = db.query(Category).filter(Category.id == item.categoryId, Category.family_id == family_id).first()
+        if category:
+            return category.id
+        warnings.append(f"Categoria informada em '{item.title or 'sem titulo'}' nao pertence a familia ativa e foi reavaliada.")
+
+    context = build_ai_suggestion_context(db, family_id)
+    category_id, category_warnings = resolve_category_id_for_suggestion(item, context)
+    warnings.extend(category_warnings)
+    return category_id
+
+
+def _reminders_from_suggestion(item: TaskSuggestionImportItem, due_date: datetime | None, warnings: list[str]) -> tuple[list[dict], int]:
+    raw_reminders = []
     if item.reminders:
-        return [{"value": reminder.value, "unit": reminder.unit} for reminder in item.reminders]
+        raw_reminders.extend({"value": reminder.value, "unit": reminder.unit} for reminder in item.reminders)
     if item.reminderEnabled and item.reminderValue and item.reminderUnit:
-        return [{"value": item.reminderValue, "unit": item.reminderUnit}]
-    return []
+        raw_reminders.append({"value": item.reminderValue, "unit": item.reminderUnit})
+    normalized, invalid_count, past_count = normalize_reminder_entries(raw_reminders, due_date=due_date, discard_past=True)
+    if invalid_count:
+        warnings.append(f"{item.title or 'Sugestao'}: lembretes fora das opcoes permitidas foram ignorados.")
+    if past_count:
+        warnings.append(
+            f"{item.title or 'Sugestao'}: a tarefa foi criada, mas alguns lembretes foram ignorados porque ja estavam no passado."
+        )
+    return [{"value": value, "unit": unit} for value, unit in normalized], past_count
 
 
 def import_task_suggestions(
@@ -241,6 +286,7 @@ def import_task_suggestions(
         pending_review: list[FailedTaskImportResult] = []
         safe_items: list[TaskSuggestionImportItem] = []
         for index, item in enumerate(items):
+            item = _normalize_import_item_date(db, family_id, item)
             reason = _auto_review_reason(db, family_id, item)
             if reason:
                 pending_review.append(_fail(item, index, reason))
@@ -253,6 +299,7 @@ def import_task_suggestions(
                 failed=[],
                 ignored=[],
                 pendingReview=pending_review,
+                ignoredReminderCount=0,
                 warnings=["Nenhuma sugestao atingiu os criterios de criacao automatica. Revise os itens pendentes."],
             )
 
@@ -274,8 +321,10 @@ def import_task_suggestions(
     failed: list[FailedTaskImportResult] = []
     warnings: list[str] = []
     seen_batch_keys: set[str] = set()
+    ignored_reminder_count = 0
 
     for index, item in enumerate(items):
+        item = _normalize_import_item_date(db, family_id, item, warnings)
         title = (item.title or "").strip()
         if len(title) < 2:
             failed.append(_fail(item, index, "Informe um titulo com pelo menos 2 caracteres."))
@@ -299,6 +348,10 @@ def import_task_suggestions(
                 continue
 
             assignee_ids = _resolve_assignee_ids(db, family_id, creator_id, item, warnings)
+            category_id = _resolve_category_id(db, family_id, item, warnings)
+            reminders, skipped_reminders = _reminders_from_suggestion(item, due_date, warnings)
+            ignored_reminder_count += skipped_reminders
+            first_reminder = reminders[0] if reminders else None
             task = create_task(
                 db,
                 family_id,
@@ -307,8 +360,8 @@ def import_task_suggestions(
                     title=title,
                     description=_description_with_import_note(item),
                     assignee_ids=assignee_ids,
-                    category_id=item.categoryId or None,
-                    category_name=item.category or None,
+                    category_id=category_id,
+                    category_name=None,
                     due_date=due_date,
                     priority=_priority_from_suggestion(item, warnings),
                     status=TaskStatus.PENDING,
@@ -317,10 +370,10 @@ def import_task_suggestions(
                     automation_external_id=_suggestion_id(item, index),
                     automation_source_label="Importacao por imagem",
                     automation_source_reference="Sugestao revisada e confirmada pelo usuario.",
-                    reminder_enabled=item.reminderEnabled,
-                    reminder_value=item.reminderValue,
-                    reminder_unit=item.reminderUnit,
-                    reminders=_reminders_from_suggestion(item),
+                    reminder_enabled=bool(reminders),
+                    reminder_value=first_reminder["value"] if first_reminder else None,
+                    reminder_unit=first_reminder["unit"] if first_reminder else None,
+                    reminders=reminders,
                 ),
             )
             calendar_event_id = None
@@ -366,4 +419,4 @@ def import_task_suggestions(
     if created and failed:
         warnings.append("Algumas sugestoes foram criadas e outras ficaram pendentes de ajuste.")
 
-    return TaskSuggestionsImportResponse(created=created, failed=failed, ignored=[], warnings=warnings)
+    return TaskSuggestionsImportResponse(created=created, failed=failed, ignored=[], ignoredReminderCount=ignored_reminder_count, warnings=warnings)

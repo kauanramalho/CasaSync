@@ -27,7 +27,7 @@ SECRET_PATTERN = re.compile(r"(sk-[a-zA-Z0-9_-]{20,}|client_secret|refresh_token
 
 
 class ImageAnalysisReminder(BaseModel):
-    value: int = Field(gt=0, le=365)
+    value: int = Field(gt=0, le=4320)
     unit: ImageSuggestionReminderUnit
 
 
@@ -40,12 +40,15 @@ class ImageAnalysisItem(BaseModel):
     endDate: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     endTime: str | None = Field(default=None, pattern=r"^\d{2}:\d{2}$")
     category: str | None = Field(default=None, max_length=80)
+    categoryId: str | None = Field(default=None, max_length=36)
     priority: ImageSuggestionPriority | None = None
     responsible: str | None = Field(default=None, max_length=120)
+    assigneeId: str | None = Field(default=None, max_length=36)
+    assigneeIds: list[str] = Field(default_factory=list, max_length=20)
     confidence: float = Field(ge=0.0, le=1.0)
     warnings: list[str] = Field(default_factory=list, max_length=10)
     reminderEnabled: bool = False
-    reminderValue: int | None = Field(default=None, gt=0, le=365)
+    reminderValue: int | None = Field(default=None, gt=0, le=4320)
     reminderUnit: ImageSuggestionReminderUnit | None = None
     sourceImageName: str | None = Field(default=None, max_length=255)
     originalText: str | None = Field(default=None, max_length=1200)

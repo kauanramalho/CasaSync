@@ -3,6 +3,7 @@ import json
 import re
 import socket
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -12,6 +13,7 @@ from pydantic import ValidationError
 
 from app.schemas.image_analysis import ImageAnalysisResponse
 from app.services.image_service import ValidatedImageUpload
+from app.services.reminder_rules import normalize_reminder_entries
 
 
 OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions"
@@ -40,15 +42,21 @@ IMAGE_ANALYSIS_JSON_SCHEMA = {
                     "endDate": {"anyOf": [{"type": "string"}, {"type": "null"}]},
                     "endTime": {"anyOf": [{"type": "string"}, {"type": "null"}]},
                     "category": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                    "categoryId": {"anyOf": [{"type": "string"}, {"type": "null"}]},
                     "priority": {"anyOf": [{"type": "string", "enum": ["low", "medium", "high", "urgent"]}, {"type": "null"}]},
                     "responsible": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                    "assigneeId": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                    "assigneeIds": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
                     "confidence": {"type": "number"},
                     "warnings": {
                         "type": "array",
                         "items": {"type": "string"},
                     },
                     "reminderEnabled": {"type": "boolean"},
-                    "reminderValue": {"anyOf": [{"type": "integer", "minimum": 1, "maximum": 365}, {"type": "null"}]},
+                    "reminderValue": {"anyOf": [{"type": "integer", "minimum": 1, "maximum": 4320}, {"type": "null"}]},
                     "reminderUnit": {"anyOf": [{"type": "string", "enum": ["minutes", "hours", "days"]}, {"type": "null"}]},
                     "reminders": {
                         "type": "array",
@@ -56,7 +64,7 @@ IMAGE_ANALYSIS_JSON_SCHEMA = {
                             "type": "object",
                             "additionalProperties": False,
                             "properties": {
-                                "value": {"type": "integer", "minimum": 1, "maximum": 365},
+                                "value": {"type": "integer", "minimum": 1, "maximum": 4320},
                                 "unit": {"type": "string", "enum": ["minutes", "hours", "days"]},
                             },
                             "required": ["value", "unit"],
@@ -76,8 +84,11 @@ IMAGE_ANALYSIS_JSON_SCHEMA = {
                     "endDate",
                     "endTime",
                     "category",
+                    "categoryId",
                     "priority",
                     "responsible",
+                    "assigneeId",
+                    "assigneeIds",
                     "confidence",
                     "warnings",
                     "reminderEnabled",
@@ -111,7 +122,6 @@ IMAGE_ANALYSIS_JSON_SCHEMA = {
         "totalSuggestionsGenerated",
     ],
 }
-REMINDER_UNITS = {"minutes", "hours", "days"}
 
 
 @dataclass(frozen=True)
@@ -125,6 +135,10 @@ class VisionAnalysisContext:
     openai_vision_max_output_tokens: int
     custom_instructions: str | None = None
     image_context: str | None = None
+    members: list[dict] | None = None
+    categories: list[dict] | None = None
+    timezone_name: str = "America/Sao_Paulo"
+    current_datetime: str | None = None
 
 
 class AiVisionAdapter(Protocol):
@@ -180,11 +194,6 @@ def _clean_time(value) -> str | None:
     return text if text and TIME_RE.match(text) else None
 
 
-def _reminder_total_minutes(value: int, unit: str) -> int:
-    multipliers = {"minutes": 1, "hours": 60, "days": 24 * 60}
-    return int(value) * multipliers[unit]
-
-
 def _clean_reminders(raw_item: dict) -> list[dict]:
     reminders = []
     raw_reminders = _as_list(raw_item.get("reminders"))
@@ -193,25 +202,8 @@ def _clean_reminders(raw_item: dict) -> list[dict]:
             reminders.append({"value": raw_reminder.get("value"), "unit": raw_reminder.get("unit")})
 
     reminders.append({"value": raw_item.get("reminderValue"), "unit": raw_item.get("reminderUnit")})
-    cleaned = []
-    seen_minutes: set[int] = set()
-    for reminder in reminders:
-        unit = reminder.get("unit")
-        unit = str(unit).strip().lower() if unit is not None else None
-        try:
-            value = int(reminder.get("value")) if reminder.get("value") is not None else None
-        except (TypeError, ValueError):
-            value = None
-        if value is None or not (1 <= value <= 365) or unit not in REMINDER_UNITS:
-            continue
-        total_minutes = _reminder_total_minutes(value, unit)
-        if total_minutes in seen_minutes:
-            continue
-        seen_minutes.add(total_minutes)
-        cleaned.append({"value": value, "unit": unit})
-        if len(cleaned) >= 5:
-            break
-    return cleaned
+    normalized, _, _ = normalize_reminder_entries(reminders)
+    return [{"value": value, "unit": unit} for value, unit in normalized]
 
 
 def _sanitize_openai_payload(payload: dict) -> dict:
@@ -247,8 +239,15 @@ def _sanitize_openai_payload(payload: dict) -> dict:
                 "endDate": _clean_date(raw_item.get("endDate")),
                 "endTime": _clean_time(raw_item.get("endTime")),
                 "category": _clean_optional_text(raw_item.get("category"), 80),
+                "categoryId": _clean_optional_text(raw_item.get("categoryId"), 36),
                 "priority": priority if priority in PRIORITY_VALUES else None,
                 "responsible": _clean_optional_text(raw_item.get("responsible"), 120),
+                "assigneeId": _clean_optional_text(raw_item.get("assigneeId"), 36),
+                "assigneeIds": [
+                    str(assignee_id).strip()[:36]
+                    for assignee_id in _as_list(raw_item.get("assigneeIds"))
+                    if str(assignee_id).strip()
+                ][:20],
                 "confidence": _clean_confidence(raw_item.get("confidence")),
                 "warnings": [
                     str(warning).strip()[:240]
@@ -321,6 +320,9 @@ class OpenAIVisionAdapter:
     def _build_payload(self, image: ValidatedImageUpload, context: VisionAnalysisContext) -> dict:
         base64_image = base64.b64encode(image.content).decode("ascii")
         data_url = f"data:{image.content_type};base64,{base64_image}"
+        current_datetime = context.current_datetime or datetime.now(timezone.utc).isoformat()
+        members_json = json.dumps(context.members or [], ensure_ascii=False)
+        categories_json = json.dumps(context.categories or [], ensure_ascii=False)
         return {
             "model": context.openai_vision_model or "gpt-4.1-mini",
             "temperature": 0.1,
@@ -360,6 +362,21 @@ class OpenAIVisionAdapter:
                                 "print de WhatsApp, lista escrita, cronograma, planner, prova, atividade escolar/faculdade "
                                 "ou agenda inclinada/escura. Extraia no maximo 40 sugestoes revisaveis. "
                                 "Use datas em YYYY-MM-DD, horarios em HH:mm e prioridades low, medium, high ou urgent. "
+                                f"Data/hora atual do backend: {current_datetime}. Timezone padrao: {context.timezone_name}. "
+                                "Quando a imagem/texto tiver dia, mes ou horario sem ano explicito, use o ano atual dessa data/hora. "
+                                "Nao gere anos antigos menores que o ano atual, exceto se o usuario pedir explicitamente algo historico/passado. "
+                                "Membros reais disponiveis da familia em JSON (use apenas esses ids): "
+                                f"{members_json}. "
+                                "Categorias reais disponiveis da familia em JSON (use apenas esses ids): "
+                                f"{categories_json}. "
+                                "Retorne responsaveis em assigneeIds usando somente ids existentes. "
+                                "Se o usuario disser 'Responsavel: Kauan', escolha somente o id de Kauan; "
+                                "se disser 'Responsavel: Bia', escolha somente Bia; se disser 'Kauan e Bia', escolha os dois. "
+                                "Retorne categoryId usando somente uma categoria existente. Nunca invente id, nome de categoria ou responsavel. "
+                                "Para cinema, filme, date, passeio, encontro ou casal, prefira categoria existente relacionada a relacionamento, lazer, casal ou pessoal. "
+                                "Para faculdade, prova, trabalho academico ou estudo, prefira categoria academica existente. "
+                                "Para casa, limpeza ou organizacao, prefira categoria de casa existente. "
+                                "Lembretes so podem usar estas antecedencias: 15 minutes, 30 minutes, 1 hour, 3 hours, 12 hours, 1 day ou 3 days. "
                                 "Inclua observacoes relevantes em description, categoria provavel em category, responsavel quando aparecer "
                                 "e lembretes sugeridos em reminders, reminderEnabled, reminderValue e reminderUnit apenas quando fizer sentido. "
                                 "Quando o texto pedir varios avisos, como 15min e 1h, retorne ate 5 itens em reminders sem duplicar antecedencias. "

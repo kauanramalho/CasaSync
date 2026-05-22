@@ -231,6 +231,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
   const pendingReviewCount = importReport?.pendingReview?.length || 0;
   const createdCount = importReport?.created?.length || 0;
   const calendarCreatedCount = importReport?.created?.filter((item) => item.googleCalendarEventId).length || 0;
+  const ignoredReminderCount = importReport?.ignoredReminderCount || 0;
 
   useEffect(() => {
     selectedImagesRef.current = selectedImages;
@@ -629,7 +630,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
       activeAnalysisJobRef.current = startedJob.jobId;
       setAnalysisJob(startedJob);
       const response = await waitForAnalysisJob(startedJob.jobId);
-      const nextReviewItems = (response.items || []).map((item, index) => buildReviewItem(item, index, categories));
+      const nextReviewItems = (response.items || []).map((item, index) => buildReviewItem(item, index, categories, members));
       const hasGoogleSuggestion = nextReviewItems.some((item) => item.googleCalendarSuggestion && item.date && item.time);
       const shouldSyncGoogleCalendar = Boolean(
         calendarStatus?.can_sync && (syncGoogleCalendar || (!calendarPreferenceTouched && hasGoogleSuggestion))
@@ -1344,6 +1345,11 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
                 <div className="rounded-2xl border border-rose-100 bg-rose-50 px-3 py-2">
                   <p className="text-xs font-black text-rose-700">{importReport.failed?.length || 0} falha(s)</p>
                 </div>
+                {ignoredReminderCount > 0 && (
+                  <div className="rounded-2xl border border-amber-100 bg-amber-50 px-3 py-2">
+                    <p className="text-xs font-black text-amber-700">{ignoredReminderCount} lembrete(s) ignorado(s)</p>
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
                 {importReport.created?.map((item) => (

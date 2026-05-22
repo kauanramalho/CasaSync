@@ -27,6 +27,7 @@ async def analyze_task_suggestions(
     image_context: str | None = Form(default=None, alias="imageContext"),
     current_user: User = Depends(get_current_user),
     family_id: str = Depends(get_family_id),
+    db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
     if not settings.ai_image_analysis_enabled:
@@ -53,6 +54,7 @@ async def analyze_task_suggestions(
         settings=settings,
         custom_instructions=current_user.ai_task_import_instructions,
         image_context=normalized_image_context,
+        db=db,
     )
 
 

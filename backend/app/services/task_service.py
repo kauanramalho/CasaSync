@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import or_
@@ -16,6 +16,7 @@ from app.services.ranking_service import record_task_score, revoke_task_score
 from app.services.retention_service import maintain_task_retention
 from app.services.task_attachment_service import collect_attachment_file_paths, delete_attachment_paths
 from app.services.task_metrics import get_task_assignee_ids, split_points, unique_user_ids
+from app.services.reminder_rules import REMINDER_DELTAS, as_aware_utc, normalize_reminder_entries
 
 
 PRIORITY_POINTS = {
@@ -23,14 +24,6 @@ PRIORITY_POINTS = {
     TaskPriority.MEDIUM.value: 10,
     TaskPriority.HIGH.value: 20,
 }
-
-REMINDER_DELTAS = {
-    "minutes": lambda value: timedelta(minutes=value),
-    "hours": lambda value: timedelta(hours=value),
-    "days": lambda value: timedelta(days=value),
-}
-MAX_TASK_REMINDERS = 5
-
 
 def refresh_overdue_tasks(db: Session, family_id: str) -> None:
     now = datetime.now(timezone.utc)
@@ -102,9 +95,7 @@ def _set_task_assignees(db: Session, task: Task, assignee_ids: list[str]) -> Non
 
 
 def _as_aware_utc(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+    return as_aware_utc(value)
 
 
 def _clear_task_reminder(task: Task) -> None:
@@ -116,33 +107,8 @@ def _clear_task_reminder(task: Task) -> None:
     task.reminder_sent = False
 
 
-def _reminder_total_minutes(value: int, unit: str) -> int:
-    multipliers = {"minutes": 1, "hours": 60, "days": 24 * 60}
-    return int(value) * multipliers[unit]
-
-
 def _normalize_reminder_inputs(reminders: list | None) -> list[tuple[int, str]]:
-    normalized: list[tuple[int, str]] = []
-    seen_minutes: set[int] = set()
-    for reminder in reminders or []:
-        value = getattr(reminder, "value", None)
-        unit = getattr(reminder, "unit", None)
-        if isinstance(reminder, dict):
-            value = reminder.get("value") or reminder.get("reminder_value") or reminder.get("reminderValue") or reminder.get("amount")
-            unit = reminder.get("unit") or reminder.get("reminder_unit") or reminder.get("reminderUnit")
-        try:
-            parsed_value = int(value)
-        except (TypeError, ValueError):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Escolha quando o lembrete deve acontecer.")
-        if parsed_value <= 0 or parsed_value > 365 or unit not in REMINDER_DELTAS:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Escolha quando o lembrete deve acontecer.")
-        total_minutes = _reminder_total_minutes(parsed_value, unit)
-        if total_minutes in seen_minutes:
-            continue
-        seen_minutes.add(total_minutes)
-        normalized.append((parsed_value, unit))
-        if len(normalized) >= MAX_TASK_REMINDERS:
-            break
+    normalized, _, _ = normalize_reminder_entries(reminders)
     return normalized
 
 
@@ -205,10 +171,7 @@ def _sync_task_reminders(task: Task, reminders: list[tuple[int, str]], *, valida
     for value, unit in _normalize_reminder_inputs([{"value": value, "unit": unit} for value, unit in reminders]):
         reminder_at = _as_aware_utc(task.due_date) - REMINDER_DELTAS[unit](value)
         if validate_future and reminder_at <= now:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Esse lembrete ja ficou no passado. Escolha um prazo maior ou uma antecedencia menor.",
-            )
+            continue
         next_reminders.append(
             TaskReminder(
                 task_id=task.id,

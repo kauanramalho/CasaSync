@@ -22,7 +22,7 @@ class TaskReminderInput(BaseModel):
 class TaskReminderItemInput(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    value: int = Field(gt=0, le=365, validation_alias=AliasChoices("value", "reminder_value", "reminderValue", "amount"))
+    value: int = Field(gt=0, le=4320, validation_alias=AliasChoices("value", "reminder_value", "reminderValue", "amount"))
     unit: Literal["minutes", "hours", "days"] = Field(validation_alias=AliasChoices("unit", "reminder_unit", "reminderUnit"))
 
 

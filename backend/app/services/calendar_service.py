@@ -30,12 +30,14 @@ from app.services.calendar_provider_adapter import (
 from app.services.family_service import require_family_member
 from app.services.secret_service import SecretDecryptionError, decrypt_secret, encrypt_secret
 from app.services.task_service import get_task
+from app.services.reminder_rules import reminder_to_minutes
 
 
 GOOGLE_CALENDAR_DISABLED_MESSAGE = "Google Agenda esta desativado neste ambiente."
 GOOGLE_CALENDAR_NOT_CONNECTED_MESSAGE = "Google Agenda ainda nao esta conectado para este usuario."
 OAUTH_STATE_TTL_SECONDS = 10 * 60
 DEFAULT_GOOGLE_CALENDAR_ID = "primary"
+SAO_PAULO_FALLBACK_TZ = timezone(timedelta(hours=-3), name="America/Sao_Paulo")
 
 
 def is_google_calendar_enabled(settings: Settings) -> bool:
@@ -251,17 +253,16 @@ def _as_event_timezone(value: datetime, timezone_name: str) -> datetime:
     try:
         target_timezone = ZoneInfo(timezone_name)
     except ZoneInfoNotFoundError:
-        target_timezone = timezone.utc
+        target_timezone = SAO_PAULO_FALLBACK_TZ
     aware_value = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
     return aware_value.astimezone(target_timezone)
 
 
 def _task_reminder_minutes(task: Task) -> list[int]:
-    multipliers = {"minutes": 1, "hours": 60, "days": 24 * 60}
     reminders = [
         (reminder.value, reminder.unit)
         for reminder in getattr(task, "reminders", []) or []
-        if reminder.value and reminder.unit in multipliers
+        if reminder.value and reminder.unit
     ]
     if not reminders and task.reminder_enabled and task.reminder_value and task.reminder_unit:
         reminders = [(task.reminder_value, task.reminder_unit)]
@@ -269,8 +270,8 @@ def _task_reminder_minutes(task: Task) -> list[int]:
     minutes: list[int] = []
     seen: set[int] = set()
     for value, unit in reminders:
-        total_minutes = int(value) * multipliers[unit]
-        if total_minutes <= 0 or total_minutes in seen:
+        total_minutes = reminder_to_minutes(value, unit)
+        if total_minutes is None or total_minutes <= 0 or total_minutes in seen:
             continue
         seen.add(total_minutes)
         minutes.append(total_minutes)

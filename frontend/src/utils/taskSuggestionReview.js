@@ -1,3 +1,5 @@
+import { normalizeReminderList } from "./taskReminders";
+
 export const LOW_CONFIDENCE_THRESHOLD = 0.5;
 export const HIGH_CONFIDENCE_THRESHOLD = 0.75;
 
@@ -47,21 +49,23 @@ export function findCategoryId(categoryName, categories) {
   return categories.find((category) => category.name.trim().toLowerCase() === normalized)?.id || "";
 }
 
-export function buildReviewItem(rawItem = {}, index, categories = []) {
+function findValidCategoryId(rawItem, categories) {
+  const existingIds = new Set(categories.map((category) => category.id));
+  if (rawItem.categoryId && existingIds.has(rawItem.categoryId)) return rawItem.categoryId;
+  return findCategoryId(rawItem.category, categories);
+}
+
+function findValidAssigneeIds(rawItem, members) {
+  const existingIds = new Set(members.map((member) => member.id || member.user_id || member.userId).filter(Boolean));
+  const rawIds = Array.isArray(rawItem.assigneeIds) ? [...rawItem.assigneeIds] : [];
+  if (rawItem.assigneeId) rawIds.push(rawItem.assigneeId);
+  return [...new Set(rawIds.filter((id) => existingIds.has(id)))];
+}
+
+export function buildReviewItem(rawItem = {}, index, categories = [], members = []) {
   const confidence = normalizeConfidence(rawItem.confidence);
-  const categoryId = findCategoryId(rawItem.category, categories);
-  const reminders = Array.isArray(rawItem.reminders)
-    ? rawItem.reminders
-        .map((reminder) => ({
-          value: Number(reminder?.value ?? reminder?.reminderValue),
-          unit: reminder?.unit ?? reminder?.reminderUnit
-        }))
-        .filter((reminder) => reminder.value && ["minutes", "hours", "days"].includes(reminder.unit))
-        .slice(0, 5)
-    : [];
-  if (!reminders.length && rawItem.reminderEnabled && rawItem.reminderValue && rawItem.reminderUnit) {
-    reminders.push({ value: rawItem.reminderValue, unit: rawItem.reminderUnit });
-  }
+  const categoryId = findValidCategoryId(rawItem, categories);
+  const reminders = normalizeReminderList(rawItem).map((reminder) => ({ value: reminder.value, unit: reminder.unit }));
   const firstReminder = reminders[0] || null;
   return {
     source: {
@@ -85,7 +89,7 @@ export function buildReviewItem(rawItem = {}, index, categories = []) {
     categoryId,
     priority: rawItem.priority || "medium",
     responsible: rawItem.responsible || "",
-    assigneeIds: [],
+    assigneeIds: findValidAssigneeIds(rawItem, members),
     confidence,
     warnings: Array.isArray(rawItem.warnings) ? rawItem.warnings : [],
     acceptedLowConfidence: confidence >= LOW_CONFIDENCE_THRESHOLD,
@@ -154,9 +158,7 @@ export function buildTaskImportPayload(items, { syncGoogleCalendar = false, auto
     autoCreate,
     items: items.map((item) => {
       const reminders = item.reminderEnabled
-        ? item.reminders?.length
-          ? item.reminders
-          : [{ value: item.reminderValue || 1, unit: item.reminderUnit || "hours" }]
+        ? normalizeReminderList(item).map((reminder) => ({ value: reminder.value, unit: reminder.unit }))
         : [];
       return {
         suggestionId: item.suggestionId,
