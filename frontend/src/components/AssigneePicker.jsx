@@ -23,13 +23,18 @@ export default function AssigneePicker({ members = [], value = [], onChange }) {
             type="button"
             onClick={() => toggle(member.user_id)}
             className={clsx(
-              "flex items-center justify-between gap-3 rounded-2xl border px-3 py-2 text-left transition",
-              active ? "border-rose-200 bg-rose-50 text-ink" : "border-slate-100 bg-white/80 text-muted hover:border-blue-100 hover:bg-blue-50/50"
+              "flex min-w-0 items-center justify-between gap-3 rounded-[20px] border px-3 py-3 text-left shadow-sm transition hover:-translate-y-0.5",
+              active
+                ? "border-blush/25 bg-blush/10 text-ink ring-2 ring-blush/10"
+                : "border-slate-100 bg-white/85 text-muted hover:border-blue-100 hover:bg-blue-50/50"
             )}
           >
             <span className="flex min-w-0 items-center gap-3">
               <Avatar user={member.user} size="sm" />
-              <span className="truncate text-sm font-semibold">{member.user.name}</span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-bold">{member.user.name}</span>
+                {member.role && <span className="block truncate text-[11px] font-semibold text-muted">{member.role}</span>}
+              </span>
             </span>
             <span
               className={clsx(
@@ -45,4 +50,3 @@ export default function AssigneePicker({ members = [], value = [], onChange }) {
     </div>
   );
 }
-

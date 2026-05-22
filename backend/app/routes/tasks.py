@@ -68,6 +68,7 @@ def import_suggestions(
         creator_id=current_user.id,
         items=payload.items,
         sync_google_calendar=payload.syncGoogleCalendar,
+        auto_create=payload.autoCreate,
         settings=settings,
     )
 

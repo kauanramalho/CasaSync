@@ -326,11 +326,15 @@ export const uploadsApi = {
 };
 
 export const imageAnalysisApi = {
-  analyzeTaskSuggestions: (file) => {
+  analyzeTaskSuggestions: (files) => {
     const formData = new FormData();
-    formData.append("file", file);
+    const uploadFiles = Array.isArray(files) ? files : [files];
+    uploadFiles.forEach((file) => formData.append(uploadFiles.length > 1 ? "files" : "file", file));
     return uploadRequest("/image-analysis/task-suggestions", { formData });
-  }
+  },
+  getPreferences: () => request("/image-analysis/preferences"),
+  savePreferences: (payload) => request("/image-analysis/preferences", { method: "PUT", body: payload }),
+  clearPreferences: () => request("/image-analysis/preferences", { method: "DELETE" })
 };
 
 export const familiesApi = {

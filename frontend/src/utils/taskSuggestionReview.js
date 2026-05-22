@@ -8,10 +8,10 @@ export const typeLabels = {
 };
 
 export const priorityOptions = [
-  { value: "low", label: "Baixa" },
-  { value: "medium", label: "Media" },
-  { value: "high", label: "Alta" },
-  { value: "urgent", label: "Urgente" }
+  { value: "low", label: "Baixa", helper: "Pode esperar um pouco" },
+  { value: "medium", label: "Media", helper: "Importante para acompanhar" },
+  { value: "high", label: "Alta", helper: "Precisa de atencao" },
+  { value: "urgent", label: "Urgente", helper: "Resolver o quanto antes" }
 ];
 
 export function createSuggestionId(index) {
@@ -56,7 +56,8 @@ export function buildReviewItem(rawItem = {}, index, categories = []) {
       rawSuggestionId: rawItem.suggestionId || null,
       rawType: rawItem.type || "task",
       rawTitle: rawItem.title || "",
-      rawResponsible: rawItem.responsible || ""
+      rawResponsible: rawItem.responsible || "",
+      sourceImageName: rawItem.sourceImageName || ""
     },
     suggestionId: rawItem.suggestionId || createSuggestionId(index),
     selected: true,
@@ -77,7 +78,11 @@ export function buildReviewItem(rawItem = {}, index, categories = []) {
     acceptedLowConfidence: confidence >= LOW_CONFIDENCE_THRESHOLD,
     reminderEnabled: Boolean(rawItem.reminderEnabled && rawItem.reminderValue && rawItem.reminderUnit && rawItem.date),
     reminderValue: rawItem.reminderValue || null,
-    reminderUnit: rawItem.reminderUnit || null
+    reminderUnit: rawItem.reminderUnit || null,
+    sourceImageName: rawItem.sourceImageName || "",
+    originalText: rawItem.originalText || "",
+    needsReview: rawItem.needsReview !== false,
+    googleCalendarSuggestion: Boolean(rawItem.googleCalendarSuggestion)
   };
 }
 
@@ -129,9 +134,10 @@ export function validateReviewItemsBeforeImport(items) {
   }, {});
 }
 
-export function buildTaskImportPayload(items, { syncGoogleCalendar = false } = {}) {
+export function buildTaskImportPayload(items, { syncGoogleCalendar = false, autoCreate = false } = {}) {
   return {
     syncGoogleCalendar,
+    autoCreate,
     items: items.map((item) => ({
       suggestionId: item.suggestionId,
       type: item.type,
@@ -151,7 +157,9 @@ export function buildTaskImportPayload(items, { syncGoogleCalendar = false } = {
       acceptedLowConfidence: item.acceptedLowConfidence,
       reminderEnabled: item.reminderEnabled,
       reminderValue: item.reminderEnabled ? item.reminderValue || 1 : null,
-      reminderUnit: item.reminderEnabled ? item.reminderUnit || "hours" : null
+      reminderUnit: item.reminderEnabled ? item.reminderUnit || "hours" : null,
+      sourceImageName: item.sourceImageName || null,
+      originalText: item.originalText || null
     }))
   };
 }

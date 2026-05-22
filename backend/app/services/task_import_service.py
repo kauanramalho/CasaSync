@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
+from app.models.category import Category
 from app.models.enums import TaskPriority, TaskStatus, TaskType
 from app.models.family import FamilyMember
 from app.models.task import Task
@@ -24,6 +25,7 @@ from app.services.calendar_service import sync_task_to_calendar
 
 
 LOW_CONFIDENCE_THRESHOLD = 0.5
+AUTO_CREATE_CONFIDENCE_THRESHOLD = 0.8
 
 PRIORITY_ALIASES = {
     "low": TaskPriority.LOW,
@@ -151,9 +153,62 @@ def _is_duplicate_task(db: Session, family_id: str, title: str, due_date: dateti
     return any(task.due_date and task.due_date.date() == due_date.date() for task in candidates)
 
 
+def _auto_review_reason(db: Session, family_id: str, item: TaskSuggestionImportItem) -> str | None:
+    title = (item.title or "").strip()
+    if len(title) < 2:
+        return "Sugestao sem titulo suficiente para criacao automatica."
+
+    if (item.confidence or 0.0) < AUTO_CREATE_CONFIDENCE_THRESHOLD:
+        return "Confianca abaixo de 80%; precisa de revisao manual."
+
+    if item.warnings:
+        return "A IA marcou avisos ou incertezas; precisa de revisao manual."
+
+    if item.time and not item.date:
+        return "Horario sem data nao e seguro para criacao automatica."
+
+    if item.type in {"event", "evento", "reminder", "lembrete"} and not item.date:
+        return "Evento ou lembrete sem data precisa de revisao manual."
+
+    if item.reminderEnabled and not item.date:
+        return "Lembrete sugerido sem data nao pode ser criado automaticamente."
+
+    try:
+        due_date = _parse_due_date(item)
+    except ValueError as exc:
+        return str(exc)
+
+    if item.category and not item.categoryId:
+        return "Categoria sugerida pela IA precisa ser confirmada."
+
+    if item.categoryId:
+        category = db.query(Category).filter(Category.id == item.categoryId, Category.family_id == family_id).first()
+        if not category:
+            return "Categoria informada nao pertence a familia ativa."
+
+    explicit_ids = item.assigneeIds if item.assigneeIds is not None else ([item.assigneeId] if item.assigneeId else [])
+    if item.responsible and not explicit_ids:
+        return "Responsavel sugerido pela IA precisa ser confirmado."
+
+    for user_id in unique_user_ids(explicit_ids):
+        try:
+            require_family_member(db, family_id, user_id)
+        except HTTPException:
+            return "Responsavel informado nao pertence a familia ativa."
+
+    if _is_duplicate_task(db, family_id, title, due_date):
+        return "Ja existe uma tarefa muito parecida nesta familia."
+
+    return None
+
+
 def _description_with_import_note(item: TaskSuggestionImportItem) -> str | None:
     description = (item.description or "").strip()
     details = []
+    if item.sourceImageName:
+        details.append(f"Origem da sugestao: {item.sourceImageName}.")
+    if item.originalText:
+        details.append(f"Texto identificado pela IA: {item.originalText[:500]}.")
     if item.endDate or item.endTime:
         details.append(f"Fim sugerido pela IA: {' '.join(part for part in [item.endDate, item.endTime] if part)}.")
     if item.warnings:
@@ -169,9 +224,43 @@ def import_task_suggestions(
     creator_id: str,
     items: list[TaskSuggestionImportItem],
     sync_google_calendar: bool = False,
+    auto_create: bool = False,
     settings: Settings | None = None,
 ) -> TaskSuggestionsImportResponse:
     require_family_member(db, family_id, creator_id)
+
+    if auto_create:
+        pending_review: list[FailedTaskImportResult] = []
+        safe_items: list[TaskSuggestionImportItem] = []
+        for index, item in enumerate(items):
+            reason = _auto_review_reason(db, family_id, item)
+            if reason:
+                pending_review.append(_fail(item, index, reason))
+            else:
+                safe_items.append(item.model_copy(update={"acceptedLowConfidence": True}))
+
+        if not safe_items:
+            return TaskSuggestionsImportResponse(
+                created=[],
+                failed=[],
+                ignored=[],
+                pendingReview=pending_review,
+                warnings=["Nenhuma sugestao atingiu os criterios de criacao automatica. Revise os itens pendentes."],
+            )
+
+        result = import_task_suggestions(
+            db,
+            family_id=family_id,
+            creator_id=creator_id,
+            items=safe_items,
+            sync_google_calendar=sync_google_calendar,
+            auto_create=False,
+            settings=settings,
+        )
+        result.pendingReview = pending_review
+        if pending_review:
+            result.warnings.append(f"{len(pending_review)} sugestao(oes) ficaram pendentes de revisao manual.")
+        return result
 
     created: list[ImportedTaskResult] = []
     failed: list[FailedTaskImportResult] = []
@@ -228,7 +317,13 @@ def import_task_suggestions(
             calendar_event_id = None
             calendar_message = None
             if sync_google_calendar:
-                if settings is None:
+                if not due_date:
+                    calendar_message = "Google Agenda nao foi sincronizado porque a tarefa nao tem data."
+                    warnings.append(f"Google Agenda: {task.title}: {calendar_message}")
+                elif not item.time:
+                    calendar_message = "Google Agenda nao foi sincronizado porque falta horario confirmado."
+                    warnings.append(f"Google Agenda: {task.title}: {calendar_message}")
+                elif settings is None:
                     calendar_message = "Google Agenda nao foi sincronizado porque a configuracao do backend nao foi carregada."
                 else:
                     sync_result = sync_task_to_calendar(
@@ -262,4 +357,4 @@ def import_task_suggestions(
     if created and failed:
         warnings.append("Algumas sugestoes foram criadas e outras ficaram pendentes de ajuste.")
 
-    return TaskSuggestionsImportResponse(created=created, failed=failed, warnings=warnings)
+    return TaskSuggestionsImportResponse(created=created, failed=failed, ignored=[], warnings=warnings)

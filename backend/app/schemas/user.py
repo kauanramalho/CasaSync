@@ -58,6 +58,7 @@ class UserRead(ORMModel):
     two_factor_enabled: bool
     email_task_reminders_enabled: bool = False
     push_task_reminders_enabled: bool = False
+    ai_task_import_instructions: str | None = None
     created_at: datetime
 
 

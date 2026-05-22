@@ -60,6 +60,7 @@ def _upgrade_existing_tables() -> None:
             _add_column_if_missing(connection, "users", "last_2fa_verified_at", f"last_2fa_verified_at {_timestamp_with_timezone_type()}")
             _add_column_if_missing(connection, "users", "email_task_reminders_enabled", "email_task_reminders_enabled BOOLEAN DEFAULT FALSE NOT NULL")
             _add_column_if_missing(connection, "users", "push_task_reminders_enabled", "push_task_reminders_enabled BOOLEAN DEFAULT FALSE NOT NULL")
+            _add_column_if_missing(connection, "users", "ai_task_import_instructions", "ai_task_import_instructions TEXT")
             _backfill_missing_usernames(connection)
             connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username_unique ON users (username) WHERE username IS NOT NULL"))
             connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username_lower_unique ON users (LOWER(username)) WHERE username IS NOT NULL"))

@@ -24,6 +24,8 @@ class TaskSuggestionImportItem(BaseModel):
     reminderEnabled: bool = False
     reminderValue: int | None = Field(default=None, gt=0)
     reminderUnit: str | None = Field(default=None, max_length=16)
+    sourceImageName: str | None = Field(default=None, max_length=255)
+    originalText: str | None = Field(default=None, max_length=1200)
 
 
 class TaskSuggestionsImportRequest(BaseModel):
@@ -31,6 +33,7 @@ class TaskSuggestionsImportRequest(BaseModel):
 
     items: list[TaskSuggestionImportItem] = Field(min_length=1, max_length=20)
     syncGoogleCalendar: bool = False
+    autoCreate: bool = False
 
 
 class ImportedTaskResult(BaseModel):
@@ -50,4 +53,6 @@ class FailedTaskImportResult(BaseModel):
 class TaskSuggestionsImportResponse(BaseModel):
     created: list[ImportedTaskResult] = Field(default_factory=list)
     failed: list[FailedTaskImportResult] = Field(default_factory=list)
+    ignored: list[FailedTaskImportResult] = Field(default_factory=list)
+    pendingReview: list[FailedTaskImportResult] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
