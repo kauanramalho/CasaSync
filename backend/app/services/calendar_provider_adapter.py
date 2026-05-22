@@ -65,6 +65,9 @@ class CalendarProviderAdapter(Protocol):
     def create_event(self, *, calendar_id: str, access_token: str, event_payload: dict, timeout_seconds: float) -> str:
         ...
 
+    def update_event(self, *, calendar_id: str, access_token: str, event_id: str, event_payload: dict, timeout_seconds: float) -> str:
+        ...
+
     def revoke_token(self, *, token: str, timeout_seconds: float) -> None:
         ...
 
@@ -202,6 +205,23 @@ class GoogleCalendarProviderAdapter:
         if not event_id:
             raise CalendarProviderError("Google Agenda nao retornou o id do evento criado.")
         return str(event_id)
+
+    def update_event(self, *, calendar_id: str, access_token: str, event_id: str, event_payload: dict, timeout_seconds: float) -> str:
+        url = f"{GOOGLE_CALENDAR_EVENTS_URL.format(calendar_id=quote(calendar_id, safe=''))}/{quote(event_id, safe='')}"
+        request = Request(
+            url,
+            data=json.dumps(event_payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            method="PATCH",
+        )
+        response = _json_request(request, timeout_seconds)
+        updated_event_id = response.get("id") if isinstance(response, dict) else None
+        if not updated_event_id:
+            raise CalendarProviderError("Google Agenda nao retornou o id do evento atualizado.")
+        return str(updated_event_id)
 
     def revoke_token(self, *, token: str, timeout_seconds: float) -> None:
         request = Request(

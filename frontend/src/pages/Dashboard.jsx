@@ -7,6 +7,7 @@ import Button from "../components/Button";
 import Card from "../components/Card";
 import PageHeader from "../components/PageHeader";
 import StatCard from "../components/StatCard";
+import TaskDetailsModal from "../components/TaskDetailsModal";
 import TaskEditorModal from "../components/TaskEditorModal";
 import TaskList from "../components/TaskList";
 import WeeklyProductivityChart from "../components/WeeklyProductivityChart";
@@ -15,6 +16,7 @@ import { useNotifications } from "../hooks/useNotifications";
 import { categoriesApi, coupleApi, dashboardApi, familiesApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { formatDate, normalizeApiError } from "../utils/formatters";
+import { syncTaskToGoogleCalendarSafely } from "../utils/googleCalendarTasks";
 import { getHiddenRecentTaskIds, hideRecentTask } from "../utils/recentTasks";
 import { applyTaskAttachmentChanges, hasTaskAttachmentChanges } from "../utils/taskAttachments";
 import { isTaskOpen, sortTasksForDisplay } from "../utils/tasks";
@@ -176,6 +178,7 @@ export default function Dashboard() {
   const [coupleSpace, setCoupleSpace] = useState({ goals: [], date_ideas: [], notes: [] });
   const [members, setMembers] = useState([]);
   const [hiddenRecentIds, setHiddenRecentIds] = useState(() => getHiddenRecentTaskIds());
+  const [detailsTask, setDetailsTask] = useState(null);
   const [editingTask, setEditingTask] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [error, setError] = useState("");
@@ -219,6 +222,12 @@ export default function Dashboard() {
     try {
       const updated = await tasksApi.update(editingTask.id, payload);
       await applyTaskAttachmentChanges(updated.id, attachmentChanges);
+      const calendarResult = attachmentChanges.syncGoogleCalendar
+        ? await syncTaskToGoogleCalendarSafely(updated.id)
+        : null;
+      if (calendarResult && !calendarResult.ok) {
+        setError(calendarResult.message);
+      }
       addNotification({
         title: "Tarefa editada",
         description: hasTaskAttachmentChanges(attachmentChanges)
@@ -246,6 +255,11 @@ export default function Dashboard() {
       actor: user?.name
     });
   }, [addNotification, user?.name]);
+
+  const handleEditFromDetails = useCallback(function handleEditFromDetails(task) {
+    setDetailsTask(null);
+    setEditingTask(task);
+  }, []);
 
   const stats = useMemo(() => dashboard?.stats ?? [], [dashboard]);
   const productivity = useMemo(() => dashboard?.weekly_productivity ?? [], [dashboard]);
@@ -306,6 +320,7 @@ export default function Dashboard() {
             onComplete={handleComplete}
             onEdit={setEditingTask}
             onRemoveRecent={handleRemoveRecent}
+            onOpenDetails={setDetailsTask}
             compact
             emptyMessage="Nenhuma tarefa pendente por aqui."
           />
@@ -392,6 +407,12 @@ export default function Dashboard() {
           </div>
         </Card>
       </div>
+
+      <TaskDetailsModal
+        task={detailsTask}
+        onClose={() => setDetailsTask(null)}
+        onEdit={handleEditFromDetails}
+      />
 
       <TaskEditorModal
         task={editingTask}

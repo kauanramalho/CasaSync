@@ -14,9 +14,10 @@ import TaskReminderFields from "../components/TaskReminderFields";
 import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
 import { useToast } from "../hooks/useToast";
-import { categoriesApi, familiesApi, tasksApi } from "../services/api";
+import { categoriesApi, familiesApi, integrationsApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError, toIsoOrNull } from "../utils/formatters";
+import { hasGoogleCalendarDateTime, syncTaskToGoogleCalendarSafely } from "../utils/googleCalendarTasks";
 import { applyTaskAttachmentChanges } from "../utils/taskAttachments";
 import { formatReminderLead, getReminderPayload, getReminderValidationError } from "../utils/taskReminders";
 
@@ -30,6 +31,8 @@ export default function NewTask() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [pendingFiles, setPendingFiles] = useState([]);
+  const [calendarStatus, setCalendarStatus] = useState(null);
+  const [syncGoogleCalendar, setSyncGoogleCalendar] = useState(false);
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -44,13 +47,25 @@ export default function NewTask() {
   });
 
   useEffect(() => {
-    Promise.all([categoriesApi.list(), familiesApi.members()])
-      .then(([categoryRows, memberRows]) => {
-        setCategories(categoryRows);
-        setMembers(memberRows);
+    Promise.allSettled([categoriesApi.list(), familiesApi.members(), integrationsApi.googleCalendarStatus()])
+      .then(([categoryResult, memberResult, calendarResult]) => {
+        if (categoryResult.status === "fulfilled") setCategories(categoryResult.value);
+        if (memberResult.status === "fulfilled") setMembers(memberResult.value);
+        if (calendarResult.status === "fulfilled") setCalendarStatus(calendarResult.value);
+        if (categoryResult.status === "rejected" || memberResult.status === "rejected") {
+          throw categoryResult.reason || memberResult.reason;
+        }
       })
       .catch((err) => setError(normalizeApiError(err)));
   }, []);
+
+  useEffect(() => {
+    if (!calendarStatus?.can_sync) setSyncGoogleCalendar(false);
+  }, [calendarStatus?.can_sync]);
+
+  useEffect(() => {
+    if (!hasGoogleCalendarDateTime(form.due_date)) setSyncGoogleCalendar(false);
+  }, [form.due_date]);
 
   const categoryOptions = useMemo(
     () => [
@@ -102,6 +117,18 @@ export default function NewTask() {
       if (pendingFiles.length) {
         await applyTaskAttachmentChanges(created.id, { pendingFiles });
       }
+      let calendarMessage = "";
+      if (syncGoogleCalendar && calendarStatus?.can_sync) {
+        if (!hasGoogleCalendarDateTime(form.due_date)) {
+          calendarMessage = "Google Agenda nao foi sincronizado porque falta data e horario.";
+        } else {
+          const calendarResult = await syncTaskToGoogleCalendarSafely(created.id);
+          calendarMessage = calendarResult.message;
+          if (!calendarResult.ok) {
+            showToast({ type: "info", message: calendarMessage });
+          }
+        }
+      }
       const notificationDescription = created.reminder_enabled
         ? `Lembrete ativado para ${formatReminderLead(created.reminder_value, created.reminder_unit)}.`
         : pendingFiles.length
@@ -113,7 +140,10 @@ export default function NewTask() {
         type: created.reminder_enabled ? "reminder" : "task",
         actor: user?.name
       });
-      showToast({ type: "success", message: "Tarefa criada com sucesso." });
+      showToast({
+        type: "success",
+        message: calendarMessage ? `Tarefa criada com sucesso. ${calendarMessage}` : "Tarefa criada com sucesso."
+      });
       emitAppDataChanged();
       navigate("/tarefas");
     } catch (err) {
@@ -155,6 +185,31 @@ export default function NewTask() {
             <DateTimePicker value={form.due_date} onChange={(value) => updateField("due_date", value)} />
           </div>
           <TaskReminderFields form={form} onChange={updateReminder} />
+          {calendarStatus?.is_enabled && (
+            <label
+              className={`md:col-span-2 flex items-start gap-3 rounded-2xl border px-3 py-3 text-xs font-bold ${
+                calendarStatus?.can_sync && hasGoogleCalendarDateTime(form.due_date)
+                  ? "border-blue-100 bg-blue-50/70 text-blue-700"
+                  : "border-slate-200 bg-slate-100 text-muted"
+              }`}
+            >
+              <input
+                type="checkbox"
+                className="mt-0.5 accent-blue-600"
+                checked={syncGoogleCalendar}
+                onChange={(event) => setSyncGoogleCalendar(event.target.checked)}
+                disabled={!calendarStatus?.can_sync || !hasGoogleCalendarDateTime(form.due_date) || saving}
+              />
+              <span>
+                Tambem adicionar esta tarefa ao Google Agenda quando houver data e horario.
+                {!calendarStatus?.can_sync
+                  ? ` ${calendarStatus?.message || "Conecte o Google Agenda nas configuracoes."}`
+                  : !hasGoogleCalendarDateTime(form.due_date)
+                    ? " Defina data e horario para sincronizar."
+                    : ""}
+              </span>
+            </label>
+          )}
           <TaskAttachmentField pendingFiles={pendingFiles} onPendingFilesChange={setPendingFiles} disabled={saving} onError={setError} />
           <div>
             <label className="mb-2 block text-sm font-semibold text-ink">Prioridade</label>

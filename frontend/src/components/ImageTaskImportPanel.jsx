@@ -24,6 +24,7 @@ import { imageAnalysisApi, integrationsApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { formatFileSize, imageFileAccept, optimizeImageForAnalysis, validateImageDimensions, validateImageFile } from "../utils/files";
 import { normalizeApiError } from "../utils/formatters";
+import { syncTaskToGoogleCalendarSafely } from "../utils/googleCalendarTasks";
 import {
   LOW_CONFIDENCE_THRESHOLD,
   buildReviewItem,
@@ -85,8 +86,29 @@ function FieldLabel({ children }) {
 }
 
 const maxImagesPerAnalysis = 10;
+const imageContextMaxLength = 1500;
+const terminalAnalysisJobStatuses = new Set(["ready_for_review", "completed", "failed", "cancelled"]);
+const analysisJobMessages = {
+  uploading: "Enviando imagem...",
+  pending: "Analise adicionada a fila...",
+  processing: "Preparando imagens...",
+  extracting: "Interpretando imagem...",
+  validating: "Validando datas e responsaveis...",
+  ready_for_review: "Preparando revisao...",
+  creating_tasks: "Criando tarefas selecionadas...",
+  syncing_calendar: "Sincronizando Google Agenda...",
+  completed: "Sugestoes geradas.",
+  failed: "Erro ao interpretar imagem.",
+  cancelled: "Analise cancelada."
+};
 
-function createSelectedImage(file, previewUrl) {
+function wait(milliseconds) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, milliseconds);
+  });
+}
+
+function createSelectedImage(file, previewUrl, source = "file") {
   const baseId = `${file.name}-${file.size}-${file.lastModified}`;
   return {
     id: globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${baseId}-${Date.now()}`,
@@ -94,17 +116,78 @@ function createSelectedImage(file, previewUrl) {
     file,
     previewUrl,
     status: "ready",
-    error: ""
+    error: "",
+    source
   };
+}
+
+function isEditablePasteTarget(target) {
+  const element = target instanceof Element ? target : null;
+  if (!element) return false;
+  const tagName = element.tagName?.toLowerCase();
+  return Boolean(
+    element.isContentEditable ||
+      tagName === "textarea" ||
+      tagName === "input" ||
+      tagName === "select" ||
+      element.closest("[contenteditable='true']")
+  );
+}
+
+function extensionForImageType(mimeType = "image/png") {
+  const normalizedType = mimeType.toLowerCase();
+  if (normalizedType === "image/jpeg" || normalizedType === "image/jpg") return "jpg";
+  if (normalizedType === "image/webp") return "webp";
+  return "png";
+}
+
+function normalizeClipboardImageFile(file, index = 0) {
+  const mimeType = (file.type || "image/png").toLowerCase() === "image/jpg" ? "image/jpeg" : file.type || "image/png";
+  const extension = extensionForImageType(mimeType);
+  const fallbackName = `print-colado-${new Date().toISOString().replace(/[:.]/g, "-")}-${index + 1}.${extension}`;
+  const currentName = file.name && file.name.includes(".") ? file.name : fallbackName;
+  return new File([file], currentName, { type: mimeType, lastModified: file.lastModified || Date.now() });
+}
+
+function clipboardImageFiles(clipboardData) {
+  if (!clipboardData) return [];
+  const files = [];
+  const seen = new Set();
+
+  Array.from(clipboardData.items || []).forEach((item, index) => {
+    if (!String(item.type || "").startsWith("image/")) return;
+    const file = item.getAsFile?.();
+    if (!file) return;
+    const normalized = normalizeClipboardImageFile(file, index);
+    const key = `${normalized.name}-${normalized.size}-${normalized.type}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      files.push(normalized);
+    }
+  });
+
+  Array.from(clipboardData.files || []).forEach((file, index) => {
+    if (!String(file.type || "").startsWith("image/")) return;
+    const normalized = normalizeClipboardImageFile(file, files.length + index);
+    const key = `${normalized.name}-${normalized.size}-${normalized.type}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      files.push(normalized);
+    }
+  });
+
+  return files;
 }
 
 export default function ImageTaskImportPanel({ categories = [], members = [], onImported }) {
   const { showToast } = useToast();
   const inputRef = useRef(null);
   const selectedImagesRef = useRef([]);
+  const activeAnalysisJobRef = useRef("");
   const [selectedImages, setSelectedImages] = useState([]);
   const [error, setError] = useState("");
   const [analysis, setAnalysis] = useState(null);
+  const [analysisJob, setAnalysisJob] = useState(null);
   const [reviewItems, setReviewItems] = useState([]);
   const [importReport, setImportReport] = useState(null);
   const [itemErrors, setItemErrors] = useState({});
@@ -117,8 +200,10 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
   const [autoCreateEnabled, setAutoCreateEnabled] = useState(false);
   const [customInstructions, setCustomInstructions] = useState("");
   const [customInstructionsDraft, setCustomInstructionsDraft] = useState("");
+  const [imageContext, setImageContext] = useState("");
   const [instructionsMaxLength, setInstructionsMaxLength] = useState(1500);
   const [savingInstructions, setSavingInstructions] = useState(false);
+  const [pasteFeedback, setPasteFeedback] = useState("");
 
   const selectedItems = useMemo(() => reviewItems.filter((item) => item.selected), [reviewItems]);
   const categoryOptions = useMemo(
@@ -196,10 +281,13 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
     revokeImagePreviews();
     setSelectedImages([]);
     setAnalysis(null);
+    setAnalysisJob(null);
+    activeAnalysisJobRef.current = "";
     setReviewItems([]);
     setImportReport(null);
     setItemErrors({});
     setError("");
+    setPasteFeedback("");
     setDragging(false);
     setSyncGoogleCalendar(false);
     setCalendarPreferenceTouched(false);
@@ -207,11 +295,14 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
   }, [revokeImagePreviews]);
 
   const acceptFiles = useCallback(
-    async (nextFiles) => {
+    async (nextFiles, { source = "file" } = {}) => {
       const incomingFiles = Array.from(nextFiles || []);
       if (!incomingFiles.length) return;
       setError("");
+      setPasteFeedback("");
       setAnalysis(null);
+      setAnalysisJob(null);
+      activeAnalysisJobRef.current = "";
       setReviewItems([]);
       setImportReport(null);
       setItemErrors({});
@@ -251,7 +342,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
           }
 
           const objectUrl = URL.createObjectURL(nextFile);
-          acceptedImages.push(createSelectedImage(nextFile, objectUrl));
+          acceptedImages.push(createSelectedImage(nextFile, objectUrl, source));
           existingKeys.add(dedupeKey);
           availableSlots -= 1;
         } catch {
@@ -267,9 +358,18 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
         setError(message);
         showToast({ type: "error", message });
       } else if (acceptedImages.length) {
+        const successMessage =
+          source === "clipboard"
+            ? acceptedImages.length > 1
+              ? `${acceptedImages.length} imagens coladas da area de transferencia.`
+              : "Imagem colada da area de transferencia."
+            : acceptedImages.length > 1
+              ? `${acceptedImages.length} imagens adicionadas.`
+              : "Imagem adicionada.";
+        if (source === "clipboard") setPasteFeedback(successMessage);
         showToast({
           type: "success",
-          message: acceptedImages.length > 1 ? `${acceptedImages.length} imagens adicionadas.` : "Imagem adicionada."
+          message: successMessage
         });
       }
       try {
@@ -281,8 +381,41 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
     [showToast]
   );
 
+  const handlePaste = useCallback(
+    (event) => {
+      if (analyzing || importing) return;
+      const files = clipboardImageFiles(event.clipboardData);
+      if (!files.length) {
+        const hasClipboardContent =
+          (event.clipboardData?.items?.length || 0) > 0 ||
+          Boolean(event.clipboardData?.getData?.("text/plain"));
+        if (hasClipboardContent) {
+          event.preventDefault();
+          const message = "A area de transferencia nao contem uma imagem. Copie um print ou arquivo de imagem e tente novamente.";
+          setError(message);
+          setPasteFeedback("");
+          showToast({ type: "error", message });
+        }
+        return;
+      }
+      event.preventDefault();
+      acceptFiles(files, { source: "clipboard" });
+    },
+    [acceptFiles, analyzing, importing, showToast]
+  );
+
+  useEffect(() => {
+    function handleDocumentPaste(event) {
+      if (event.defaultPrevented) return;
+      if (isEditablePasteTarget(event.target)) return;
+      handlePaste(event);
+    }
+    document.addEventListener("paste", handleDocumentPaste);
+    return () => document.removeEventListener("paste", handleDocumentPaste);
+  }, [handlePaste]);
+
   function handleInputChange(event) {
-    acceptFiles(event.target.files);
+    acceptFiles(event.target.files, { source: "file" });
   }
 
   function handleDragOver(event) {
@@ -298,7 +431,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
   function handleDrop(event) {
     event.preventDefault();
     setDragging(false);
-    acceptFiles(event.dataTransfer.files);
+    acceptFiles(event.dataTransfer.files, { source: "drop" });
   }
 
   function removeSelectedImage(imageId) {
@@ -308,9 +441,12 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
       return current.filter((image) => image.id !== imageId);
     });
     setAnalysis(null);
+    setAnalysisJob(null);
+    activeAnalysisJobRef.current = "";
     setReviewItems([]);
     setImportReport(null);
     setItemErrors({});
+    setPasteFeedback("");
   }
 
   function updateImageStatus(imageId, patch) {
@@ -385,10 +521,66 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
 
   function cancelReview() {
     setAnalysis(null);
+    setAnalysisJob(null);
+    activeAnalysisJobRef.current = "";
     setReviewItems([]);
     setImportReport(null);
     setItemErrors({});
     setError("");
+  }
+
+  async function waitForAnalysisJob(jobId) {
+    let attempts = 0;
+    while (activeAnalysisJobRef.current === jobId) {
+      await wait(attempts < 3 ? 1200 : 2200);
+      const jobStatus = await imageAnalysisApi.getTaskSuggestionsJob(jobId);
+      if (activeAnalysisJobRef.current !== jobId) {
+        throw new Error("Analise interrompida. Inicie novamente quando quiser tentar de novo.");
+      }
+      setAnalysisJob(jobStatus);
+      if (jobStatus.status === "ready_for_review" || jobStatus.status === "completed") {
+        if (!jobStatus.result) {
+          throw new Error("A analise terminou sem sugestoes validas. Tente novamente com uma imagem mais nitida.");
+        }
+        return jobStatus.result;
+      }
+      if (jobStatus.status === "failed" || jobStatus.status === "cancelled") {
+        throw new Error(jobStatus.error || jobStatus.message || "Nao conseguimos concluir a analise. Tente novamente.");
+      }
+      attempts += 1;
+    }
+    throw new Error("Analise interrompida. Inicie novamente quando quiser tentar de novo.");
+  }
+
+  async function syncImportReportCalendar(report, enabled) {
+    if (!enabled || !calendarStatus?.can_sync || !report?.created?.length) return report;
+    setAnalysisJob((current) => ({
+      jobId: current?.jobId || "",
+      status: "syncing_calendar",
+      progress: 95,
+      message: "Adicionando tarefas criadas ao Google Agenda.",
+      totalImages: current?.totalImages || selectedImages.length
+    }));
+
+    const created = [];
+    const warnings = [...(report.warnings || [])];
+    for (const item of report.created) {
+      const calendarResult = await syncTaskToGoogleCalendarSafely(item.taskId);
+      created.push({
+        ...item,
+        googleCalendarEventId: calendarResult.response?.event_id || item.googleCalendarEventId || null,
+        googleCalendarMessage: calendarResult.message
+      });
+      if (!calendarResult.ok) {
+        warnings.push(`Google Agenda: ${item.title}: ${calendarResult.message}`);
+      }
+    }
+
+    return {
+      ...report,
+      created,
+      warnings: [...new Set(warnings)].slice(0, 10)
+    };
   }
 
   async function handleAnalyze() {
@@ -396,6 +588,8 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
     setAnalyzing(true);
     setError("");
     setAnalysis(null);
+    setAnalysisJob(null);
+    activeAnalysisJobRef.current = "";
     setReviewItems([]);
     setImportReport(null);
     setItemErrors({});
@@ -417,7 +611,17 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
         throw new Error("Nenhuma imagem valida ficou pronta para analise.");
       }
 
-      const response = await imageAnalysisApi.analyzeTaskSuggestions(optimizedFiles);
+      setAnalysisJob({
+        jobId: "",
+        status: "uploading",
+        progress: 10,
+        message: "Enviando imagem para processamento seguro.",
+        totalImages: optimizedFiles.length
+      });
+      const startedJob = await imageAnalysisApi.startTaskSuggestionsJob(optimizedFiles, { imageContext });
+      activeAnalysisJobRef.current = startedJob.jobId;
+      setAnalysisJob(startedJob);
+      const response = await waitForAnalysisJob(startedJob.jobId);
       const nextReviewItems = (response.items || []).map((item, index) => buildReviewItem(item, index, categories));
       const hasGoogleSuggestion = nextReviewItems.some((item) => item.googleCalendarSuggestion && item.date && item.time);
       const shouldSyncGoogleCalendar = Boolean(
@@ -447,10 +651,19 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
 
       if (autoCreateEnabled && nextReviewItems.length) {
         setImporting(true);
-        const report = await tasksApi.importSuggestions(
-          buildTaskImportPayload(nextReviewItems, { syncGoogleCalendar: shouldSyncGoogleCalendar, autoCreate: true })
+        setAnalysisJob((current) => ({
+          jobId: current?.jobId || "",
+          status: "creating_tasks",
+          progress: 90,
+          message: "Criando automaticamente apenas sugestoes seguras.",
+          totalImages: current?.totalImages || selectedImages.length
+        }));
+        const rawReport = await tasksApi.importSuggestions(
+          buildTaskImportPayload(nextReviewItems, { syncGoogleCalendar: false, autoCreate: true })
         );
+        const report = await syncImportReportCalendar(rawReport, shouldSyncGoogleCalendar);
         setImportReport(report);
+        setAnalysisJob((current) => (current ? { ...current, status: "completed", progress: 100, message: "Importacao concluida." } : current));
         const blockedIds = new Set([...(report.pendingReview || []), ...(report.failed || [])].map((item) => item.suggestionId));
         const pendingItems = nextReviewItems.filter((item) => blockedIds.has(item.suggestionId));
         setReviewItems(pendingItems);
@@ -505,10 +718,20 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
 
     setImporting(true);
     try {
-      const report = await tasksApi.importSuggestions(
-        buildTaskImportPayload(selectedItems, { syncGoogleCalendar: Boolean(syncGoogleCalendar && calendarStatus?.can_sync) })
+      setAnalysisJob((current) => ({
+        jobId: current?.jobId || "",
+        status: "creating_tasks",
+        progress: 90,
+        message: "Criando tarefas selecionadas com validacao do backend.",
+        totalImages: current?.totalImages || selectedImages.length
+      }));
+      const shouldSyncGoogleCalendar = Boolean(syncGoogleCalendar && calendarStatus?.can_sync);
+      const rawReport = await tasksApi.importSuggestions(
+        buildTaskImportPayload(selectedItems, { syncGoogleCalendar: false })
       );
+      const report = await syncImportReportCalendar(rawReport, shouldSyncGoogleCalendar);
       setImportReport(report);
+      setAnalysisJob((current) => (current ? { ...current, status: "completed", progress: 100, message: "Importacao concluida." } : current));
       if (report.created?.length) {
         emitAppDataChanged();
         onImported?.(report);
@@ -554,9 +777,12 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
+          onPaste={handlePaste}
+          tabIndex={0}
+          aria-label="Selecionar, arrastar ou colar imagens para importacao por IA"
           className={`min-h-72 rounded-[28px] border border-dashed p-4 shadow-sm transition ${
             dragging ? "border-blush bg-blush/10 ring-4 ring-blush/10" : "border-slate-200 bg-white/75"
-          }`}
+          } focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blush/10`}
         >
           {selectedImages.length ? (
             <div className="flex h-full min-h-64 flex-col">
@@ -573,6 +799,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
                     <div className="min-w-0">
                       <p className="truncate text-sm font-black text-ink">{image.file.name}</p>
                       <p className="mt-1 text-xs font-semibold text-muted">{formatFileSize(image.file.size)}</p>
+                      {image.source === "clipboard" && <p className="mt-1 text-xs font-black text-blush">Colada com Ctrl+V</p>}
                       {image.status === "processing" && <p className="mt-1 text-xs font-black text-blue-700">Processando...</p>}
                       {image.status === "done" && <p className="mt-1 text-xs font-black text-emerald-700">Processada</p>}
                       {image.error && <p className="mt-1 text-xs font-bold text-rose-700">{image.error}</p>}
@@ -599,6 +826,9 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
                   Remover todas
                 </Button>
               </div>
+              <p className="mt-3 rounded-2xl bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">
+                Voce tambem pode colar outro print aqui com Ctrl+V.
+              </p>
             </div>
           ) : (
             <button
@@ -609,8 +839,8 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
               <span className="grid h-14 w-14 place-items-center rounded-2xl bg-blush/10 text-blush">
                 <UploadCloud className="h-7 w-7" />
               </span>
-              <span className="mt-4 text-base font-black text-ink">Selecionar ou arrastar imagem</span>
-              <span className="mt-2 text-sm font-semibold text-muted">PNG, JPG, JPEG ou WEBP ate 8 MB.</span>
+              <span className="mt-4 text-base font-black text-ink">Selecionar, arrastar ou colar imagem</span>
+              <span className="mt-2 text-sm font-semibold text-muted">Use Ctrl+V para colar um print. PNG, JPG, JPEG ou WEBP ate 8 MB.</span>
             </button>
           )}
 
@@ -640,6 +870,78 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
                 <SoftAlert tone="error">{error}</SoftAlert>
               </div>
             )}
+
+            {pasteFeedback && (
+              <div className="mt-4">
+                <SoftAlert tone="success">{pasteFeedback}</SoftAlert>
+              </div>
+            )}
+
+            {analysisJob && (analyzing || importing || terminalAnalysisJobStatuses.has(analysisJob.status)) && (
+              <div className="mt-4 rounded-[22px] border border-blue-100 bg-white/90 p-3 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
+                    {terminalAnalysisJobStatuses.has(analysisJob.status) && analysisJob.status !== "failed" ? (
+                      <CheckCircle2 className="h-4 w-4" />
+                    ) : analysisJob.status === "failed" ? (
+                      <XCircle className="h-4 w-4" />
+                    ) : (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    )}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-black text-ink">
+                        {analysisJob.message || analysisJobMessages[analysisJob.status] || "Processando imagem..."}
+                      </p>
+                      <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700">
+                        {Math.max(0, Math.min(100, analysisJob.progress || 0))}%
+                      </span>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-blue-400 to-blush transition-all"
+                        style={{ width: `${Math.max(6, Math.min(100, analysisJob.progress || 0))}%` }}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs font-semibold text-muted">
+                      {analysisJob.status === "extracting"
+                        ? "Imagens com muitas datas podem demorar mais, mas voce continua vendo o progresso aqui."
+                        : analysisJobMessages[analysisJob.status] || "Continuamos acompanhando o processamento."}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-4 rounded-[22px] border border-blue-100 bg-blue-50/60 p-3">
+              <div className="flex items-start gap-3">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white text-blue-600 shadow-sm">
+                  <FileImage className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-black text-ink">Contexto da imagem</p>
+                  <p className="mt-1 text-xs font-semibold text-muted">
+                    Opcional e temporario para esta analise. Explique o que a imagem representa para a IA criar titulos e datas melhores.
+                  </p>
+                </div>
+              </div>
+              <textarea
+                className="soft-input mt-3 min-h-24 resize-none bg-white/90 text-sm"
+                value={imageContext}
+                maxLength={imageContextMaxLength}
+                onChange={(event) => setImageContext(event.target.value)}
+                placeholder="Ex.: Essa imagem e meu calendario de provas da faculdade. Crie tarefas para cada prova usando materia, data e horario. Responsavel: Kauan."
+              />
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-bold text-muted">{imageContext.length}/{imageContextMaxLength} caracteres</span>
+                {imageContext.trim() && (
+                  <button type="button" className="rounded-xl px-3 py-1.5 text-xs font-bold text-muted transition hover:bg-white hover:text-ink" onClick={() => setImageContext("")}>
+                    Limpar contexto
+                  </button>
+                )}
+              </div>
+            </div>
 
             <div className="mt-4 rounded-[22px] border border-violet-100 bg-violet-50/50 p-3">
               <div className="flex items-start gap-3">

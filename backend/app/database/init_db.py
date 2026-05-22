@@ -4,7 +4,7 @@ from app.services.username_service import unique_username_from_email
 from sqlalchemy import inspect, text
 
 # Importing models here registers them in SQLAlchemy metadata.
-from app.models import category, couple, family, image_asset, integration, notification, ranking, task, two_factor, user  # noqa: F401
+from app.models import category, couple, family, image_analysis_job, image_asset, integration, notification, ranking, task, two_factor, user  # noqa: F401
 
 
 def create_database_tables() -> None:

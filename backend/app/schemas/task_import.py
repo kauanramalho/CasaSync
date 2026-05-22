@@ -31,7 +31,7 @@ class TaskSuggestionImportItem(BaseModel):
 class TaskSuggestionsImportRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    items: list[TaskSuggestionImportItem] = Field(min_length=1, max_length=20)
+    items: list[TaskSuggestionImportItem] = Field(min_length=1, max_length=40)
     syncGoogleCalendar: bool = False
     autoCreate: bool = False
 

@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 
 import re
@@ -8,7 +9,20 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 ImageSuggestionType = Literal["task", "event", "reminder"]
 ImageSuggestionPriority = Literal["low", "medium", "high", "urgent"]
 ImageSuggestionReminderUnit = Literal["minutes", "hours", "days"]
+ImageAnalysisJobStatusValue = Literal[
+    "pending",
+    "processing",
+    "extracting",
+    "validating",
+    "ready_for_review",
+    "creating_tasks",
+    "syncing_calendar",
+    "completed",
+    "failed",
+    "cancelled",
+]
 MAX_AI_TASK_IMPORT_INSTRUCTIONS_LENGTH = 1500
+MAX_AI_IMAGE_CONTEXT_LENGTH = 1500
 SECRET_PATTERN = re.compile(r"(sk-[a-zA-Z0-9_-]{20,}|client_secret|refresh_token|access_token)", re.IGNORECASE)
 
 
@@ -44,7 +58,7 @@ class ImageAnalysisResponse(BaseModel):
 
     sourceType: Literal["image"] = "image"
     overallConfidence: float = Field(ge=0.0, le=1.0)
-    items: list[ImageAnalysisItem] = Field(default_factory=list, max_length=20)
+    items: list[ImageAnalysisItem] = Field(default_factory=list, max_length=40)
     warnings: list[str] = Field(default_factory=list, max_length=10)
     needsUserReview: bool = True
     imageErrors: list[ImageAnalysisFileError] = Field(default_factory=list, max_length=10)
@@ -52,17 +66,56 @@ class ImageAnalysisResponse(BaseModel):
     totalSuggestionsGenerated: int = 0
 
 
-def normalize_ai_task_import_instructions(value: str | None) -> str | None:
+class ImageAnalysisJobCreated(BaseModel):
+    jobId: str
+    status: ImageAnalysisJobStatusValue
+    progress: int = Field(ge=0, le=100)
+    message: str
+    totalImages: int = 0
+
+
+class ImageAnalysisJobStatus(BaseModel):
+    jobId: str
+    status: ImageAnalysisJobStatusValue
+    progress: int = Field(ge=0, le=100)
+    message: str
+    totalImages: int = 0
+    processedImages: int = 0
+    totalSuggestionsGenerated: int = 0
+    createdAt: datetime | None = None
+    updatedAt: datetime | None = None
+    completedAt: datetime | None = None
+    result: ImageAnalysisResponse | None = None
+    error: str | None = None
+
+
+def _normalize_ai_user_text(value: str | None, *, max_length: int, field_label: str) -> str | None:
     if value is None:
         return None
     normalized = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", value).strip()
     if not normalized:
         return None
-    if len(normalized) > MAX_AI_TASK_IMPORT_INSTRUCTIONS_LENGTH:
-        raise ValueError(f"As instrucoes devem ter no maximo {MAX_AI_TASK_IMPORT_INSTRUCTIONS_LENGTH} caracteres.")
+    if len(normalized) > max_length:
+        raise ValueError(f"{field_label} deve ter no maximo {max_length} caracteres.")
     if SECRET_PATTERN.search(normalized):
-        raise ValueError("Nao inclua chaves, tokens ou segredos nas instrucoes da IA.")
+        raise ValueError(f"Nao inclua chaves, tokens ou segredos em {field_label.lower()}.")
     return normalized
+
+
+def normalize_ai_task_import_instructions(value: str | None) -> str | None:
+    return _normalize_ai_user_text(
+        value,
+        max_length=MAX_AI_TASK_IMPORT_INSTRUCTIONS_LENGTH,
+        field_label="As instrucoes da IA",
+    )
+
+
+def normalize_ai_image_context(value: str | None) -> str | None:
+    return _normalize_ai_user_text(
+        value,
+        max_length=MAX_AI_IMAGE_CONTEXT_LENGTH,
+        field_label="O contexto da imagem",
+    )
 
 
 class ImageAnalysisPreferences(BaseModel):

@@ -3,11 +3,11 @@ from fastapi import UploadFile
 from app.core.config import Settings
 from app.schemas.image_analysis import ImageAnalysisFileError, ImageAnalysisItem, ImageAnalysisResponse
 from app.services.ai_vision_adapter import VisionAnalysisContext, get_ai_vision_adapter
-from app.services.image_service import MAX_IMAGE_ANALYSIS_BYTES, read_validated_image_upload
+from app.services.image_service import MAX_IMAGE_ANALYSIS_BYTES, ValidatedImageUpload, read_validated_image_upload
 
 
 MAX_IMAGE_ANALYSIS_FILES = 10
-MAX_IMAGE_ANALYSIS_ITEMS = 20
+MAX_IMAGE_ANALYSIS_ITEMS = 40
 
 
 async def parse_image_to_task_suggestions(
@@ -25,6 +25,7 @@ async def parse_images_to_task_suggestions(
     family_id: str,
     settings: Settings,
     custom_instructions: str | None = None,
+    image_context: str | None = None,
 ) -> ImageAnalysisResponse:
     if not files:
         return _analysis_response(warnings=["Selecione pelo menos uma imagem para interpretar."])
@@ -32,6 +33,48 @@ async def parse_images_to_task_suggestions(
     if len(files) > MAX_IMAGE_ANALYSIS_FILES:
         return _analysis_response(warnings=[f"Envie no maximo {MAX_IMAGE_ANALYSIS_FILES} imagens por vez."])
 
+    validated_images: list[ValidatedImageUpload] = []
+    image_errors: list[ImageAnalysisFileError] = []
+
+    for file in files:
+        filename = (file.filename or "")[:255] or None
+        try:
+            validated_images.append(
+                await read_validated_image_upload(
+                    file,
+                    max_bytes=MAX_IMAGE_ANALYSIS_BYTES,
+                    max_bytes_detail="A imagem deve ter no maximo 8 MB.",
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - batch imports must keep other images alive.
+            detail = getattr(exc, "detail", None) or str(exc) or "Nao foi possivel interpretar esta imagem."
+            image_errors.append(ImageAnalysisFileError(filename=filename, reason=str(detail)[:300]))
+
+    if not validated_images:
+        return _analysis_response(
+            warnings=["Nenhuma imagem valida ficou pronta para interpretacao."],
+            image_errors=image_errors,
+        )
+
+    return parse_validated_images_to_task_suggestions(
+        images=validated_images,
+        family_id=family_id,
+        settings=settings,
+        custom_instructions=custom_instructions,
+        image_context=image_context,
+        initial_image_errors=image_errors,
+    )
+
+
+def parse_validated_images_to_task_suggestions(
+    *,
+    images: list[ValidatedImageUpload],
+    family_id: str,
+    settings: Settings,
+    custom_instructions: str | None = None,
+    image_context: str | None = None,
+    initial_image_errors: list[ImageAnalysisFileError] | None = None,
+) -> ImageAnalysisResponse:
     adapter = get_ai_vision_adapter(settings.ai_vision_provider)
     context = VisionAnalysisContext(
         family_id=family_id,
@@ -42,24 +85,21 @@ async def parse_images_to_task_suggestions(
         openai_vision_timeout_seconds=settings.openai_vision_timeout_seconds,
         openai_vision_max_output_tokens=settings.openai_vision_max_output_tokens,
         custom_instructions=custom_instructions,
+        image_context=image_context,
     )
+    combined_instruction_context = _combined_instruction_context(custom_instructions, image_context)
 
     items = []
     warnings = []
-    image_errors: list[ImageAnalysisFileError] = []
+    image_errors: list[ImageAnalysisFileError] = list(initial_image_errors or [])
     processed = 0
 
-    for file in files:
-        filename = (file.filename or "")[:255] or None
+    for image in images:
+        filename = (image.filename or "")[:255] or None
         try:
-            image = await read_validated_image_upload(
-                file,
-                max_bytes=MAX_IMAGE_ANALYSIS_BYTES,
-                max_bytes_detail="A imagem deve ter no maximo 8 MB.",
-            )
             result = adapter.parse_image_to_task_suggestions(image, context)
             processed += 1
-            items.extend(_apply_custom_instruction_defaults(result.items, custom_instructions))
+            items.extend(_apply_custom_instruction_defaults(result.items, combined_instruction_context))
             warnings.extend(result.warnings or [])
         except Exception as exc:  # noqa: BLE001 - batch imports must keep other images alive.
             detail = getattr(exc, "detail", None) or str(exc) or "Nao foi possivel interpretar esta imagem."
@@ -67,7 +107,7 @@ async def parse_images_to_task_suggestions(
 
     limited_items = items[:MAX_IMAGE_ANALYSIS_ITEMS]
     if len(items) > len(limited_items):
-        warnings.append("A IA encontrou mais de 20 sugestoes; apenas as 20 primeiras foram carregadas para revisao.")
+        warnings.append(f"A IA encontrou mais de {MAX_IMAGE_ANALYSIS_ITEMS} sugestoes; apenas as primeiras foram carregadas para revisao.")
     if image_errors:
         warnings.append("Algumas imagens nao puderam ser processadas. Revise os erros por imagem.")
     if processed and not limited_items:
@@ -87,13 +127,22 @@ async def parse_images_to_task_suggestions(
     )
 
 
-def _analysis_response(*, warnings: list[str]) -> ImageAnalysisResponse:
+def _combined_instruction_context(custom_instructions: str | None, image_context: str | None) -> str | None:
+    parts = []
+    if custom_instructions:
+        parts.append(custom_instructions)
+    if image_context:
+        parts.append(image_context)
+    return "\n".join(parts) if parts else None
+
+
+def _analysis_response(*, warnings: list[str], image_errors: list[ImageAnalysisFileError] | None = None) -> ImageAnalysisResponse:
     return ImageAnalysisResponse(
         overallConfidence=0.0,
         items=[],
         warnings=warnings[:10],
         needsUserReview=True,
-        imageErrors=[],
+        imageErrors=list(image_errors or [])[:10],
         totalImagesProcessed=0,
         totalSuggestionsGenerated=0,
     )

@@ -7,6 +7,7 @@ import Card from "../components/Card";
 import PageHeader from "../components/PageHeader";
 import SelectMenu from "../components/SelectMenu";
 import StatCard from "../components/StatCard";
+import TaskDetailsModal from "../components/TaskDetailsModal";
 import TaskEditorModal from "../components/TaskEditorModal";
 import TaskList from "../components/TaskList";
 import { useAuth } from "../hooks/useAuth";
@@ -15,6 +16,7 @@ import { useToast } from "../hooks/useToast";
 import { categoriesApi, familiesApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError, priorityLabels, statusLabels } from "../utils/formatters";
+import { syncTaskToGoogleCalendarSafely } from "../utils/googleCalendarTasks";
 import { applyTaskAttachmentChanges, hasTaskAttachmentChanges } from "../utils/taskAttachments";
 import { formatReminderLead } from "../utils/taskReminders";
 import { getAssigneeNames, getTaskAssigneeIds, getTaskPointLabel, isTaskCompleted, isTaskOpen, sortTasksForDisplay } from "../utils/tasks";
@@ -58,6 +60,7 @@ export default function Tasks() {
   const [search, setSearch] = useState(searchParams.get("search") || "");
   const [error, setError] = useState("");
   const [editError, setEditError] = useState("");
+  const [detailsTask, setDetailsTask] = useState(null);
   const [editingTask, setEditingTask] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [completedExpanded, setCompletedExpanded] = useState(true);
@@ -153,7 +156,13 @@ export default function Tasks() {
       const updated = await tasksApi.update(editingTask.id, payload);
       setTasks((current) => current.map((task) => (task.id === updated.id ? updated : task)));
       const changedAttachments = await applyTaskAttachmentChanges(updated.id, attachmentChanges);
-      const persisted = changedAttachments ? await tasksApi.retrieve(updated.id) : updated;
+      const calendarResult = attachmentChanges.syncGoogleCalendar
+        ? await syncTaskToGoogleCalendarSafely(updated.id)
+        : null;
+      if (calendarResult && !calendarResult.ok) {
+        showToast({ type: "info", message: calendarResult.message });
+      }
+      const persisted = changedAttachments || calendarResult?.task ? await tasksApi.retrieve(updated.id) : updated;
       setTasks((current) => current.map((task) => (task.id === persisted.id ? persisted : task)));
       const reminderChanged = Boolean(editingTask.reminder_enabled) !== Boolean(updated.reminder_enabled);
       const reminderLead = formatReminderLead(updated.reminder_value, updated.reminder_unit);
@@ -172,7 +181,10 @@ export default function Tasks() {
         type: updated.reminder_enabled || editingTask.reminder_enabled ? "reminder" : "task",
         actor: user?.name
       });
-      showToast({ type: "success", message: "Tarefa editada com sucesso." });
+      showToast({
+        type: "success",
+        message: calendarResult?.message ? `Tarefa editada com sucesso. ${calendarResult.message}` : "Tarefa editada com sucesso."
+      });
       setEditingTask(null);
       emitAppDataChanged();
     } catch (err) {
@@ -217,6 +229,15 @@ export default function Tasks() {
     setEditError("");
     setEditingTask(task);
   }, []);
+
+  const openDetails = useCallback(function openDetails(task) {
+    setDetailsTask(task);
+  }, []);
+
+  const openEditorFromDetails = useCallback(function openEditorFromDetails(task) {
+    setDetailsTask(null);
+    openEditor(task);
+  }, [openEditor]);
 
   return (
     <>
@@ -284,6 +305,7 @@ export default function Tasks() {
               onComplete={handleComplete}
               onEdit={openEditor}
               onDelete={handleDelete}
+              onOpenDetails={openDetails}
               emptyMessage="Nenhuma tarefa pendente encontrada."
             />
           </section>
@@ -317,6 +339,7 @@ export default function Tasks() {
                   onComplete={handleComplete}
                   onEdit={openEditor}
                   onDelete={handleDelete}
+                  onOpenDetails={openDetails}
                   emptyMessage="Nenhuma tarefa concluida encontrada."
                 />
               </div>
@@ -324,6 +347,12 @@ export default function Tasks() {
           </section>
         </div>
       </Card>
+
+      <TaskDetailsModal
+        task={detailsTask}
+        onClose={() => setDetailsTask(null)}
+        onEdit={openEditorFromDetails}
+      />
 
       <TaskEditorModal
         task={editingTask}

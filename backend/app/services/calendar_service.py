@@ -355,20 +355,11 @@ def sync_task_to_calendar(
             message=GOOGLE_CALENDAR_DISABLED_MESSAGE,
         )
 
-    task = get_task(db, family_id, task_id)
-    if task.google_calendar_event_id:
-        return GoogleCalendarTaskSyncResponse(
-            status="already_synced",
-            synced=True,
-            task_id=task.id,
-            event_id=task.google_calendar_event_id,
-            message="Esta tarefa ja esta vinculada ao Google Agenda.",
-        )
-
     try:
+        task = get_task(db, family_id, task_id)
         event_payload = create_calendar_event_from_task(task, settings)
     except ValueError as exc:
-        return GoogleCalendarTaskSyncResponse(status="invalid_task", synced=False, task_id=task.id, message=str(exc))
+        return GoogleCalendarTaskSyncResponse(status="invalid_task", synced=False, task_id=task_id, message=str(exc))
 
     connection = _get_connection(db, family_id, user_id)
     if not connection or not connection.is_connected:
@@ -384,6 +375,23 @@ def sync_task_to_calendar(
     calendar_id = connection.calendar_id or DEFAULT_GOOGLE_CALENDAR_ID
     try:
         access_token = _connection_access_token(db, connection, settings)
+        if task.google_calendar_event_id:
+            updated_event_id = adapter.update_event(
+                calendar_id=calendar_id,
+                access_token=access_token,
+                event_id=task.google_calendar_event_id,
+                event_payload=event_payload,
+                timeout_seconds=settings.google_calendar_request_timeout_seconds,
+            )
+            _mark_task_synced(db, task, updated_event_id, user_id)
+            return GoogleCalendarTaskSyncResponse(
+                status="updated",
+                synced=True,
+                task_id=task.id,
+                event_id=updated_event_id,
+                message="Evento existente atualizado no Google Agenda.",
+            )
+
         existing_event_id = adapter.find_event_by_task_id(
             calendar_id=calendar_id,
             access_token=access_token,

@@ -29,7 +29,7 @@ function SortHeaderButton({ column, activeSort, onSort }) {
   );
 }
 
-function TaskRow({ task, compact, menuOpen, onToggleMenu, onRunAction, onComplete, onEdit, onDelete, onRemoveRecent }) {
+function TaskRow({ task, compact, menuOpen, onToggleMenu, onRunAction, onComplete, onEdit, onDelete, onRemoveRecent, onOpenDetails }) {
   const attachmentCount = task.attachments?.length || 0;
   const hasActiveReminder =
     task.reminder_enabled &&
@@ -37,12 +37,35 @@ function TaskRow({ task, compact, menuOpen, onToggleMenu, onRunAction, onComplet
     task.reminder_value &&
     task.reminder_unit &&
     ["pendente", "em_andamento"].includes(task.status);
+  const clickable = Boolean(onOpenDetails);
+
+  function openDetails(event) {
+    if (!clickable || event.target.closest("[data-task-row-action]")) return;
+    onOpenDetails(task);
+  }
+
+  function openDetailsFromKeyboard(event) {
+    if (!clickable || event.target.closest("[data-task-row-action]")) return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onOpenDetails(task);
+    }
+  }
 
   return (
     <div
-      className="grid min-w-0 gap-3 px-4 py-4 transition hover:bg-rose-50/40 md:grid-cols-[44px_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,1fr)_44px] md:items-center md:gap-4 md:px-5"
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      aria-label={clickable ? `Ver detalhes de ${task.title}` : undefined}
+      onClick={openDetails}
+      onKeyDown={openDetailsFromKeyboard}
+      className={`grid min-w-0 gap-3 px-4 py-4 transition hover:bg-rose-50/40 md:grid-cols-[44px_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,1fr)_44px] md:items-center md:gap-4 md:px-5 ${
+        clickable ? "cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-rose-100" : ""
+      }`}
     >
       <button
+        type="button"
+        data-task-row-action
         onClick={() => onComplete?.(task)}
         className={`grid h-6 w-6 place-items-center rounded-md border transition ${
           task.status === "concluida" ? "border-emerald-400 bg-emerald-400 text-white" : "border-slate-300 text-transparent hover:border-emerald-300"
@@ -82,8 +105,9 @@ function TaskRow({ task, compact, menuOpen, onToggleMenu, onRunAction, onComplet
       <div className="min-w-0">
         <StatusBadge status={task.status} />
       </div>
-      <div className="relative justify-self-start md:justify-self-auto" data-task-menu-root>
+      <div className="relative justify-self-start md:justify-self-auto" data-task-menu-root data-task-row-action>
         <button
+          type="button"
           onClick={() => onToggleMenu(task.id)}
           className="grid h-8 w-8 place-items-center rounded-xl text-muted hover:bg-slate-100"
           title="Acoes da tarefa"
@@ -123,7 +147,7 @@ function TaskRow({ task, compact, menuOpen, onToggleMenu, onRunAction, onComplet
 
 const MemoTaskRow = memo(TaskRow);
 
-function TaskList({ tasks = [], onComplete, onEdit, onDelete, onRemoveRecent, compact = false, emptyMessage = "Nenhuma tarefa encontrada." }) {
+function TaskList({ tasks = [], onComplete, onEdit, onDelete, onRemoveRecent, onOpenDetails, compact = false, emptyMessage = "Nenhuma tarefa encontrada." }) {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [activeSort, setActiveSort] = useState(null);
   const orderedTasks = useMemo(() => sortTasksForDisplay(tasks, activeSort), [tasks, activeSort]);
@@ -218,6 +242,7 @@ function TaskList({ tasks = [], onComplete, onEdit, onDelete, onRemoveRecent, co
             onEdit={onEdit}
             onDelete={onDelete}
             onRemoveRecent={onRemoveRecent}
+            onOpenDetails={onOpenDetails}
           />
         ))}
         {orderedTasks.length === 0 && <div className="px-5 py-10 text-center text-sm text-muted">{emptyMessage}</div>}

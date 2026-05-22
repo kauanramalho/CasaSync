@@ -7,7 +7,9 @@ import DateTimePicker from "./DateTimePicker";
 import SelectMenu from "./SelectMenu";
 import TaskAttachmentField from "./TaskAttachmentField";
 import TaskReminderFields from "./TaskReminderFields";
+import { integrationsApi } from "../services/api";
 import { formatDateTimeLocal, toIsoOrNull } from "../utils/formatters";
+import { hasGoogleCalendarDateTime } from "../utils/googleCalendarTasks";
 import { getReminderPayload, getReminderValidationError } from "../utils/taskReminders";
 import { normalizeTaskForForm, priorityPoints } from "../utils/tasks";
 
@@ -16,6 +18,8 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
   const [localError, setLocalError] = useState("");
   const [pendingFiles, setPendingFiles] = useState([]);
   const [removedAttachmentIds, setRemovedAttachmentIds] = useState([]);
+  const [calendarStatus, setCalendarStatus] = useState(null);
+  const [syncGoogleCalendar, setSyncGoogleCalendar] = useState(false);
 
   useEffect(() => {
     setForm({
@@ -25,7 +29,30 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
     setLocalError("");
     setPendingFiles([]);
     setRemovedAttachmentIds([]);
+    setSyncGoogleCalendar(false);
   }, [task]);
+
+  useEffect(() => {
+    if (!task) return undefined;
+    let alive = true;
+    integrationsApi.googleCalendarStatus().then(
+      (status) => {
+        if (alive) setCalendarStatus(status);
+      },
+      () => {
+        if (alive) setCalendarStatus(null);
+      }
+    );
+    return () => {
+      alive = false;
+    };
+  }, [task]);
+
+  useEffect(() => {
+    if (!calendarStatus?.can_sync || !hasGoogleCalendarDateTime(form.due_date)) {
+      setSyncGoogleCalendar(false);
+    }
+  }, [calendarStatus?.can_sync, form.due_date]);
 
   useEffect(() => {
     if (!task) return undefined;
@@ -100,7 +127,8 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
       },
       {
         pendingFiles,
-        removedAttachmentIds
+        removedAttachmentIds,
+        syncGoogleCalendar
       }
     );
   }
@@ -167,6 +195,34 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
             </div>
 
             <TaskReminderFields form={form} onChange={updateReminder} />
+
+            {calendarStatus?.is_enabled && (
+              <label
+                className={`md:col-span-2 flex items-start gap-3 rounded-2xl border px-3 py-3 text-xs font-bold ${
+                  calendarStatus?.can_sync && hasGoogleCalendarDateTime(form.due_date)
+                    ? "border-blue-100 bg-blue-50/70 text-blue-700"
+                    : "border-slate-200 bg-slate-100 text-muted"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  className="mt-0.5 accent-blue-600"
+                  checked={syncGoogleCalendar}
+                  onChange={(event) => setSyncGoogleCalendar(event.target.checked)}
+                  disabled={!calendarStatus?.can_sync || !hasGoogleCalendarDateTime(form.due_date) || saving}
+                />
+                <span>
+                  {task.google_calendar_event_id
+                    ? "Atualizar o evento existente no Google Agenda ao salvar."
+                    : "Tambem adicionar esta tarefa ao Google Agenda quando houver data e horario."}
+                  {!calendarStatus?.can_sync
+                    ? ` ${calendarStatus?.message || "Conecte o Google Agenda nas configuracoes."}`
+                    : !hasGoogleCalendarDateTime(form.due_date)
+                      ? " Defina data e horario para sincronizar."
+                      : ""}
+                </span>
+              </label>
+            )}
 
             <TaskAttachmentField
               taskId={task.id}

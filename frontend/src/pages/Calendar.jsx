@@ -9,6 +9,7 @@ import { CategoryBadge, CategoryGlyph, PriorityBadge, StatusBadge } from "../com
 import Button from "../components/Button";
 import Card from "../components/Card";
 import PageHeader from "../components/PageHeader";
+import TaskDetailsModal from "../components/TaskDetailsModal";
 import TaskEditorModal from "../components/TaskEditorModal";
 import { useAppPreferences } from "../hooks/useAppPreferences";
 import { useAuth } from "../hooks/useAuth";
@@ -17,6 +18,7 @@ import { useToast } from "../hooks/useToast";
 import { categoriesApi, familiesApi, integrationsApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { formatDate, normalizeApiError } from "../utils/formatters";
+import { syncTaskToGoogleCalendarSafely } from "../utils/googleCalendarTasks";
 import { buildMonthDays, getStoredPreferences, getWeekdayLabels, startOfWeek as getPreferenceStartOfWeek } from "../utils/preferences";
 import { applyTaskAttachmentChanges, hasTaskAttachmentChanges } from "../utils/taskAttachments";
 import { getCategoryHex, getTaskPointLabel, sortTasksForDisplay } from "../utils/tasks";
@@ -160,7 +162,7 @@ function TaskPreview({ preview, onMouseEnter, onMouseLeave }) {
   );
 }
 
-function DayPanel({ date, tasks, onClose, onComplete, onCompleteAll, onEdit }) {
+function DayPanel({ date, tasks, onClose, onComplete, onCompleteAll, onEdit, onOpenDetails }) {
   const orderedTasks = sortCalendarTasks(tasks);
   const openTasks = orderedTasks.filter((task) => task.status !== "concluida");
 
@@ -222,7 +224,7 @@ function DayPanel({ date, tasks, onClose, onComplete, onCompleteAll, onEdit }) {
                 </button>
                 <span className="pt-1 text-xs font-bold text-muted">{timeLabel(task.due_date)}</span>
                 <div className="min-w-0">
-                  <button type="button" onClick={() => onEdit?.(task)} className="block max-w-full truncate text-left font-bold text-ink hover:text-blush">
+                  <button type="button" onClick={() => onOpenDetails?.(task)} className="block max-w-full truncate text-left font-bold text-ink hover:text-blush">
                     {task.title}
                   </button>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -230,7 +232,13 @@ function DayPanel({ date, tasks, onClose, onComplete, onCompleteAll, onEdit }) {
                     <PriorityBadge priority={task.priority} />
                     <StatusBadge status={task.status} />
                   </div>
-                  <AssigneeStack task={task} className="mt-3" />
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <AssigneeStack task={task} className="min-w-0" />
+                    <button type="button" onClick={() => onEdit?.(task)} className="inline-flex w-fit items-center gap-1.5 rounded-xl bg-blue-50 px-3 py-2 text-xs font-bold text-blue-600 transition hover:bg-blue-100">
+                      <Edit3 className="h-3.5 w-3.5" />
+                      Editar
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -255,6 +263,7 @@ export default function Calendar() {
   const [members, setMembers] = useState([]);
   const [selectedDate, setSelectedDate] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [detailsTask, setDetailsTask] = useState(null);
   const [editingTask, setEditingTask] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [calendarStatus, setCalendarStatus] = useState(null);
@@ -367,9 +376,10 @@ export default function Calendar() {
     previewTimer.current = window.setTimeout(() => setPreview(null), 120);
   }, []);
 
-  const openTaskPreview = useCallback(function openTaskPreview(task, event) {
-    showPreview(task, event);
-  }, [showPreview]);
+  const openTaskDetails = useCallback(function openTaskDetails(task) {
+    setPreview(null);
+    setDetailsTask(task);
+  }, []);
 
   const handleComplete = useCallback(async function handleComplete(task) {
     try {
@@ -418,7 +428,13 @@ export default function Calendar() {
       const updated = await tasksApi.update(editingTask.id, payload);
       setTasks((current) => current.map((task) => (task.id === updated.id ? updated : task)));
       const changedAttachments = await applyTaskAttachmentChanges(updated.id, attachmentChanges);
-      const persisted = changedAttachments ? await tasksApi.retrieve(updated.id) : updated;
+      const calendarResult = attachmentChanges.syncGoogleCalendar
+        ? await syncTaskToGoogleCalendarSafely(updated.id)
+        : null;
+      if (calendarResult && !calendarResult.ok) {
+        showToast({ type: "info", message: calendarResult.message });
+      }
+      const persisted = changedAttachments || calendarResult?.task ? await tasksApi.retrieve(updated.id) : updated;
       addNotification({
         title: "Tarefa editada",
         description: hasTaskAttachmentChanges(attachmentChanges)
@@ -428,7 +444,10 @@ export default function Calendar() {
         actor: user?.name
       });
       setTasks((current) => current.map((task) => (task.id === persisted.id ? persisted : task)));
-      showToast({ type: "success", message: "Tarefa editada com sucesso." });
+      showToast({
+        type: "success",
+        message: calendarResult?.message ? `Tarefa editada com sucesso. ${calendarResult.message}` : "Tarefa editada com sucesso."
+      });
       setEditingTask(null);
       emitAppDataChanged();
     } catch (err) {
@@ -523,7 +542,7 @@ export default function Calendar() {
                     </div>
                     <div className="space-y-1.5">
                       {visibleTasks.map((task) => (
-                        <CalendarTaskPill key={task.id} task={task} compact onPreview={showPreview} onPreviewLeave={schedulePreviewClose} onOpen={openTaskPreview} />
+                        <CalendarTaskPill key={task.id} task={task} compact onPreview={showPreview} onPreviewLeave={schedulePreviewClose} onOpen={openTaskDetails} />
                       ))}
                       {hiddenCount > 0 && (
                         <button type="button" onClick={(event) => { event.stopPropagation(); openDay(day); }} className="text-xs font-bold text-blush hover:underline">
@@ -559,7 +578,7 @@ export default function Calendar() {
                   <div className="max-h-[430px] space-y-2 overflow-y-auto pr-1">
                     {dayTasks.map((task) => (
                       <div key={task.id} className="rounded-2xl border border-slate-100 bg-white/80 p-3 shadow-sm">
-                        <CalendarTaskPill task={task} onPreview={showPreview} onPreviewLeave={schedulePreviewClose} onOpen={openTaskPreview} />
+                        <CalendarTaskPill task={task} onPreview={showPreview} onPreviewLeave={schedulePreviewClose} onOpen={openTaskDetails} />
                         <div className="mt-2 flex items-center justify-between gap-2 text-xs font-semibold text-muted">
                           <span>{timeLabel(task.due_date)}</span>
                           <PriorityBadge priority={task.priority} />
@@ -601,12 +620,16 @@ export default function Calendar() {
                     <div key={task.id} className="grid gap-3 px-4 py-3 md:grid-cols-[64px_1fr_180px_120px] md:items-center">
                       <span className="text-sm font-bold text-muted">{timeLabel(task.due_date)}</span>
                       <div className="min-w-0">
-                        <button type="button" onClick={() => setEditingTask(task)} className="block max-w-full truncate text-left font-bold text-ink hover:text-blush">
+                        <button type="button" onClick={() => setDetailsTask(task)} className="block max-w-full truncate text-left font-bold text-ink hover:text-blush">
                           {task.title}
                         </button>
-                        <div className="mt-2 flex flex-wrap gap-2">
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
                           <CategoryBadge category={task.category} compact />
                           <StatusBadge status={task.status} />
+                          <button type="button" onClick={() => setEditingTask(task)} className="inline-flex items-center gap-1 rounded-xl bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-600 hover:bg-blue-100">
+                            <Edit3 className="h-3 w-3" />
+                            Editar
+                          </button>
                         </div>
                       </div>
                       <AssigneeStack task={task} />
@@ -667,7 +690,7 @@ export default function Calendar() {
           <div className="mt-5 max-h-[640px] space-y-4 overflow-y-auto pr-1">
             {upcoming.map((task) => (
               <div key={task.id} className="border-b border-slate-100 pb-4 last:border-0">
-                <button type="button" onClick={() => setEditingTask(task)} className="w-full text-left">
+                <button type="button" onClick={() => setDetailsTask(task)} className="w-full rounded-2xl px-2 py-2 text-left transition hover:bg-rose-50/70">
                   <p className="text-xs font-bold text-muted">{formatDate(task.due_date)}</p>
                   <p className="mt-2 font-semibold text-ink">{task.title}</p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -676,6 +699,15 @@ export default function Calendar() {
                   </div>
                   <AssigneeStack task={task} className="mt-3" />
                 </button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="mt-3 w-full px-3 py-2 text-xs"
+                  onClick={() => setEditingTask(task)}
+                >
+                  <Edit3 className="h-4 w-4" />
+                  Editar tarefa
+                </Button>
                 {calendarStatus?.is_enabled && (
                   <Button
                     type="button"
@@ -713,8 +745,19 @@ export default function Calendar() {
             setEditingTask(task);
             setSelectedDate(null);
           }}
+          onOpenDetails={setDetailsTask}
         />
       )}
+
+      <TaskDetailsModal
+        task={detailsTask}
+        onClose={() => setDetailsTask(null)}
+        onEdit={(task) => {
+          setDetailsTask(null);
+          setSelectedDate(null);
+          setEditingTask(task);
+        }}
+      />
 
       <TaskEditorModal
         task={editingTask}

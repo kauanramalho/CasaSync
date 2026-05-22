@@ -96,10 +96,12 @@ class Settings(BaseSettings):
     ai_vision_provider: str = "openai"
     openai_api_key: str | None = None
     openai_vision_model: str = "gpt-4.1-mini"
-    openai_vision_timeout_seconds: float = 20.0
-    openai_vision_max_output_tokens: int = 1200
+    openai_vision_timeout_seconds: float = 45.0
+    openai_vision_max_output_tokens: int = 2200
+    ai_image_job_retention_hours: int = 24
 
     task_attachment_storage_dir: Path = BACKEND_DIR / "storage" / "task_attachments"
+    ai_image_job_storage_dir: Path = BACKEND_DIR / "storage" / "ai_image_jobs"
 
     web_push_enabled: bool = False
     vapid_public_key: str | None = None

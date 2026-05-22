@@ -326,12 +326,27 @@ export const uploadsApi = {
 };
 
 export const imageAnalysisApi = {
-  analyzeTaskSuggestions: (files) => {
+  analyzeTaskSuggestions: (files, { imageContext } = {}) => {
     const formData = new FormData();
     const uploadFiles = Array.isArray(files) ? files : [files];
+    const normalizedContext = String(imageContext || "").trim();
+    if (normalizedContext) formData.append("imageContext", normalizedContext);
     uploadFiles.forEach((file) => formData.append(uploadFiles.length > 1 ? "files" : "file", file));
     return uploadRequest("/image-analysis/task-suggestions", { formData });
   },
+  startTaskSuggestionsJob: (files, { imageContext } = {}) => {
+    const formData = new FormData();
+    const uploadFiles = Array.isArray(files) ? files : [files];
+    const normalizedContext = String(imageContext || "").trim();
+    if (normalizedContext) formData.append("imageContext", normalizedContext);
+    uploadFiles.forEach((file) => formData.append(uploadFiles.length > 1 ? "files" : "file", file));
+    return uploadRequest("/image-analysis/task-suggestions/jobs", {
+      formData,
+      networkErrorMessage: "Nao foi possivel iniciar a analise. Verifique sua conexao e tente novamente.",
+      fallbackErrorMessage: "Nao foi possivel iniciar a analise da imagem."
+    });
+  },
+  getTaskSuggestionsJob: (jobId) => request(`/image-analysis/task-suggestions/jobs/${jobId}`),
   getPreferences: () => request("/image-analysis/preferences"),
   savePreferences: (payload) => request("/image-analysis/preferences", { method: "PUT", body: payload }),
   clearPreferences: () => request("/image-analysis/preferences", { method: "DELETE" })
