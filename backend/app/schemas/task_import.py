@@ -1,4 +1,11 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class TaskSuggestionReminder(BaseModel):
+    value: int = Field(gt=0, le=365)
+    unit: Literal["minutes", "hours", "days"]
 
 
 class TaskSuggestionImportItem(BaseModel):
@@ -24,6 +31,7 @@ class TaskSuggestionImportItem(BaseModel):
     reminderEnabled: bool = False
     reminderValue: int | None = Field(default=None, gt=0)
     reminderUnit: str | None = Field(default=None, max_length=16)
+    reminders: list[TaskSuggestionReminder] | None = Field(default=None, max_length=5)
     sourceImageName: str | None = Field(default=None, max_length=255)
     originalText: str | None = Field(default=None, max_length=1200)
 

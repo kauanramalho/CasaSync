@@ -21,7 +21,7 @@ import Button from "./Button";
 import { tasksApi } from "../services/api";
 import { formatDate, normalizeApiError } from "../utils/formatters";
 import { getStoredPreferences } from "../utils/preferences";
-import { formatReminderLead } from "../utils/taskReminders";
+import { formatReminderList, normalizeReminderList } from "../utils/taskReminders";
 import { getTaskPointLabel } from "../utils/tasks";
 import { formatFileSize } from "../utils/files";
 
@@ -180,8 +180,9 @@ export default function TaskDetailsModal({ task, onClose, onEdit }) {
     onEdit?.(currentTask);
   }
 
-  const reminderLabel = currentTask?.reminder_enabled
-    ? `${formatReminderLead(currentTask.reminder_value, currentTask.reminder_unit)} antes${currentTask.reminder_sent ? " - ja enviado" : ""}`
+  const reminderSummary = formatReminderList(normalizeReminderList(currentTask || {}));
+  const reminderLabel = reminderSummary
+    ? `${reminderSummary}${currentTask.reminder_sent ? " - ja enviado" : ""}`
     : "Sem lembrete ativo";
   const calendarLabel = currentTask?.google_calendar_event_id
     ? `Sincronizada${currentTask.google_calendar_synced_at ? ` em ${formatFullDateTime(currentTask.google_calendar_synced_at)}` : ""}`

@@ -19,6 +19,13 @@ class TaskReminderInput(BaseModel):
     reminder_unit: Literal["minutes", "hours", "days"] | None = Field(default=None, validation_alias=AliasChoices("reminder_unit", "reminderUnit"))
 
 
+class TaskReminderItemInput(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    value: int = Field(gt=0, le=365, validation_alias=AliasChoices("value", "reminder_value", "reminderValue", "amount"))
+    unit: Literal["minutes", "hours", "days"] = Field(validation_alias=AliasChoices("unit", "reminder_unit", "reminderUnit"))
+
+
 class TaskCreate(TaskReminderInput):
     title: str = Field(min_length=2, max_length=180)
     description: str | None = Field(default=None, max_length=1200)
@@ -35,6 +42,7 @@ class TaskCreate(TaskReminderInput):
     automation_source_label: str | None = Field(default=None, max_length=180)
     automation_source_reference: str | None = Field(default=None, max_length=1200)
     recurrence_rule: str | None = Field(default=None, max_length=255)
+    reminders: list[TaskReminderItemInput] | None = Field(default=None, max_length=5)
 
 
 class TaskUpdate(BaseModel):
@@ -58,12 +66,21 @@ class TaskUpdate(BaseModel):
     reminder_value: int | None = Field(default=None, gt=0, validation_alias=AliasChoices("reminder_value", "reminderValue"))
     reminder_unit: Literal["minutes", "hours", "days"] | None = Field(default=None, validation_alias=AliasChoices("reminder_unit", "reminderUnit"))
     reminder_sent: bool | None = Field(default=None, validation_alias=AliasChoices("reminder_sent", "reminderSent"))
+    reminders: list[TaskReminderItemInput] | None = Field(default=None, max_length=5)
 
 
 class TaskAssigneeAwardRead(BaseModel):
     user_id: str
     user: UserSummary
     points: int
+
+
+class TaskReminderRead(ORMModel):
+    id: str
+    value: int
+    unit: Literal["minutes", "hours", "days"]
+    reminder_at: datetime
+    sent: bool
 
 
 class TaskRead(ORMModel):
@@ -103,3 +120,4 @@ class TaskRead(ORMModel):
     creator: UserSummary | None = None
     category: CategoryRead | None = None
     attachments: list[TaskAttachmentRead] = []
+    reminders: list[TaskReminderRead] = []

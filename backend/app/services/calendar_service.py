@@ -256,14 +256,25 @@ def _as_event_timezone(value: datetime, timezone_name: str) -> datetime:
     return aware_value.astimezone(target_timezone)
 
 
-def _reminder_minutes(task: Task) -> int | None:
-    if not task.reminder_enabled or not task.reminder_value or not task.reminder_unit:
-        return None
+def _task_reminder_minutes(task: Task) -> list[int]:
     multipliers = {"minutes": 1, "hours": 60, "days": 24 * 60}
-    multiplier = multipliers.get(task.reminder_unit)
-    if not multiplier:
-        return None
-    return int(task.reminder_value) * multiplier
+    reminders = [
+        (reminder.value, reminder.unit)
+        for reminder in getattr(task, "reminders", []) or []
+        if reminder.value and reminder.unit in multipliers
+    ]
+    if not reminders and task.reminder_enabled and task.reminder_value and task.reminder_unit:
+        reminders = [(task.reminder_value, task.reminder_unit)]
+
+    minutes: list[int] = []
+    seen: set[int] = set()
+    for value, unit in reminders:
+        total_minutes = int(value) * multipliers[unit]
+        if total_minutes <= 0 or total_minutes in seen:
+            continue
+        seen.add(total_minutes)
+        minutes.append(total_minutes)
+    return sorted(minutes)[:5]
 
 
 def create_calendar_event_from_task(task: Task, settings: Settings) -> dict:
@@ -288,11 +299,11 @@ def create_calendar_event_from_task(task: Task, settings: Settings) -> dict:
         "extendedProperties": {"private": {"casasyncTaskId": task.id, "casasyncFamilyId": task.family_id}},
     }
 
-    reminder_minutes = _reminder_minutes(task)
+    reminder_minutes = _task_reminder_minutes(task)
     if reminder_minutes:
         event["reminders"] = {
             "useDefault": False,
-            "overrides": [{"method": "popup", "minutes": reminder_minutes}],
+            "overrides": [{"method": "popup", "minutes": minutes} for minutes in reminder_minutes],
         }
 
     return event

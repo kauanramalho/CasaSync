@@ -19,7 +19,7 @@ import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError, toIsoOrNull } from "../utils/formatters";
 import { hasGoogleCalendarDateTime, syncTaskToGoogleCalendarSafely } from "../utils/googleCalendarTasks";
 import { applyTaskAttachmentChanges } from "../utils/taskAttachments";
-import { formatReminderLead, getReminderPayload, getReminderValidationError } from "../utils/taskReminders";
+import { formatReminderList, getReminderPayload, getReminderValidationError, normalizeReminderList } from "../utils/taskReminders";
 
 export default function NewTask() {
   const { user } = useAuth();
@@ -41,6 +41,7 @@ export default function NewTask() {
     due_date: "",
     priority: "media",
     status: "pendente",
+    reminders: [],
     reminder_enabled: false,
     reminder_value: null,
     reminder_unit: null
@@ -87,6 +88,7 @@ export default function NewTask() {
         next.reminder_enabled = false;
         next.reminder_value = null;
         next.reminder_unit = null;
+        next.reminders = [];
       }
       return next;
     });
@@ -129,15 +131,16 @@ export default function NewTask() {
           }
         }
       }
-      const notificationDescription = created.reminder_enabled
-        ? `Lembrete ativado para ${formatReminderLead(created.reminder_value, created.reminder_unit)}.`
+      const reminderSummary = formatReminderList(normalizeReminderList(created));
+      const notificationDescription = reminderSummary
+        ? `Lembrete ativado para ${reminderSummary}.`
         : pendingFiles.length
           ? `${created.title} entrou na lista da casa com anexo.`
           : `${created.title} entrou na lista da casa.`;
       addNotification({
         title: "Nova tarefa criada",
         description: notificationDescription,
-        type: created.reminder_enabled ? "reminder" : "task",
+        type: reminderSummary ? "reminder" : "task",
         actor: user?.name
       });
       showToast({

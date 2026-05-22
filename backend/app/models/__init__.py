@@ -8,7 +8,7 @@ from app.models.image_asset import ImageAsset
 from app.models.integration import GoogleCalendarConnection
 from app.models.notification import Notification, WebPushSubscription
 from app.models.ranking import MonthlyScore, MonthlyWinner
-from app.models.task import Task, TaskAssignee, TaskAttachment
+from app.models.task import Task, TaskAssignee, TaskAttachment, TaskReminder
 from app.models.two_factor import TwoFactorCode
 from app.models.user import User
 
@@ -29,6 +29,7 @@ __all__ = [
     "Task",
     "TaskAssignee",
     "TaskAttachment",
+    "TaskReminder",
     "TwoFactorCode",
     "User",
     "WebPushSubscription",

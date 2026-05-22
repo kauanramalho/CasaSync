@@ -28,7 +28,7 @@ export function parseReminderValue(value) {
   const [amount, unit] = String(value || "").split(":");
   const parsedAmount = Number(amount);
   if (!parsedAmount || !unitLabels[unit]) return reminderOptions[0];
-  return { amount: parsedAmount, unit };
+  return { amount: parsedAmount, value: parsedAmount, unit };
 }
 
 export function formatReminderLead(value, unit) {
@@ -41,6 +41,44 @@ export function formatReminderMessageLead(value, unit) {
   if (!value || !unitLabels[unit]) return "";
   const [singular, plural] = unitLabels[unit];
   return `${value} ${value === 1 ? singular : plural}`;
+}
+
+function reminderTotalMinutes(value, unit) {
+  const multiplier = { minutes: 1, hours: 60, days: 24 * 60 }[unit];
+  return multiplier ? Number(value) * multiplier : 0;
+}
+
+export function reminderKey(reminder) {
+  return `${reminder?.value || reminder?.amount}:${reminder?.unit}`;
+}
+
+export function normalizeReminderList(source = {}) {
+  const rawReminders = Array.isArray(source.reminders) ? source.reminders : [];
+  const normalized = [];
+  const seenMinutes = new Set();
+
+  for (const rawReminder of rawReminders) {
+    const parsedValue = Number(rawReminder?.value ?? rawReminder?.amount ?? rawReminder?.reminder_value ?? rawReminder?.reminderValue);
+    const unit = rawReminder?.unit ?? rawReminder?.reminder_unit ?? rawReminder?.reminderUnit;
+    if (!parsedValue || !unitLabels[unit]) continue;
+    const totalMinutes = reminderTotalMinutes(parsedValue, unit);
+    if (!totalMinutes || seenMinutes.has(totalMinutes)) continue;
+    seenMinutes.add(totalMinutes);
+    normalized.push({ value: parsedValue, amount: parsedValue, unit });
+    if (normalized.length >= 5) break;
+  }
+
+  if (!normalized.length && source.reminder_enabled && source.reminder_value && source.reminder_unit) {
+    return normalizeReminderList({ reminders: [{ value: source.reminder_value, unit: source.reminder_unit }] });
+  }
+
+  return normalized;
+}
+
+export function formatReminderList(reminders = []) {
+  const normalized = normalizeReminderList({ reminders });
+  if (!normalized.length) return "";
+  return normalized.map((reminder) => formatReminderLead(reminder.value, reminder.unit)).join(", ");
 }
 
 export function calculateReminderAt(dueDate, value, unit) {
@@ -62,31 +100,36 @@ export function formatReminderDateTime(value) {
 }
 
 export function getReminderValidationError(form) {
-  if (!form.reminder_enabled) return "";
+  const reminders = normalizeReminderList(form);
+  if (!reminders.length) return "";
   if (!form.due_date) return "Defina um prazo para ativar lembrete.";
 
-  const reminder = parseReminderValue(buildReminderValue(form.reminder_value, form.reminder_unit));
-  const reminderAt = calculateReminderAt(form.due_date, reminder.amount, reminder.unit);
-  if (!reminderAt) return "Escolha quando o lembrete deve acontecer.";
-  if (reminderAt.getTime() <= Date.now()) {
-    return "Esse lembrete ja ficou no passado. Escolha um prazo maior ou uma antecedencia menor.";
+  for (const reminder of reminders) {
+    const reminderAt = calculateReminderAt(form.due_date, reminder.value, reminder.unit);
+    if (!reminderAt) return "Escolha quando o lembrete deve acontecer.";
+    if (reminderAt.getTime() <= Date.now()) {
+      return "Esse lembrete ja ficou no passado. Escolha um prazo maior ou uma antecedencia menor.";
+    }
   }
   return "";
 }
 
 export function getReminderPayload(form) {
-  if (!form.reminder_enabled) {
+  const reminders = normalizeReminderList(form);
+  if (!reminders.length) {
     return {
       reminder_enabled: false,
       reminder_value: null,
-      reminder_unit: null
+      reminder_unit: null,
+      reminders: []
     };
   }
 
-  const reminder = parseReminderValue(buildReminderValue(form.reminder_value, form.reminder_unit));
+  const reminder = reminders[0];
   return {
     reminder_enabled: true,
-    reminder_value: reminder.amount,
-    reminder_unit: reminder.unit
+    reminder_value: reminder.value,
+    reminder_unit: reminder.unit,
+    reminders: reminders.map((item) => ({ value: item.value, unit: item.unit }))
   };
 }

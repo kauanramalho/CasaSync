@@ -6,7 +6,7 @@ Referencia rapida para proximas alteracoes no fluxo de importacao de tarefas por
 
 - A tela de tarefas renderiza `frontend/src/components/ImageTaskImportPanel.jsx`.
 - O usuario seleciona uma ou varias imagens, o frontend valida tipo/tamanho/dimensoes e otimiza antes do envio.
-- `frontend/src/services/api.js` envia `multipart/form-data` para `POST /api/image-analysis/task-suggestions`.
+- `frontend/src/services/api.js` envia `multipart/form-data` para `POST /api/image-analysis/task-suggestions/jobs` e acompanha o job por polling em `GET /api/image-analysis/task-suggestions/jobs/{jobId}`.
 - Para uma imagem, o campo enviado pode ser `file`; para lote, cada arquivo vai em `files`.
 - O backend valida familia ativa, cada arquivo e chama `backend/app/services/image_analysis_service.py`.
 - `backend/app/services/ai_vision_adapter.py` chama OpenAI Vision por imagem e retorna sugestoes no `ImageAnalysisResponse`.
@@ -25,7 +25,8 @@ Referencia rapida para proximas alteracoes no fluxo de importacao de tarefas por
 - Backend persiste em `users.ai_task_import_instructions` com limite de 1500 caracteres e rejeicao de segredos obvios.
 - As instrucoes entram no prompt como preferencias secundarias; o system prompt e as validacoes do backend continuam prevalecendo.
 - Preferencias podem orientar lembretes, categoria, prioridade, descricao e Google Agenda.
-- O CasaSync suporta um lembrete por tarefa nesta etapa; se o usuario pedir mais de um, aplicar o melhor lembrete compativel e avisar.
+- O CasaSync suporta multiplos lembretes por tarefa via `task_reminders`; preserve tambem `reminderEnabled/reminderValue/reminderUnit` como espelho de compatibilidade.
+- Se o usuario pedir "15min e 1h", "1h e 1 dia" ou similares, preencher `reminders` com ate 5 avisos sem duplicar antecedencias.
 
 ## Google Agenda Em Lote
 
@@ -33,6 +34,7 @@ Referencia rapida para proximas alteracoes no fluxo de importacao de tarefas por
 - Funciona para criacao manual em lote e criacao automatica.
 - O backend cria a tarefa mesmo se o Google Agenda falhar.
 - Eventos so sao enviados quando a tarefa tem data e horario confirmados.
+- Multiplos lembretes da tarefa devem virar `reminders.overrides` no evento Google.
 - Se a tarefa ja tiver `google_calendar_event_id` ou o provider encontrar evento existente, a sync deve ser idempotente.
 - Se instrucoes personalizadas pedirem Google Agenda e a sugestao tiver data/horario, `googleCalendarSuggestion` pode marcar a opcao automaticamente, mas o usuario ainda pode desativar.
 
@@ -66,7 +68,7 @@ Referencia rapida para proximas alteracoes no fluxo de importacao de tarefas por
 - Preservar Google Agenda como opcional e somente no clique final de criar tarefas.
 - Se alterar campos editaveis, manter `buildReviewItem`, `buildTaskImportPayload` e validacoes backend alinhados.
 - Nao salvar imagem permanentemente neste fluxo de interpretacao.
-- Manter limite de 10 imagens por analise e 20 sugestoes revisaveis por resposta.
+- Manter limite de 10 imagens por analise e 40 sugestoes revisaveis por resposta.
 
 ## Testes Manuais Recomendados
 

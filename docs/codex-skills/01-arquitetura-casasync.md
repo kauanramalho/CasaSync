@@ -37,7 +37,7 @@ Use este guia antes de mudancas estruturais no CasaSync. Ele resume onde as peca
 - Responsaveis: `Task.assignee_id` ainda existe por compatibilidade, mas a relacao principal para multiplos responsaveis e `TaskAssignee`/`assignee_ids`.
 - Anexos: `TaskAttachmentField` usa endpoints em `routes/tasks.py`; `task_attachment_service.py` valida tipo real, tamanho, familia/tarefa e storage privado.
 - Lembretes/notificacoes: campos de lembrete ficam em `Task`; `notification_service.py` cria notificacoes internas e opcionalmente email/push atras de feature flags.
-- IA por imagem: `ImageTaskImportPanel` envia imagens para `/image-analysis/task-suggestions`; backend chama `image_analysis_service.py` e `ai_vision_adapter.py`; criacao real passa por `/tasks/import-suggestions`.
+- IA por imagem: `ImageTaskImportPanel` envia imagens para `/image-analysis/task-suggestions/jobs`, acompanha por polling, backend chama `image_analysis_job_service.py`, `image_analysis_service.py` e `ai_vision_adapter.py`; criacao real passa por `/tasks/import-suggestions`.
 - Google Agenda: configuracao e OAuth em `calendar_service.py` e rotas de `integrations`; sync de tarefa deve validar usuario, familia e conexao do usuario.
 
 ## Regras de arquitetura

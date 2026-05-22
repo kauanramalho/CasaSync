@@ -4,7 +4,7 @@ import { ArrowDown, ArrowDownUp, ArrowUp, BellRing, Check, Edit3, MoreHorizontal
 import AssigneeStack from "./AssigneeStack";
 import { CategoryBadge, PriorityBadge, StatusBadge } from "./Badges";
 import { formatDate } from "../utils/formatters";
-import { formatReminderLead } from "../utils/taskReminders";
+import { formatReminderList, normalizeReminderList } from "../utils/taskReminders";
 import { getNextTaskSort, sortTasksForDisplay, taskSortColumns } from "../utils/tasks";
 
 function SortHeaderButton({ column, activeSort, onSort }) {
@@ -31,12 +31,8 @@ function SortHeaderButton({ column, activeSort, onSort }) {
 
 function TaskRow({ task, compact, menuOpen, onToggleMenu, onRunAction, onComplete, onEdit, onDelete, onRemoveRecent, onOpenDetails }) {
   const attachmentCount = task.attachments?.length || 0;
-  const hasActiveReminder =
-    task.reminder_enabled &&
-    !task.reminder_sent &&
-    task.reminder_value &&
-    task.reminder_unit &&
-    ["pendente", "em_andamento"].includes(task.status);
+  const reminderSummary = formatReminderList(normalizeReminderList(task));
+  const hasActiveReminder = Boolean(reminderSummary && !task.reminder_sent && ["pendente", "em_andamento"].includes(task.status));
   const clickable = Boolean(onOpenDetails);
 
   function openDetails(event) {
@@ -84,7 +80,7 @@ function TaskRow({ task, compact, menuOpen, onToggleMenu, onRunAction, onComplet
         {hasActiveReminder && (
           <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-600">
             <BellRing className="h-3 w-3" />
-            Lembrete: {formatReminderLead(task.reminder_value, task.reminder_unit)}
+            Lembrete: {reminderSummary}
           </span>
         )}
         {attachmentCount > 0 && (

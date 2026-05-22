@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
+  BellRing,
   CalendarDays,
   CheckCircle2,
   FileImage,
@@ -25,6 +26,7 @@ import { emitAppDataChanged } from "../utils/events";
 import { formatFileSize, imageFileAccept, optimizeImageForAnalysis, validateImageDimensions, validateImageFile } from "../utils/files";
 import { normalizeApiError } from "../utils/formatters";
 import { syncTaskToGoogleCalendarSafely } from "../utils/googleCalendarTasks";
+import { formatReminderList, normalizeReminderList, reminderKey, reminderOptions } from "../utils/taskReminders";
 import {
   LOW_CONFIDENCE_THRESHOLD,
   buildReviewItem,
@@ -38,12 +40,6 @@ import {
   validateReviewItemsBeforeImport
 } from "../utils/taskSuggestionReview";
 import { useToast } from "../hooks/useToast";
-
-function formatReminderSuggestion(value, unit) {
-  const labels = { minutes: "minuto(s)", hours: "hora(s)", days: "dia(s)" };
-  if (!value || !unit) return "1 hora antes";
-  return `${value} ${labels[unit] || unit} antes`;
-}
 
 function mergeDateTime(date, time) {
   if (!date) return "";
@@ -505,7 +501,18 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
     updateReviewItem(suggestionId, {
       date: next.date,
       time: next.time,
-      ...(!next.date ? { reminderEnabled: false } : {})
+      ...(!next.date ? { reminderEnabled: false, reminders: [], reminderValue: null, reminderUnit: null } : {})
+    });
+  }
+
+  function updateReviewReminders(suggestionId, reminders) {
+    const normalized = normalizeReminderList({ reminders });
+    const first = normalized[0];
+    updateReviewItem(suggestionId, {
+      reminders: normalized.map((reminder) => ({ value: reminder.value, unit: reminder.unit })),
+      reminderEnabled: normalized.length > 0,
+      reminderValue: first?.value || null,
+      reminderUnit: first?.unit || null
     });
   }
 
@@ -1187,18 +1194,45 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
                           )}
                         </div>
 
-                        <label className="flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50/70 px-3 py-2 text-xs font-bold text-blue-700">
-                          <input
-                            type="checkbox"
-                            className="mt-0.5 accent-blue-600"
-                            checked={item.reminderEnabled}
-                            onChange={(event) => updateReviewItem(item.suggestionId, { reminderEnabled: event.target.checked })}
-                            disabled={!item.date}
-                          />
-                          <span>
-                            Ativar lembrete {formatReminderSuggestion(item.reminderValue, item.reminderUnit)} quando houver data.
-                          </span>
-                        </label>
+                        <div className="rounded-2xl border border-blue-100 bg-blue-50/70 px-3 py-3 text-xs font-bold text-blue-700">
+                          <div className="flex items-start gap-3">
+                            <BellRing className="mt-0.5 h-4 w-4 shrink-0" />
+                            <div className="min-w-0 flex-1">
+                              <p>Lembretes da tarefa</p>
+                              <p className="mt-1 text-blue-600/80">
+                                {item.date
+                                  ? item.reminderEnabled
+                                    ? formatReminderList(item.reminders)
+                                    : "Selecione um ou mais avisos antes do prazo."
+                                  : "Defina uma data antes de ativar lembretes."}
+                              </p>
+                              {item.date && (
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {reminderOptions.map((option) => {
+                                    const selected = normalizeReminderList(item).some((reminder) => reminderKey(reminder) === reminderKey(option));
+                                    const nextReminders = selected
+                                      ? normalizeReminderList(item).filter((reminder) => reminderKey(reminder) !== reminderKey(option))
+                                      : [...normalizeReminderList(item), { value: option.amount, unit: option.unit }];
+                                    return (
+                                      <button
+                                        key={option.value}
+                                        type="button"
+                                        onClick={() => updateReviewReminders(item.suggestionId, nextReminders)}
+                                        className={`rounded-full border px-3 py-1.5 text-[11px] font-black transition ${
+                                          selected
+                                            ? "border-blue-200 bg-white text-blue-700 shadow-sm"
+                                            : "border-white/80 bg-white/60 text-muted hover:border-blue-100 hover:text-blue-700"
+                                        }`}
+                                      >
+                                        {option.label}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
 
                         {item.confidence < LOW_CONFIDENCE_THRESHOLD && (
                           <label className="flex items-start gap-3 rounded-2xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">

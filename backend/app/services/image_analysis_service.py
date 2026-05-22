@@ -1,3 +1,5 @@
+import re
+
 from fastapi import UploadFile
 
 from app.core.config import Settings
@@ -153,21 +155,30 @@ def _apply_custom_instruction_defaults(items: list[ImageAnalysisItem], custom_in
     if not instructions:
         return items
 
-    reminder = _preferred_reminder(instructions)
+    reminders = _preferred_reminders(instructions)
     wants_calendar = "google agenda" in instructions or "google calendar" in instructions
-    mentions_multiple_reminders = reminder and _mentions_multiple_reminders(instructions)
     updated_items = []
 
     for item in items:
         warnings = list(item.warnings or [])
         patch = {}
 
-        if reminder:
+        if reminders:
             if item.date:
-                if not item.reminderEnabled:
-                    patch.update({"reminderEnabled": True, "reminderValue": reminder[0], "reminderUnit": reminder[1]})
-                if mentions_multiple_reminders:
-                    warnings.append("As instrucoes pedem mais de um lembrete, mas o CasaSync suporta um lembrete por tarefa nesta etapa.")
+                merged_reminders = _merge_reminders(
+                    [(reminder.value, reminder.unit) for reminder in (item.reminders or [])],
+                    reminders,
+                )
+                if merged_reminders:
+                    first_value, first_unit = merged_reminders[0]
+                    patch.update(
+                        {
+                            "reminderEnabled": True,
+                            "reminderValue": first_value,
+                            "reminderUnit": first_unit,
+                            "reminders": [{"value": value, "unit": unit} for value, unit in merged_reminders],
+                        }
+                    )
             else:
                 warnings.append("As instrucoes pedem lembrete, mas a IA nao encontrou data suficiente para criar lembrete valido.")
 
@@ -184,17 +195,39 @@ def _apply_custom_instruction_defaults(items: list[ImageAnalysisItem], custom_in
     return updated_items
 
 
-def _preferred_reminder(instructions: str) -> tuple[int, str] | None:
-    if any(term in instructions for term in ("1 hora", "uma hora", "1h", "60 minutos")):
-        return 1, "hours"
-    if any(term in instructions for term in ("1 dia", "um dia", "24 horas")):
-        return 1, "days"
-    if any(term in instructions for term in ("15 minutos", "15 min")):
-        return 15, "minutes"
-    return None
+def _reminder_total_minutes(value: int, unit: str) -> int:
+    multipliers = {"minutes": 1, "hours": 60, "days": 24 * 60}
+    return int(value) * multipliers[unit]
 
 
-def _mentions_multiple_reminders(instructions: str) -> bool:
-    hour = any(term in instructions for term in ("1 hora", "uma hora", "1h", "60 minutos"))
-    day = any(term in instructions for term in ("1 dia", "um dia", "24 horas"))
-    return hour and day
+def _merge_reminders(*groups: list[tuple[int, str]]) -> list[tuple[int, str]]:
+    merged: list[tuple[int, str]] = []
+    seen_minutes: set[int] = set()
+    for group in groups:
+        for value, unit in group:
+            if unit not in {"minutes", "hours", "days"}:
+                continue
+            total_minutes = _reminder_total_minutes(value, unit)
+            if total_minutes <= 0 or total_minutes in seen_minutes:
+                continue
+            seen_minutes.add(total_minutes)
+            merged.append((value, unit))
+            if len(merged) >= 5:
+                return merged
+    return merged
+
+
+def _preferred_reminders(instructions: str) -> list[tuple[int, str]]:
+    candidates: list[tuple[int, str]] = []
+    normalized = instructions.replace("uma hora", "1 hora").replace("um dia", "1 dia")
+    for value, unit in re.findall(r"\b(\d{1,3})\s*(minutos?|mins?|min)\b", normalized):
+        candidates.append((int(value), "minutes"))
+    for value, unit in re.findall(r"\b(\d{1,3})\s*(horas?|hrs?|h)\b", normalized):
+        candidates.append((int(value), "hours"))
+    for value, unit in re.findall(r"\b(\d{1,3})\s*(dias?|d)\b", normalized):
+        candidates.append((int(value), "days"))
+    if "60 minutos" in normalized:
+        candidates.append((1, "hours"))
+    if "24 horas" in normalized:
+        candidates.append((1, "days"))
+    return _merge_reminders(candidates)

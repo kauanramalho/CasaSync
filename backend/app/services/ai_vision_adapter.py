@@ -50,6 +50,18 @@ IMAGE_ANALYSIS_JSON_SCHEMA = {
                     "reminderEnabled": {"type": "boolean"},
                     "reminderValue": {"anyOf": [{"type": "integer", "minimum": 1, "maximum": 365}, {"type": "null"}]},
                     "reminderUnit": {"anyOf": [{"type": "string", "enum": ["minutes", "hours", "days"]}, {"type": "null"}]},
+                    "reminders": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "value": {"type": "integer", "minimum": 1, "maximum": 365},
+                                "unit": {"type": "string", "enum": ["minutes", "hours", "days"]},
+                            },
+                            "required": ["value", "unit"],
+                        },
+                    },
                     "sourceImageName": {"anyOf": [{"type": "string"}, {"type": "null"}]},
                     "originalText": {"anyOf": [{"type": "string"}, {"type": "null"}]},
                     "needsReview": {"type": "boolean", "enum": [True]},
@@ -71,6 +83,7 @@ IMAGE_ANALYSIS_JSON_SCHEMA = {
                     "reminderEnabled",
                     "reminderValue",
                     "reminderUnit",
+                    "reminders",
                     "sourceImageName",
                     "originalText",
                     "needsReview",
@@ -167,6 +180,40 @@ def _clean_time(value) -> str | None:
     return text if text and TIME_RE.match(text) else None
 
 
+def _reminder_total_minutes(value: int, unit: str) -> int:
+    multipliers = {"minutes": 1, "hours": 60, "days": 24 * 60}
+    return int(value) * multipliers[unit]
+
+
+def _clean_reminders(raw_item: dict) -> list[dict]:
+    reminders = []
+    raw_reminders = _as_list(raw_item.get("reminders"))
+    for raw_reminder in raw_reminders:
+        if isinstance(raw_reminder, dict):
+            reminders.append({"value": raw_reminder.get("value"), "unit": raw_reminder.get("unit")})
+
+    reminders.append({"value": raw_item.get("reminderValue"), "unit": raw_item.get("reminderUnit")})
+    cleaned = []
+    seen_minutes: set[int] = set()
+    for reminder in reminders:
+        unit = reminder.get("unit")
+        unit = str(unit).strip().lower() if unit is not None else None
+        try:
+            value = int(reminder.get("value")) if reminder.get("value") is not None else None
+        except (TypeError, ValueError):
+            value = None
+        if value is None or not (1 <= value <= 365) or unit not in REMINDER_UNITS:
+            continue
+        total_minutes = _reminder_total_minutes(value, unit)
+        if total_minutes in seen_minutes:
+            continue
+        seen_minutes.add(total_minutes)
+        cleaned.append({"value": value, "unit": unit})
+        if len(cleaned) >= 5:
+            break
+    return cleaned
+
+
 def _sanitize_openai_payload(payload: dict) -> dict:
     warnings = [
         str(warning).strip()[:240]
@@ -187,18 +234,9 @@ def _sanitize_openai_payload(payload: dict) -> dict:
         item_type = str(raw_item.get("type") or "task").strip().lower()
         priority = raw_item.get("priority")
         priority = str(priority).strip().lower() if priority is not None else None
-        reminder_unit = raw_item.get("reminderUnit")
-        reminder_unit = str(reminder_unit).strip().lower() if reminder_unit is not None else None
-        reminder_value = raw_item.get("reminderValue")
-        try:
-            reminder_value = int(reminder_value) if reminder_value is not None else None
-        except (TypeError, ValueError):
-            reminder_value = None
-        if reminder_value is not None and not (1 <= reminder_value <= 365):
-            reminder_value = None
-        if reminder_unit not in REMINDER_UNITS:
-            reminder_unit = None
-        reminder_enabled = bool(raw_item.get("reminderEnabled")) and bool(reminder_value and reminder_unit)
+        reminders = _clean_reminders(raw_item)
+        first_reminder = reminders[0] if reminders else None
+        reminder_enabled = bool(raw_item.get("reminderEnabled") or reminders) and bool(first_reminder)
         items.append(
             {
                 "type": item_type if item_type in TYPE_VALUES else "task",
@@ -218,8 +256,9 @@ def _sanitize_openai_payload(payload: dict) -> dict:
                     if str(warning).strip()
                 ][:10],
                 "reminderEnabled": reminder_enabled,
-                "reminderValue": reminder_value if reminder_enabled else None,
-                "reminderUnit": reminder_unit if reminder_enabled else None,
+                "reminderValue": first_reminder["value"] if reminder_enabled else None,
+                "reminderUnit": first_reminder["unit"] if reminder_enabled else None,
+                "reminders": reminders if reminder_enabled else [],
                 "sourceImageName": _clean_optional_text(raw_item.get("sourceImageName"), 255),
                 "originalText": _clean_optional_text(raw_item.get("originalText"), 1200),
                 "needsReview": True,
@@ -322,7 +361,8 @@ class OpenAIVisionAdapter:
                                 "ou agenda inclinada/escura. Extraia no maximo 40 sugestoes revisaveis. "
                                 "Use datas em YYYY-MM-DD, horarios em HH:mm e prioridades low, medium, high ou urgent. "
                                 "Inclua observacoes relevantes em description, categoria provavel em category, responsavel quando aparecer "
-                                "e lembrete sugerido em reminderEnabled/reminderValue/reminderUnit apenas quando fizer sentido. "
+                                "e lembretes sugeridos em reminders, reminderEnabled, reminderValue e reminderUnit apenas quando fizer sentido. "
+                                "Quando o texto pedir varios avisos, como 15min e 1h, retorne ate 5 itens em reminders sem duplicar antecedencias. "
                                 "Preencha sourceImageName com o nome da imagem analisada, originalText com trechos lidos quando houver "
                                 "e googleCalendarSuggestion=true para eventos/compromissos com data clara. "
                                 "Se a imagem estiver ruim, vazia, ilegivel ou ambigua, retorne items vazio, baixa confianca e warnings claros."

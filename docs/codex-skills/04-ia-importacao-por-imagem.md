@@ -6,8 +6,9 @@ Use este guia antes de alterar upload de imagem, OpenAI Vision, sugestoes da IA,
 
 - Entrada visual: `frontend/src/components/ImageTaskImportPanel.jsx`, exibido em `frontend/src/pages/NewTask.jsx`.
 - O usuario seleciona uma ou varias imagens. O frontend valida tipo, tamanho/dimensoes, evita duplicadas no lote e otimiza antes de enviar.
-- Cliente API: `imageAnalysisApi.analyzeTaskSuggestions` em `frontend/src/services/api.js`.
-- Endpoint: `POST /api/image-analysis/task-suggestions`.
+- Cliente API: `imageAnalysisApi.startTaskSuggestionsJob` e polling por `getTaskSuggestionsJob` em `frontend/src/services/api.js`.
+- Endpoint principal assíncrono: `POST /api/image-analysis/task-suggestions/jobs`, seguido por `GET /api/image-analysis/task-suggestions/jobs/{job_id}`.
+- O endpoint síncrono `POST /api/image-analysis/task-suggestions` ainda existe como compatibilidade, mas o fluxo visual usa job persistido para reduzir timeout.
 - Backend: `backend/app/routes/image_analysis.py` valida autenticacao, familia ativa e feature flag de imagem.
 - Service: `backend/app/services/image_analysis_service.py`.
 - Validacao de arquivo: `backend/app/services/image_service.py`.
@@ -25,7 +26,7 @@ Use este guia antes de alterar upload de imagem, OpenAI Vision, sugestoes da IA,
 ## Multiplas imagens e sugestoes
 
 - Limite atual de analise: 10 imagens por envio em `MAX_IMAGE_ANALYSIS_FILES`.
-- Limite atual de sugestoes revisaveis: 20 itens em `MAX_IMAGE_ANALYSIS_ITEMS`.
+- Limite atual de sugestoes revisaveis: 40 itens em `MAX_IMAGE_ANALYSIS_ITEMS`.
 - O frontend envia `file` para imagem unica e `files` para lote.
 - O backend processa por imagem, registra `imageErrors` por arquivo e nao derruba o lote inteiro quando uma imagem falha.
 - A IA pode gerar zero, uma ou varias sugestoes por imagem; nao force uma tarefa por imagem.
@@ -41,7 +42,8 @@ Campos principais em `ImageAnalysisItem`:
 - `category`, `priority`, `responsible`.
 - `confidence` de 0 a 1.
 - `warnings`, `needsReview`.
-- `reminderEnabled`, `reminderValue`, `reminderUnit`.
+- `reminderEnabled`, `reminderValue`, `reminderUnit` para compatibilidade.
+- `reminders`: lista de ate 5 lembretes `{ value, unit }`, usada quando a IA ou as instrucoes pedirem multiplos avisos.
 - `sourceImageName`, `originalText`.
 - `googleCalendarSuggestion`.
 
@@ -67,11 +69,11 @@ A resposta completa traz `sourceType`, `overallConfidence`, `items`, `warnings`,
 
 ## Riscos conhecidos
 
-- Timeout da OpenAI ou imagem grande pode causar demora perceptivel.
+- Timeout da OpenAI ou imagem grande e mitigado por job/polling, mas o provider ainda pode falhar ou retornar JSON invalido.
 - Fotos inclinadas, baixa luz, prints comprimidos e textos pequenos geram baixa confianca.
 - IA pode sugerir nomes de responsaveis/categorias que nao existem; o backend deve validar contra a familia atual.
 - Datas podem vir ambiguas; warnings devem ser preservados.
-- O sistema suporta um lembrete por tarefa nesta etapa.
+- O sistema suporta multiplos lembretes por tarefa via `task_reminders`, mantendo campos legados como espelho do primeiro lembrete.
 - Duplicidade e apenas defensiva/basica; nao trate como garantia perfeita.
 - Google Agenda exige data e horario confirmados para sync segura.
 

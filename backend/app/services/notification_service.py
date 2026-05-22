@@ -9,7 +9,7 @@ from app.core.config import get_settings
 from app.models.enums import TaskStatus
 from app.models.family import Family, FamilyMember
 from app.models.notification import Notification, WebPushSubscription
-from app.models.task import Task
+from app.models.task import Task, TaskReminder
 from app.models.user import User
 from app.schemas.notification import ReminderProcessResult, WebPushSubscriptionIn
 from app.services.email_service import send_task_reminder_email
@@ -154,18 +154,18 @@ def disable_web_push_subscription(db: Session, *, user_id: str, endpoint: str | 
     return len(rows)
 
 
-def _push_payload(task: Task) -> str:
+def _push_payload(task: Task, reminder_id: str | None = None) -> str:
     return json.dumps(
         {
             "title": _notification_title(),
             "body": _notification_description(task),
             "url": "/tarefas",
-            "tag": f"task-reminder-{task.id}",
+            "tag": f"task-reminder-{task.id}-{reminder_id or 'legacy'}",
         }
     )
 
 
-def send_task_reminder_push(db: Session, *, user_id: str, family_id: str, task: Task) -> str:
+def send_task_reminder_push(db: Session, *, user_id: str, family_id: str, task: Task, reminder_id: str | None = None) -> str:
     settings = get_settings()
     if not settings.web_push_enabled:
         return "disabled"
@@ -198,7 +198,7 @@ def send_task_reminder_push(db: Session, *, user_id: str, family_id: str, task: 
                     "endpoint": subscription.endpoint,
                     "keys": {"p256dh": subscription.p256dh, "auth": subscription.auth},
                 },
-                data=_push_payload(task),
+                data=_push_payload(task, reminder_id),
                 vapid_private_key=settings.vapid_private_key,
                 vapid_claims={"sub": settings.vapid_subject},
             )
@@ -267,6 +267,103 @@ def process_due_task_reminders(db: Session, *, family_id: str | None = None, now
     if family_id:
         refresh_overdue_tasks(db, family_id)
 
+    query = (
+        db.query(TaskReminder)
+        .join(Task, Task.id == TaskReminder.task_id)
+        .options(
+            selectinload(TaskReminder.task).selectinload(Task.assignee),
+            selectinload(TaskReminder.task).selectinload(Task.assignee_links),
+            selectinload(TaskReminder.task).selectinload(Task.creator),
+        )
+        .filter(
+            TaskReminder.sent.is_(False),
+            TaskReminder.reminder_at <= current_time,
+            Task.archived_at.is_(None),
+            Task.status != TaskStatus.DONE.value,
+        )
+    )
+    if family_id:
+        query = query.filter(Task.family_id == family_id)
+
+    due_reminders = query.order_by(TaskReminder.reminder_at.asc()).limit(100).all()
+    result = ReminderProcessResult(scanned=len(due_reminders))
+
+    for reminder in due_reminders:
+        task = reminder.task
+        if not task:
+            reminder.sent = True
+            result.skipped += 1
+            continue
+
+        recipients = _active_recipients(db, task)
+        if not recipients:
+            reminder.sent = True
+            task.reminder_sent = all(item.sent for item in task.reminders)
+            result.skipped += 1
+            continue
+
+        family_name = _family_name(db, task.family_id)
+        for recipient in recipients:
+            dedupe_key = f"task-reminder:{task.family_id}:{task.id}:{reminder.reminder_at.isoformat()}:{recipient.id}"
+            existing = db.query(Notification).filter(Notification.dedupe_key == dedupe_key).first()
+            if existing:
+                result.skipped += 1
+                continue
+
+            notification = Notification(
+                family_id=task.family_id,
+                user_id=recipient.id,
+                task_id=task.id,
+                type="reminder",
+                title=_notification_title(),
+                description=_notification_description(task),
+                dedupe_key=dedupe_key,
+            )
+            db.add(notification)
+            db.flush()
+            result.created += 1
+
+            try:
+                email_status = (
+                    send_task_reminder_email(
+                        recipient=recipient.email,
+                        recipient_name=recipient.name,
+                        task_title=task.title,
+                        due_date=task.due_date,
+                        family_name=family_name,
+                    )
+                    if recipient.email_task_reminders_enabled
+                    else "not_requested"
+                )
+            except Exception:
+                email_status = "failed"
+            _record_email(notification, email_status, result)
+
+            try:
+                push_status = (
+                    send_task_reminder_push(db, user_id=recipient.id, family_id=task.family_id, task=task, reminder_id=reminder.id)
+                    if recipient.push_task_reminders_enabled
+                    else "not_requested"
+                )
+            except Exception:
+                push_status = "failed"
+            _record_push(notification, push_status, result)
+
+        reminder.sent = True
+        task.reminder_sent = all(item.sent for item in task.reminders)
+        db.add(task)
+        db.add(reminder)
+
+    if due_reminders:
+        db.commit()
+    legacy_result = _process_due_task_reminders_legacy(db, family_id=family_id, now=current_time)
+    for field in ReminderProcessResult.model_fields:
+        setattr(result, field, getattr(result, field) + getattr(legacy_result, field))
+    return result
+
+
+def _process_due_task_reminders_legacy(db: Session, *, family_id: str | None = None, now: datetime | None = None) -> ReminderProcessResult:
+    current_time = now or _utcnow()
     query = db.query(Task).filter(
         Task.archived_at.is_(None),
         Task.reminder_enabled.is_(True),
@@ -274,6 +371,7 @@ def process_due_task_reminders(db: Session, *, family_id: str | None = None, now
         Task.reminder_at.isnot(None),
         Task.reminder_at <= current_time,
         Task.status != TaskStatus.DONE.value,
+        ~Task.reminders.any(),
     )
     if family_id:
         query = query.filter(Task.family_id == family_id)

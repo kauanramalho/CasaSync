@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.models.category import Category
 from app.models.enums import TaskPriority, TaskStatus
 from app.models.family import FamilyMember
-from app.models.task import Task, TaskAssignee
+from app.models.task import Task, TaskAssignee, TaskReminder
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskUpdate
 from app.services.category_service import get_category_by_name
@@ -29,6 +29,7 @@ REMINDER_DELTAS = {
     "hours": lambda value: timedelta(hours=value),
     "days": lambda value: timedelta(days=value),
 }
+MAX_TASK_REMINDERS = 5
 
 
 def refresh_overdue_tasks(db: Session, family_id: str) -> None:
@@ -56,6 +57,7 @@ def _task_query(db: Session):
         selectinload(Task.creator),
         selectinload(Task.category),
         selectinload(Task.attachments),
+        selectinload(Task.reminders),
     )
 
 
@@ -106,6 +108,7 @@ def _as_aware_utc(value: datetime) -> datetime:
 
 
 def _clear_task_reminder(task: Task) -> None:
+    task.reminders.clear()
     task.reminder_enabled = False
     task.reminder_value = None
     task.reminder_unit = None
@@ -113,46 +116,120 @@ def _clear_task_reminder(task: Task) -> None:
     task.reminder_sent = False
 
 
-def _configure_task_reminder(
-    task: Task,
+def _reminder_total_minutes(value: int, unit: str) -> int:
+    multipliers = {"minutes": 1, "hours": 60, "days": 24 * 60}
+    return int(value) * multipliers[unit]
+
+
+def _normalize_reminder_inputs(reminders: list | None) -> list[tuple[int, str]]:
+    normalized: list[tuple[int, str]] = []
+    seen_minutes: set[int] = set()
+    for reminder in reminders or []:
+        value = getattr(reminder, "value", None)
+        unit = getattr(reminder, "unit", None)
+        if isinstance(reminder, dict):
+            value = reminder.get("value") or reminder.get("reminder_value") or reminder.get("reminderValue") or reminder.get("amount")
+            unit = reminder.get("unit") or reminder.get("reminder_unit") or reminder.get("reminderUnit")
+        try:
+            parsed_value = int(value)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Escolha quando o lembrete deve acontecer.")
+        if parsed_value <= 0 or parsed_value > 365 or unit not in REMINDER_DELTAS:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Escolha quando o lembrete deve acontecer.")
+        total_minutes = _reminder_total_minutes(parsed_value, unit)
+        if total_minutes in seen_minutes:
+            continue
+        seen_minutes.add(total_minutes)
+        normalized.append((parsed_value, unit))
+        if len(normalized) >= MAX_TASK_REMINDERS:
+            break
+    return normalized
+
+
+def _legacy_reminder_inputs(
     *,
     enabled: bool | None,
     reminder_value: int | None,
     reminder_unit: str | None,
-    due_date_changed: bool = False,
-) -> None:
+    task: Task | None = None,
+) -> list[tuple[int, str]]:
     if enabled is False:
-        _clear_task_reminder(task)
-        return
-
-    if due_date_changed and task.due_date is None and enabled is None:
-        _clear_task_reminder(task)
-        return
-
-    should_enable = enabled if enabled is not None else task.reminder_enabled
+        return []
+    should_enable = enabled if enabled is not None else bool(task and task.reminder_enabled)
     if not should_enable:
+        return []
+    value = reminder_value if reminder_value is not None else (task.reminder_value if task else None)
+    unit = reminder_unit if reminder_unit is not None else (task.reminder_unit if task else None)
+    return _normalize_reminder_inputs([{"value": value, "unit": unit}])
+
+
+def _current_reminder_inputs(task: Task) -> list[tuple[int, str]]:
+    if task.reminders:
+        return _normalize_reminder_inputs([{"value": reminder.value, "unit": reminder.unit} for reminder in task.reminders])
+    return _legacy_reminder_inputs(
+        enabled=task.reminder_enabled,
+        reminder_value=task.reminder_value,
+        reminder_unit=task.reminder_unit,
+        task=task,
+    )
+
+
+def _mirror_legacy_reminder_fields(task: Task) -> None:
+    active_reminders = sorted(task.reminders, key=lambda reminder: reminder.reminder_at)
+    if not active_reminders:
+        task.reminder_enabled = False
+        task.reminder_value = None
+        task.reminder_unit = None
+        task.reminder_at = None
+        task.reminder_sent = False
         return
 
-    value = reminder_value if reminder_value is not None else task.reminder_value
-    unit = reminder_unit if reminder_unit is not None else task.reminder_unit
+    first = active_reminders[0]
+    task.reminder_enabled = True
+    task.reminder_value = first.value
+    task.reminder_unit = first.unit
+    task.reminder_at = first.reminder_at
+    task.reminder_sent = all(reminder.sent for reminder in active_reminders)
+
+
+def _sync_task_reminders(task: Task, reminders: list[tuple[int, str]], *, validate_future: bool = True) -> None:
+    if not reminders:
+        _clear_task_reminder(task)
+        return
 
     if task.due_date is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Defina um prazo para ativar lembrete na tarefa.")
-    if value is None or unit not in REMINDER_DELTAS:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Escolha quando o lembrete deve acontecer.")
 
-    reminder_at = _as_aware_utc(task.due_date) - REMINDER_DELTAS[unit](value)
-    if reminder_at <= datetime.now(timezone.utc):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Esse lembrete ja ficou no passado. Escolha um prazo maior ou uma antecedencia menor.",
+    now = datetime.now(timezone.utc)
+    next_reminders: list[TaskReminder] = []
+    for value, unit in _normalize_reminder_inputs([{"value": value, "unit": unit} for value, unit in reminders]):
+        reminder_at = _as_aware_utc(task.due_date) - REMINDER_DELTAS[unit](value)
+        if validate_future and reminder_at <= now:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Esse lembrete ja ficou no passado. Escolha um prazo maior ou uma antecedencia menor.",
+            )
+        next_reminders.append(
+            TaskReminder(
+                task_id=task.id,
+                family_id=task.family_id,
+                value=value,
+                unit=unit,
+                reminder_at=reminder_at,
+                sent=False,
+            )
         )
 
-    task.reminder_enabled = True
-    task.reminder_value = value
-    task.reminder_unit = unit
-    task.reminder_at = reminder_at
-    task.reminder_sent = False
+    task.reminders.clear()
+    task.reminders.extend(next_reminders)
+    _mirror_legacy_reminder_fields(task)
+
+
+def _mark_task_reminders_sent(task: Task) -> None:
+    for reminder in task.reminders:
+        reminder.sent = True
+    if task.reminder_enabled:
+        task.reminder_sent = True
 
 
 def _apply_member_points(db: Session, family_id: str, user_id: str, points: int) -> None:
@@ -274,19 +351,29 @@ def list_due_reminder_tasks(db: Session, family_id: str) -> list[Task]:
     refresh_overdue_tasks(db, family_id)
     maintain_task_retention(db, family_id)
     now = datetime.now(timezone.utc)
+    due_task_ids = [
+        row[0]
+        for row in (
+            db.query(TaskReminder.task_id)
+            .join(Task, TaskReminder.task_id == Task.id)
+            .filter(
+                Task.family_id == family_id,
+                Task.archived_at.is_(None),
+                TaskReminder.sent.is_(False),
+                TaskReminder.reminder_at <= now,
+                Task.status.in_([TaskStatus.PENDING.value, TaskStatus.IN_PROGRESS.value]),
+            )
+            .order_by(TaskReminder.reminder_at.asc())
+            .limit(50)
+            .all()
+        )
+    ]
+    if not due_task_ids:
+        return []
     return (
         _task_query(db)
-        .filter(
-            Task.family_id == family_id,
-            Task.archived_at.is_(None),
-            Task.reminder_enabled.is_(True),
-            Task.reminder_sent.is_(False),
-            Task.reminder_at.isnot(None),
-            Task.reminder_at <= now,
-            Task.status.in_([TaskStatus.PENDING.value, TaskStatus.IN_PROGRESS.value]),
-        )
-        .order_by(Task.reminder_at.asc())
-        .limit(50)
+        .filter(Task.family_id == family_id, Task.id.in_(due_task_ids))
+        .order_by(Task.due_date.asc(), Task.created_at.desc())
         .all()
     )
 
@@ -324,19 +411,23 @@ def create_task(db: Session, family_id: str, creator_id: str, payload: TaskCreat
         automation_source_reference=payload.automation_source_reference,
         recurrence_rule=payload.recurrence_rule,
     )
-    _configure_task_reminder(
-        task,
-        enabled=payload.reminder_enabled,
-        reminder_value=payload.reminder_value,
-        reminder_unit=payload.reminder_unit,
-    )
     db.add(task)
     db.flush()
     _set_task_assignees(db, task, assignee_ids)
+    reminder_inputs = (
+        _normalize_reminder_inputs(payload.reminders)
+        if payload.reminders is not None
+        else _legacy_reminder_inputs(
+            enabled=payload.reminder_enabled,
+            reminder_value=payload.reminder_value,
+            reminder_unit=payload.reminder_unit,
+        )
+    )
+    _sync_task_reminders(task, reminder_inputs)
 
     if payload.status == TaskStatus.DONE:
         _complete_task_without_commit(db, task)
-        task.reminder_sent = True
+        _mark_task_reminders_sent(task)
     else:
         task.status = payload.status.value
 
@@ -374,6 +465,9 @@ def update_task(db: Session, family_id: str, task_id: str, payload: TaskUpdate) 
     reminder_value = data.pop("reminder_value", None)
     reminder_unit = data.pop("reminder_unit", None)
     reminder_sent = data.pop("reminder_sent", None)
+    reminders_provided = "reminders" in data
+    reminder_entries = data.pop("reminders", None)
+    legacy_reminder_provided = any(field in payload.model_fields_set for field in ("reminder_enabled", "reminder_value", "reminder_unit"))
     data.pop("assignee_ids", None)
     data.pop("assignee_id", None)
 
@@ -381,21 +475,36 @@ def update_task(db: Session, family_id: str, task_id: str, payload: TaskUpdate) 
         setattr(task, field, value)
 
     next_status_done = status_value in (TaskStatus.DONE, TaskStatus.DONE.value)
-    if next_status_done:
-        if reminder_enabled is False:
-            _clear_task_reminder(task)
-        elif task.reminder_enabled or reminder_enabled:
-            task.reminder_sent = True
-    else:
-        _configure_task_reminder(
-            task,
+    desired_reminders: list[tuple[int, str]] | None = None
+    if reminders_provided:
+        desired_reminders = _normalize_reminder_inputs(reminder_entries)
+    elif legacy_reminder_provided:
+        desired_reminders = _legacy_reminder_inputs(
             enabled=reminder_enabled,
             reminder_value=reminder_value,
             reminder_unit=reminder_unit,
-            due_date_changed=due_date_changed,
+            task=task,
         )
-        if reminder_sent is not None and reminder_enabled is None and reminder_value is None and reminder_unit is None:
+    elif due_date_changed:
+        desired_reminders = _current_reminder_inputs(task)
+
+    if next_status_done:
+        if desired_reminders == []:
+            _clear_task_reminder(task)
+        elif desired_reminders is not None:
+            _sync_task_reminders(task, desired_reminders, validate_future=False)
+            _mark_task_reminders_sent(task)
+        else:
+            _mark_task_reminders_sent(task)
+    else:
+        if due_date_changed and task.due_date is None:
+            _clear_task_reminder(task)
+        elif desired_reminders is not None:
+            _sync_task_reminders(task, desired_reminders)
+        if reminder_sent is not None and desired_reminders is None:
             task.reminder_sent = reminder_sent
+            for reminder in task.reminders:
+                reminder.sent = reminder_sent
 
     if assignee_ids is not None:
         _set_task_assignees(db, task, assignee_ids)
@@ -421,7 +530,7 @@ def complete_task(db: Session, family_id: str, task_id: str) -> Task:
         _reopen_task_without_commit(db, task)
     else:
         _complete_task_without_commit(db, task)
-        task.reminder_sent = True
+        _mark_task_reminders_sent(task)
 
     db.commit()
     return get_task(db, family_id, task.id)

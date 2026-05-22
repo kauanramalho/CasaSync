@@ -170,7 +170,7 @@ def _auto_review_reason(db: Session, family_id: str, item: TaskSuggestionImportI
     if item.type in {"event", "evento", "reminder", "lembrete"} and not item.date:
         return "Evento ou lembrete sem data precisa de revisao manual."
 
-    if item.reminderEnabled and not item.date:
+    if (item.reminderEnabled or item.reminders) and not item.date:
         return "Lembrete sugerido sem data nao pode ser criado automaticamente."
 
     try:
@@ -215,6 +215,14 @@ def _description_with_import_note(item: TaskSuggestionImportItem) -> str | None:
         details.append("Avisos revisados: " + "; ".join(item.warnings[:3]))
     combined = "\n\n".join(part for part in [description, *details] if part)
     return combined[:1200] or None
+
+
+def _reminders_from_suggestion(item: TaskSuggestionImportItem) -> list[dict] | None:
+    if item.reminders:
+        return [{"value": reminder.value, "unit": reminder.unit} for reminder in item.reminders]
+    if item.reminderEnabled and item.reminderValue and item.reminderUnit:
+        return [{"value": item.reminderValue, "unit": item.reminderUnit}]
+    return []
 
 
 def import_task_suggestions(
@@ -312,6 +320,7 @@ def import_task_suggestions(
                     reminder_enabled=item.reminderEnabled,
                     reminder_value=item.reminderValue,
                     reminder_unit=item.reminderUnit,
+                    reminders=_reminders_from_suggestion(item),
                 ),
             )
             calendar_event_id = None

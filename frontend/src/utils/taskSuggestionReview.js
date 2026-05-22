@@ -50,6 +50,19 @@ export function findCategoryId(categoryName, categories) {
 export function buildReviewItem(rawItem = {}, index, categories = []) {
   const confidence = normalizeConfidence(rawItem.confidence);
   const categoryId = findCategoryId(rawItem.category, categories);
+  const reminders = Array.isArray(rawItem.reminders)
+    ? rawItem.reminders
+        .map((reminder) => ({
+          value: Number(reminder?.value ?? reminder?.reminderValue),
+          unit: reminder?.unit ?? reminder?.reminderUnit
+        }))
+        .filter((reminder) => reminder.value && ["minutes", "hours", "days"].includes(reminder.unit))
+        .slice(0, 5)
+    : [];
+  if (!reminders.length && rawItem.reminderEnabled && rawItem.reminderValue && rawItem.reminderUnit) {
+    reminders.push({ value: rawItem.reminderValue, unit: rawItem.reminderUnit });
+  }
+  const firstReminder = reminders[0] || null;
   return {
     source: {
       origin: "ai_image_import",
@@ -76,9 +89,10 @@ export function buildReviewItem(rawItem = {}, index, categories = []) {
     confidence,
     warnings: Array.isArray(rawItem.warnings) ? rawItem.warnings : [],
     acceptedLowConfidence: confidence >= LOW_CONFIDENCE_THRESHOLD,
-    reminderEnabled: Boolean(rawItem.reminderEnabled && rawItem.reminderValue && rawItem.reminderUnit && rawItem.date),
-    reminderValue: rawItem.reminderValue || null,
-    reminderUnit: rawItem.reminderUnit || null,
+    reminders,
+    reminderEnabled: Boolean(reminders.length && rawItem.date),
+    reminderValue: firstReminder?.value || null,
+    reminderUnit: firstReminder?.unit || null,
     sourceImageName: rawItem.sourceImageName || "",
     originalText: rawItem.originalText || "",
     needsReview: rawItem.needsReview !== false,
@@ -138,28 +152,36 @@ export function buildTaskImportPayload(items, { syncGoogleCalendar = false, auto
   return {
     syncGoogleCalendar,
     autoCreate,
-    items: items.map((item) => ({
-      suggestionId: item.suggestionId,
-      type: item.type,
-      title: String(item.title || "").trim(),
-      description: item.description || null,
-      date: item.date || null,
-      time: item.time || null,
-      endDate: item.endDate || null,
-      endTime: item.endTime || null,
-      category: item.category || null,
-      categoryId: item.categoryId || null,
-      priority: item.priority || null,
-      responsible: item.responsible || null,
-      assigneeIds: item.assigneeIds,
-      confidence: item.confidence,
-      warnings: item.warnings,
-      acceptedLowConfidence: item.acceptedLowConfidence,
-      reminderEnabled: item.reminderEnabled,
-      reminderValue: item.reminderEnabled ? item.reminderValue || 1 : null,
-      reminderUnit: item.reminderEnabled ? item.reminderUnit || "hours" : null,
-      sourceImageName: item.sourceImageName || null,
-      originalText: item.originalText || null
-    }))
+    items: items.map((item) => {
+      const reminders = item.reminderEnabled
+        ? item.reminders?.length
+          ? item.reminders
+          : [{ value: item.reminderValue || 1, unit: item.reminderUnit || "hours" }]
+        : [];
+      return {
+        suggestionId: item.suggestionId,
+        type: item.type,
+        title: String(item.title || "").trim(),
+        description: item.description || null,
+        date: item.date || null,
+        time: item.time || null,
+        endDate: item.endDate || null,
+        endTime: item.endTime || null,
+        category: item.category || null,
+        categoryId: item.categoryId || null,
+        priority: item.priority || null,
+        responsible: item.responsible || null,
+        assigneeIds: item.assigneeIds,
+        confidence: item.confidence,
+        warnings: item.warnings,
+        acceptedLowConfidence: item.acceptedLowConfidence,
+        reminderEnabled: reminders.length > 0,
+        reminderValue: reminders[0]?.value || null,
+        reminderUnit: reminders[0]?.unit || null,
+        reminders,
+        sourceImageName: item.sourceImageName || null,
+        originalText: item.originalText || null
+      };
+    })
   };
 }

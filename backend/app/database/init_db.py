@@ -1,5 +1,5 @@
 from app.database.base import Base
-from app.database.session import engine
+from app.database.session import SessionLocal, engine
 from app.services.username_service import unique_username_from_email
 from sqlalchemy import inspect, text
 
@@ -10,6 +10,7 @@ from app.models import category, couple, family, image_analysis_job, image_asset
 def create_database_tables() -> None:
     Base.metadata.create_all(bind=engine)
     _upgrade_existing_tables()
+    _backfill_task_reminders()
 
 
 def _table_columns(connection, table_name: str) -> set[str]:
@@ -43,6 +44,43 @@ def _backfill_missing_usernames(connection) -> None:
             text("UPDATE users SET username = :username WHERE id = :user_id"),
             {"username": username, "user_id": row["id"]},
         )
+
+
+def _backfill_task_reminders() -> None:
+    from app.models.task import Task, TaskReminder
+
+    db = SessionLocal()
+    try:
+        tasks = (
+            db.query(Task)
+            .filter(
+                Task.reminder_enabled.is_(True),
+                Task.reminder_value.isnot(None),
+                Task.reminder_unit.isnot(None),
+                Task.reminder_at.isnot(None),
+            )
+            .limit(1000)
+            .all()
+        )
+        created = 0
+        for task_row in tasks:
+            if task_row.reminders:
+                continue
+            task_row.reminders.append(
+                TaskReminder(
+                    task_id=task_row.id,
+                    family_id=task_row.family_id,
+                    value=task_row.reminder_value,
+                    unit=task_row.reminder_unit,
+                    reminder_at=task_row.reminder_at,
+                    sent=task_row.reminder_sent,
+                )
+            )
+            created += 1
+        if created:
+            db.commit()
+    finally:
+        db.close()
 
 
 def _upgrade_existing_tables() -> None:

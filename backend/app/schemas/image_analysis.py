@@ -26,6 +26,11 @@ MAX_AI_IMAGE_CONTEXT_LENGTH = 1500
 SECRET_PATTERN = re.compile(r"(sk-[a-zA-Z0-9_-]{20,}|client_secret|refresh_token|access_token)", re.IGNORECASE)
 
 
+class ImageAnalysisReminder(BaseModel):
+    value: int = Field(gt=0, le=365)
+    unit: ImageSuggestionReminderUnit
+
+
 class ImageAnalysisItem(BaseModel):
     type: ImageSuggestionType
     title: str = Field(min_length=2, max_length=180)
@@ -46,6 +51,7 @@ class ImageAnalysisItem(BaseModel):
     originalText: str | None = Field(default=None, max_length=1200)
     needsReview: bool = True
     googleCalendarSuggestion: bool = False
+    reminders: list[ImageAnalysisReminder] = Field(default_factory=list, max_length=5)
 
 
 class ImageAnalysisFileError(BaseModel):

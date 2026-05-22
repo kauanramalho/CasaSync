@@ -4,18 +4,19 @@ Use este guia antes de alterar notificacoes, lembretes, email, push, Google Agen
 
 ## Lembretes internos
 
-- Campos de tarefa: `reminder_enabled`, `reminder_value`, `reminder_unit`, `reminder_at`, `reminder_sent`.
+- Modelo principal: `TaskReminder` em `backend/app/models/task.py`, tabela `task_reminders`, com `task_id`, `family_id`, `value`, `unit`, `reminder_at` e `sent`.
+- Campos legados de tarefa: `reminder_enabled`, `reminder_value`, `reminder_unit`, `reminder_at`, `reminder_sent`. Eles continuam como espelho do primeiro lembrete para compatibilidade com dados e telas antigas.
 - UI de formulario: `frontend/src/components/TaskReminderFields.jsx`.
 - Validacoes frontend: `frontend/src/utils/taskReminders.js`.
-- Backend configura lembretes em `backend/app/services/task_service.py`, especialmente `_configure_task_reminder`.
-- Processamento: `backend/app/services/notification_service.py` busca tarefas com lembrete vencido, nao concluidas e `reminder_sent=false`.
+- Backend configura lembretes em `backend/app/services/task_service.py`, especialmente `_sync_task_reminders`.
+- Processamento: `backend/app/services/notification_service.py` busca linhas vencidas de `TaskReminder`, nao concluidas e `sent=false`.
 - Endpoint manual/protegido: `POST /api/notifications/reminders/process`.
 - Barra/lista de notificacoes: `notificationsApi` em `api.js` e componentes/hooks de notificacao no frontend.
 
 ## Anti-duplicidade de notificacoes
 
 - `notification_service.py` monta `dedupe_key` no formato `task-reminder:{family_id}:{task_id}:{reminder_at}:{user_id}`.
-- O service marca `task.reminder_sent=True` depois do processamento.
+- O service marca cada `TaskReminder.sent=True` depois do processamento e atualiza `task.reminder_sent` quando todos foram enviados.
 - Tarefas concluidas nao devem gerar lembrete.
 - Recipientes devem ser membros ativos da familia: responsaveis e criador da tarefa.
 
@@ -43,7 +44,7 @@ Use este guia antes de alterar notificacoes, lembretes, email, push, Google Agen
 - Tokens devem ficar criptografados no backend e nunca ir para o frontend.
 - Status/conectar/desconectar aparecem nas configuracoes por meio de `integrationsApi`.
 - Sync de tarefa usa `sync_task_to_calendar`, valida familia/membro, evita duplicar se `google_calendar_event_id` ja existir e tambem procura evento existente pelo id da tarefa.
-- Evento Google e montado por `create_calendar_event_from_task`, com timezone padrao `America/Sao_Paulo` e duracao padrao configuravel.
+- Evento Google e montado por `create_calendar_event_from_task`, com timezone padrao `America/Sao_Paulo`, duracao padrao configuravel e `reminders.overrides` para cada lembrete valido.
 
 ## Responsaveis
 
@@ -56,7 +57,7 @@ Use este guia antes de alterar notificacoes, lembretes, email, push, Google Agen
 
 ## Limitacoes atuais
 
-- O CasaSync suporta um lembrete por tarefa; multiplos lembretes exigem evolucao de modelo.
+- O CasaSync suporta multiplos lembretes por tarefa, mas os campos legados ainda precisam ser preservados para compatibilidade.
 - Processamento de lembretes existe como service/endpoint; cron/job de producao deve ser configurado fora sem endpoint publico inseguro.
 - Email/push dependem de credenciais e suporte do navegador/PWA.
 - Google Agenda requer conexao por usuario e horario confiavel; tarefa sem horario nao deve ser sincronizada automaticamente.

@@ -33,6 +33,20 @@ class TaskAttachment(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     uploaded_by = relationship("User", back_populates="task_attachments", foreign_keys=[uploaded_by_id])
 
 
+class TaskReminder(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "task_reminders"
+    __table_args__ = (UniqueConstraint("task_id", "reminder_at", name="uq_task_reminder_at"),)
+
+    task_id = Column(String(36), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    family_id = Column(String(36), ForeignKey("families.id", ondelete="CASCADE"), nullable=False, index=True)
+    value = Column(Integer, nullable=False)
+    unit = Column(String(16), nullable=False)
+    reminder_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    sent = Column(Boolean, default=False, nullable=False, index=True)
+
+    task = relationship("Task", back_populates="reminders")
+
+
 class Task(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "tasks"
 
@@ -70,6 +84,7 @@ class Task(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     category = relationship("Category", back_populates="tasks")
     assignee_links = relationship("TaskAssignee", back_populates="task", cascade="all, delete-orphan")
     attachments = relationship("TaskAttachment", back_populates="task", cascade="all, delete-orphan", order_by="TaskAttachment.created_at")
+    reminders = relationship("TaskReminder", back_populates="task", cascade="all, delete-orphan", order_by="TaskReminder.reminder_at")
 
     @property
     def assignees(self):

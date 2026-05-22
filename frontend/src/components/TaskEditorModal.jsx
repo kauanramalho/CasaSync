@@ -91,6 +91,7 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
         next.reminder_enabled = false;
         next.reminder_value = null;
         next.reminder_unit = null;
+        next.reminders = [];
       }
       return next;
     });

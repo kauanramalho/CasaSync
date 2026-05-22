@@ -1,38 +1,58 @@
 import { BellRing } from "lucide-react";
 
-import SelectMenu from "./SelectMenu";
 import {
-  buildReminderValue,
   calculateReminderAt,
   formatReminderDateTime,
-  parseReminderValue,
+  formatReminderLead,
+  normalizeReminderList,
+  reminderKey,
   reminderOptions
 } from "../utils/taskReminders";
 
 export default function TaskReminderFields({ form, onChange }) {
   const hasDueDate = Boolean(form.due_date);
-  const reminderValue = buildReminderValue(form.reminder_value, form.reminder_unit);
-  const enabled = Boolean(form.reminder_enabled && hasDueDate);
-  const previewReminderAt = enabled ? calculateReminderAt(form.due_date, form.reminder_value, form.reminder_unit) : null;
-  const persistedReminderAt = form.reminder_at ? new Date(form.reminder_at) : null;
-  const displayReminderAt = previewReminderAt || persistedReminderAt;
+  const reminders = normalizeReminderList(form);
+  const enabled = Boolean(reminders.length && hasDueDate);
+  const selectedKeys = new Set(reminders.map(reminderKey));
+  const previewReminders = enabled
+    ? reminders
+        .map((reminder) => ({
+          ...reminder,
+          reminderAt: calculateReminderAt(form.due_date, reminder.value, reminder.unit)
+        }))
+        .filter((reminder) => reminder.reminderAt)
+    : [];
+  const persistedReminderAt = !previewReminders.length && form.reminder_at ? new Date(form.reminder_at) : null;
+
+  function emitReminders(nextReminders) {
+    const first = nextReminders[0];
+    onChange({
+      reminders: nextReminders.map((reminder) => ({ value: reminder.value, unit: reminder.unit })),
+      reminder_enabled: nextReminders.length > 0,
+      reminder_value: first?.value ?? null,
+      reminder_unit: first?.unit ?? null
+    });
+  }
 
   function updateReminderEnabled(nextEnabled) {
     if (!hasDueDate) {
-      onChange({ reminder_enabled: false });
+      emitReminders([]);
       return;
     }
     if (!nextEnabled) {
-      onChange({ reminder_enabled: false, reminder_value: null, reminder_unit: null });
+      emitReminders([]);
       return;
     }
-    const reminder = parseReminderValue(reminderValue);
-    onChange({ reminder_enabled: true, reminder_value: reminder.amount, reminder_unit: reminder.unit });
+    emitReminders(reminders.length ? reminders : [{ value: 1, unit: "hours" }]);
   }
 
-  function updateReminderValue(nextValue) {
-    const reminder = parseReminderValue(nextValue);
-    onChange({ reminder_enabled: true, reminder_value: reminder.amount, reminder_unit: reminder.unit });
+  function toggleReminder(option) {
+    if (!hasDueDate) return;
+    const currentKey = reminderKey(option);
+    const nextReminders = selectedKeys.has(currentKey)
+      ? reminders.filter((reminder) => reminderKey(reminder) !== currentKey)
+      : [...reminders, { value: option.amount, unit: option.unit }];
+    emitReminders(nextReminders);
   }
 
   return (
@@ -47,9 +67,18 @@ export default function TaskReminderFields({ form, onChange }) {
             <p className="mt-1 text-xs font-semibold leading-relaxed text-muted">
               Voce recebera uma notificacao no CasaSync antes do prazo da tarefa.
             </p>
-            {enabled && displayReminderAt && (
+            {enabled && previewReminders.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {previewReminders.map((reminder) => (
+                  <p key={`${reminder.value}-${reminder.unit}`} className="text-xs font-bold text-blue-600">
+                    {formatReminderLead(reminder.value, reminder.unit)}: {formatReminderDateTime(reminder.reminderAt)}.
+                  </p>
+                ))}
+              </div>
+            )}
+            {persistedReminderAt && (
               <p className="mt-2 text-xs font-bold text-blue-600">
-                Lembrete previsto para {formatReminderDateTime(displayReminderAt)}.
+                Lembrete previsto para {formatReminderDateTime(persistedReminderAt)}.
               </p>
             )}
             {!hasDueDate && <p className="mt-2 text-xs font-bold text-rose-600">Defina um prazo para ativar lembrete.</p>}
@@ -69,9 +98,27 @@ export default function TaskReminderFields({ form, onChange }) {
       </div>
 
       {enabled && (
-        <div className="mt-4 max-w-xs">
-          <label className="mb-2 block text-sm font-semibold text-ink">Quando lembrar?</label>
-          <SelectMenu value={reminderValue} onChange={updateReminderValue} options={reminderOptions} />
+        <div className="mt-4">
+          <p className="mb-2 text-sm font-semibold text-ink">Quando lembrar?</p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {reminderOptions.map((option) => {
+              const selected = selectedKeys.has(reminderKey(option));
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => toggleReminder(option)}
+                  className={`rounded-2xl border px-3 py-2 text-left text-xs font-bold transition ${
+                    selected
+                      ? "border-blue-200 bg-white text-blue-700 shadow-card"
+                      : "border-white/80 bg-white/60 text-muted hover:border-blue-100 hover:text-blue-700"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

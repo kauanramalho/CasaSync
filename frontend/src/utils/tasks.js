@@ -1,4 +1,5 @@
 import { findColor } from "./categoryDesign";
+import { normalizeReminderList } from "./taskReminders";
 
 const taskSortCollator = new Intl.Collator("pt-BR", { sensitivity: "base", numeric: true });
 
@@ -252,6 +253,7 @@ export function getCategoryMeta(category) {
 }
 
 export function normalizeTaskForForm(task) {
+  const reminders = normalizeReminderList(task || {});
   return {
     title: task?.title ?? "",
     description: task?.description ?? "",
@@ -260,9 +262,10 @@ export function normalizeTaskForForm(task) {
     due_date: task?.due_date ?? "",
     priority: task?.priority ?? "media",
     status: task?.status ?? "pendente",
-    reminder_enabled: Boolean(task?.reminder_enabled ?? task?.reminderEnabled),
-    reminder_value: task?.reminder_value ?? task?.reminderValue ?? null,
-    reminder_unit: task?.reminder_unit ?? task?.reminderUnit ?? null,
+    reminders,
+    reminder_enabled: reminders.length > 0 || Boolean(task?.reminder_enabled ?? task?.reminderEnabled),
+    reminder_value: reminders[0]?.value ?? task?.reminder_value ?? task?.reminderValue ?? null,
+    reminder_unit: reminders[0]?.unit ?? task?.reminder_unit ?? task?.reminderUnit ?? null,
     reminder_at: task?.reminder_at ?? task?.reminderAt ?? null,
     reminder_sent: Boolean(task?.reminder_sent ?? task?.reminderSent)
   };
