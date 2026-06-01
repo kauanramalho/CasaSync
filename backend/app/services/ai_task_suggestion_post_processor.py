@@ -145,7 +145,7 @@ def detect_explicit_assignee_ids(text: str | None, members: tuple[AiMemberOption
     resolved: list[str] = []
     seen: set[str] = set()
     for candidate in candidates:
-        member_id = _member_id_for_name(candidate, members)
+        member_id = _member_id_for_name(candidate, members) or _member_id_contained_in_text(candidate, members)
         if member_id and member_id not in seen:
             seen.add(member_id)
             resolved.append(member_id)
@@ -504,6 +504,18 @@ def _member_id_for_name(candidate: str, members: tuple[AiMemberOption, ...]) -> 
         for name in member_names:
             normalized_name = normalize_lookup_text(name)
             if normalized_name and normalized_candidate == normalized_name:
+                return member.id
+    return None
+
+
+def _member_id_contained_in_text(candidate: str, members: tuple[AiMemberOption, ...]) -> str | None:
+    normalized_candidate = normalize_lookup_text(candidate)
+    if not normalized_candidate:
+        return None
+    for member in members:
+        for name in [member.name, member.username]:
+            normalized_name = normalize_lookup_text(name)
+            if normalized_name and re.search(rf"(^|[\s.,/&-]){re.escape(normalized_name)}($|[\s.,/&-])", normalized_candidate):
                 return member.id
     return None
 

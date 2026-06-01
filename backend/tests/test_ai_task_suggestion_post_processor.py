@@ -61,6 +61,10 @@ class AiTaskSuggestionPostProcessorTest(unittest.TestCase):
     def test_responsavel_kauan_selects_only_kauan(self):
         self.assertEqual(detect_explicit_assignee_ids("Responsavel: Kauan", self.members), ["user-kauan"])
 
+    def test_responsavel_linguagem_natural_selects_only_kauan(self):
+        text = "Essa imagem e um calendario de provas. O responsavel sera Kauan. Crie uma tarefa por prova."
+        self.assertEqual(detect_explicit_assignee_ids(text, self.members), ["user-kauan"])
+
     def test_responsavel_bia_selects_only_bia(self):
         self.assertEqual(detect_explicit_assignee_ids("responsavel: bia", self.members), ["user-bia"])
 

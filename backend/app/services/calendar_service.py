@@ -310,6 +310,12 @@ def create_calendar_event_from_task(task: Task, settings: Settings) -> dict:
     return event
 
 
+def _without_calendar_reminders(event_payload: dict) -> dict:
+    fallback_payload = dict(event_payload)
+    fallback_payload.pop("reminders", None)
+    return fallback_payload
+
+
 def _connection_access_token(
     db: Session,
     connection: GoogleCalendarConnection,
@@ -388,20 +394,35 @@ def sync_task_to_calendar(
     try:
         access_token = _connection_access_token(db, connection, settings)
         if task.google_calendar_event_id:
-            updated_event_id = adapter.update_event(
-                calendar_id=calendar_id,
-                access_token=access_token,
-                event_id=task.google_calendar_event_id,
-                event_payload=event_payload,
-                timeout_seconds=settings.google_calendar_request_timeout_seconds,
-            )
+            try:
+                updated_event_id = adapter.update_event(
+                    calendar_id=calendar_id,
+                    access_token=access_token,
+                    event_id=task.google_calendar_event_id,
+                    event_payload=event_payload,
+                    timeout_seconds=settings.google_calendar_request_timeout_seconds,
+                )
+                sync_message = "Evento existente atualizado no Google Agenda."
+            except CalendarProviderAuthError:
+                raise
+            except CalendarProviderError:
+                if "reminders" not in event_payload:
+                    raise
+                updated_event_id = adapter.update_event(
+                    calendar_id=calendar_id,
+                    access_token=access_token,
+                    event_id=task.google_calendar_event_id,
+                    event_payload=_without_calendar_reminders(event_payload),
+                    timeout_seconds=settings.google_calendar_request_timeout_seconds,
+                )
+                sync_message = "Evento existente atualizado no Google Agenda sem lembretes porque o Google recusou os avisos."
             _mark_task_synced(db, task, updated_event_id, user_id)
             return GoogleCalendarTaskSyncResponse(
                 status="updated",
                 synced=True,
                 task_id=task.id,
                 event_id=updated_event_id,
-                message="Evento existente atualizado no Google Agenda.",
+                message=sync_message,
             )
 
         existing_event_id = adapter.find_event_by_task_id(
@@ -419,12 +440,26 @@ def sync_task_to_calendar(
                 event_id=existing_event_id,
                 message="Evento existente encontrado e vinculado a tarefa.",
             )
-        event_id = adapter.create_event(
-            calendar_id=calendar_id,
-            access_token=access_token,
-            event_payload=event_payload,
-            timeout_seconds=settings.google_calendar_request_timeout_seconds,
-        )
+        try:
+            event_id = adapter.create_event(
+                calendar_id=calendar_id,
+                access_token=access_token,
+                event_payload=event_payload,
+                timeout_seconds=settings.google_calendar_request_timeout_seconds,
+            )
+            sync_message = "Tarefa sincronizada com o Google Agenda."
+        except CalendarProviderAuthError:
+            raise
+        except CalendarProviderError:
+            if "reminders" not in event_payload:
+                raise
+            event_id = adapter.create_event(
+                calendar_id=calendar_id,
+                access_token=access_token,
+                event_payload=_without_calendar_reminders(event_payload),
+                timeout_seconds=settings.google_calendar_request_timeout_seconds,
+            )
+            sync_message = "Tarefa sincronizada com o Google Agenda sem lembretes porque o Google recusou os avisos."
     except CalendarProviderAuthError as exc:
         return GoogleCalendarTaskSyncResponse(status="auth_required", synced=False, task_id=task.id, message=str(exc))
     except CalendarProviderError as exc:
@@ -436,7 +471,7 @@ def sync_task_to_calendar(
         synced=True,
         task_id=task.id,
         event_id=event_id,
-        message="Tarefa sincronizada com o Google Agenda.",
+        message=sync_message,
     )
 
 
