@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowDownUp, ArrowUp, BellRing, Check, Edit3, MoreHorizontal, Paperclip, RotateCcw, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowDownUp, ArrowUp, BellRing, Check, Edit3, EyeOff, MoreHorizontal, Paperclip, RotateCcw, Trash2 } from "lucide-react";
 
 import AssigneeStack from "./AssigneeStack";
 import { CategoryBadge, PriorityBadge, StatusBadge } from "./Badges";
@@ -124,8 +124,8 @@ function TaskRow({ task, compact, menuOpen, onToggleMenu, onRunAction, onComplet
             </button>
             {onRemoveRecent && (
               <button onClick={() => onRunAction(onRemoveRecent, task)} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-rose-600 hover:bg-rose-50">
-                <Trash2 className="h-4 w-4" />
-                Remover das recentes
+                <EyeOff className="h-4 w-4" />
+                Ocultar das recentes
               </button>
             )}
             {onDelete && (

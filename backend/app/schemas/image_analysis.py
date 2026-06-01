@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 ImageSuggestionType = Literal["task", "event", "reminder"]
 ImageSuggestionPriority = Literal["low", "medium", "high", "urgent"]
 ImageSuggestionReminderUnit = Literal["minutes", "hours", "days"]
+ImageSuggestionDateYearSource = Literal["explicit", "inferred", "unknown"]
 ImageAnalysisJobStatusValue = Literal[
     "pending",
     "processing",
@@ -39,6 +40,7 @@ class ImageAnalysisItem(BaseModel):
     time: str | None = Field(default=None, pattern=r"^\d{2}:\d{2}$")
     endDate: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     endTime: str | None = Field(default=None, pattern=r"^\d{2}:\d{2}$")
+    dateYearSource: ImageSuggestionDateYearSource | None = None
     category: str | None = Field(default=None, max_length=80)
     categoryId: str | None = Field(default=None, max_length=36)
     priority: ImageSuggestionPriority | None = None

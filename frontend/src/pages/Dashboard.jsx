@@ -7,12 +7,14 @@ import Button from "../components/Button";
 import Card from "../components/Card";
 import PageHeader from "../components/PageHeader";
 import StatCard from "../components/StatCard";
+import TaskDeleteConfirmModal from "../components/TaskDeleteConfirmModal";
 import TaskDetailsModal from "../components/TaskDetailsModal";
 import TaskEditorModal from "../components/TaskEditorModal";
 import TaskList from "../components/TaskList";
 import WeeklyProductivityChart from "../components/WeeklyProductivityChart";
 import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
+import useTaskDeletion from "../hooks/useTaskDeletion";
 import { categoriesApi, coupleApi, dashboardApi, familiesApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { formatDate, normalizeApiError } from "../utils/formatters";
@@ -249,12 +251,32 @@ export default function Dashboard() {
   const handleRemoveRecent = useCallback(function handleRemoveRecent(task) {
     setHiddenRecentIds(hideRecentTask(task.id));
     addNotification({
-      title: "Tarefa removida das recentes",
+      title: "Tarefa ocultada das recentes",
       description: `${task.title} continua salva em tarefas, relatórios e estatísticas.`,
       type: "task",
       actor: user?.name
     });
   }, [addNotification, user?.name]);
+
+  const handleTaskDeleted = useCallback(function handleTaskDeleted(task) {
+    setDashboard((current) => current
+      ? { ...current, recent_tasks: (current.recent_tasks || []).filter((item) => item.id !== task.id) }
+      : current);
+    setDetailsTask((current) => (current?.id === task.id ? null : current));
+    setEditingTask((current) => (current?.id === task.id ? null : current));
+    load();
+  }, [load]);
+
+  const {
+    pendingDeleteTask,
+    deletingTaskId,
+    requestTaskDelete,
+    cancelTaskDelete,
+    confirmTaskDelete
+  } = useTaskDeletion({
+    onDeleted: handleTaskDeleted,
+    onError: setError
+  });
 
   const handleEditFromDetails = useCallback(function handleEditFromDetails(task) {
     setDetailsTask(null);
@@ -320,6 +342,7 @@ export default function Dashboard() {
             onComplete={handleComplete}
             onEdit={setEditingTask}
             onRemoveRecent={handleRemoveRecent}
+            onDelete={requestTaskDelete}
             onOpenDetails={setDetailsTask}
             compact
             emptyMessage="Nenhuma tarefa pendente por aqui."
@@ -421,6 +444,13 @@ export default function Dashboard() {
         saving={savingEdit}
         onClose={() => setEditingTask(null)}
         onSave={handleSaveEdit}
+      />
+
+      <TaskDeleteConfirmModal
+        task={pendingDeleteTask}
+        deleting={Boolean(deletingTaskId)}
+        onCancel={cancelTaskDelete}
+        onConfirm={confirmTaskDelete}
       />
     </>
   );

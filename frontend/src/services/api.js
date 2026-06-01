@@ -130,6 +130,13 @@ async function request(path, { method = "GET", body, auth = true } = {}) {
     );
   }
 
+  if (method !== "GET") {
+    return requestPromise.then((result) => {
+      pendingGetRequests.clear();
+      return result;
+    });
+  }
+
   return requestPromise;
 }
 
@@ -389,7 +396,7 @@ export const tasksApi = {
   importSuggestions: (payload) => request("/tasks/import-suggestions", { method: "POST", body: payload }),
   update: (id, payload) => request(`/tasks/${id}`, { method: "PATCH", body: payload }),
   complete: (id) => request(`/tasks/${id}/complete`, { method: "POST" }),
-  delete: (id) => request(`/tasks/${id}`, { method: "DELETE" }),
+  delete: (id, payload = {}) => request(`/tasks/${id}`, { method: "DELETE", body: payload }),
   attachments: (id) => request(`/tasks/${id}/attachments`),
   uploadAttachment: (id, file) => {
     const formData = new FormData();

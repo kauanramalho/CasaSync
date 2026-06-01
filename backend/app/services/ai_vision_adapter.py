@@ -41,6 +41,7 @@ IMAGE_ANALYSIS_JSON_SCHEMA = {
                     "time": {"anyOf": [{"type": "string"}, {"type": "null"}]},
                     "endDate": {"anyOf": [{"type": "string"}, {"type": "null"}]},
                     "endTime": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                    "dateYearSource": {"anyOf": [{"type": "string", "enum": ["explicit", "inferred", "unknown"]}, {"type": "null"}]},
                     "category": {"anyOf": [{"type": "string"}, {"type": "null"}]},
                     "categoryId": {"anyOf": [{"type": "string"}, {"type": "null"}]},
                     "priority": {"anyOf": [{"type": "string", "enum": ["low", "medium", "high", "urgent"]}, {"type": "null"}]},
@@ -83,6 +84,7 @@ IMAGE_ANALYSIS_JSON_SCHEMA = {
                     "time",
                     "endDate",
                     "endTime",
+                    "dateYearSource",
                     "category",
                     "categoryId",
                     "priority",
@@ -194,6 +196,11 @@ def _clean_time(value) -> str | None:
     return text if text and TIME_RE.match(text) else None
 
 
+def _clean_year_source(value) -> str | None:
+    text = _clean_optional_text(value, 16)
+    return text if text in {"explicit", "inferred", "unknown"} else None
+
+
 def _clean_reminders(raw_item: dict) -> list[dict]:
     reminders = []
     raw_reminders = _as_list(raw_item.get("reminders"))
@@ -239,6 +246,7 @@ def _sanitize_openai_payload(payload: dict) -> dict:
                 "endDate": _clean_date(raw_item.get("endDate")),
                 "endTime": _clean_time(raw_item.get("endTime")),
                 "category": _clean_optional_text(raw_item.get("category"), 80),
+                "dateYearSource": _clean_year_source(raw_item.get("dateYearSource")),
                 "categoryId": _clean_optional_text(raw_item.get("categoryId"), 36),
                 "priority": priority if priority in PRIORITY_VALUES else None,
                 "responsible": _clean_optional_text(raw_item.get("responsible"), 120),
@@ -365,6 +373,7 @@ class OpenAIVisionAdapter:
                                 f"Data/hora atual do backend: {current_datetime}. Timezone padrao: {context.timezone_name}. "
                                 "Quando a imagem/texto tiver dia, mes ou horario sem ano explicito, use o ano atual dessa data/hora. "
                                 "Nao gere anos antigos menores que o ano atual, exceto se o usuario pedir explicitamente algo historico/passado. "
+                                "Preencha dateYearSource como explicit quando o ano aparece na imagem/texto, inferred quando voce usou o ano atual, ou unknown quando nao houver data. "
                                 "Membros reais disponiveis da familia em JSON (use apenas esses ids): "
                                 f"{members_json}. "
                                 "Categorias reais disponiveis da familia em JSON (use apenas esses ids): "

@@ -68,6 +68,9 @@ class CalendarProviderAdapter(Protocol):
     def update_event(self, *, calendar_id: str, access_token: str, event_id: str, event_payload: dict, timeout_seconds: float) -> str:
         ...
 
+    def delete_event(self, *, calendar_id: str, access_token: str, event_id: str, timeout_seconds: float) -> bool:
+        ...
+
     def revoke_token(self, *, token: str, timeout_seconds: float) -> None:
         ...
 
@@ -222,6 +225,21 @@ class GoogleCalendarProviderAdapter:
         if not updated_event_id:
             raise CalendarProviderError("Google Agenda nao retornou o id do evento atualizado.")
         return str(updated_event_id)
+
+    def delete_event(self, *, calendar_id: str, access_token: str, event_id: str, timeout_seconds: float) -> bool:
+        url = f"{GOOGLE_CALENDAR_EVENTS_URL.format(calendar_id=quote(calendar_id, safe=''))}/{quote(event_id, safe='')}"
+        request = Request(url, headers={"Authorization": f"Bearer {access_token}"}, method="DELETE")
+        try:
+            with urlopen(request, timeout=_timeout(timeout_seconds)):
+                return True
+        except HTTPError as exc:
+            if exc.code == 404:
+                return False
+            if exc.code in {401, 403}:
+                raise CalendarProviderAuthError("Autorizacao do Google Agenda expirou ou foi revogada.") from exc
+            raise CalendarProviderError("Google Agenda recusou a exclusao do evento. Tente novamente mais tarde.") from exc
+        except (URLError, TimeoutError, socket.timeout) as exc:
+            raise CalendarProviderError("Nao foi possivel falar com o Google Agenda agora.") from exc
 
     def revoke_token(self, *, token: str, timeout_seconds: float) -> None:
         request = Request(

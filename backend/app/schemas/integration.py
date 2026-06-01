@@ -37,6 +37,16 @@ class GoogleCalendarTaskSyncResponse(BaseModel):
     event: dict[str, Any] | None = None
 
 
+class GoogleCalendarTaskDeleteEventResponse(BaseModel):
+    provider: str = "google"
+    status: str
+    deleted: bool = False
+    missing: bool = False
+    task_id: str | None = None
+    event_id: str | None = None
+    message: str
+
+
 class GoogleCalendarDisconnectResponse(BaseModel):
     provider: str = "google"
     status: str

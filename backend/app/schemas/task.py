@@ -69,6 +69,20 @@ class TaskUpdate(BaseModel):
     reminders: list[TaskReminderItemInput] | None = Field(default=None, max_length=5)
 
 
+class TaskDeleteRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    delete_google_event: bool = Field(default=False, validation_alias=AliasChoices("delete_google_event", "deleteGoogleEvent"))
+
+
+class TaskDeleteResponse(BaseModel):
+    deleted: bool = True
+    task_id: str
+    google_calendar_event_deleted: bool = False
+    google_calendar_event_missing: bool = False
+    message: str
+
+
 class TaskAssigneeAwardRead(BaseModel):
     user_id: str
     user: UserSummary

@@ -232,6 +232,8 @@ def normalize_suggestion_date(item: ImageAnalysisItem | object, context: AiSugge
     now_local = _context_now(context)
     current_year = now_local.year
     combined_text = _combined_text(item, context)
+    date_source_text = _date_source_text(item, context)
+    year_explicit = _has_explicit_year(date_source_text)
     historical = _looks_historical(combined_text)
 
     raw_date = _item_value(item, "date")
@@ -264,9 +266,10 @@ def normalize_suggestion_date(item: ImageAnalysisItem | object, context: AiSugge
 
     normalized_date = date_value.isoformat()
     LOGGER.info(
-        "AI image date normalized: original_text_excerpt=%s ai_date=%s normalized_date=%s timezone=%s",
+        "AI image date normalized: original_text_excerpt=%s ai_date=%s year_explicit=%s normalized_date=%s timezone=%s",
         _safe_log_excerpt(_item_value(item, "originalText") or _item_value(item, "title") or ""),
         raw_date or original_date.isoformat(),
+        year_explicit,
         normalized_date,
         context.timezone_name,
     )
@@ -312,6 +315,7 @@ def post_process_image_analysis_response(response: ImageAnalysisResponse, contex
             "assigneeId": assignee_ids[0] if assignee_ids else None,
             "date": normalized_date,
             "time": normalized_time,
+            "dateYearSource": _date_year_source(item, context, normalized_date),
             "warnings": list(dict.fromkeys(warnings))[:10],
             "reminders": reminders,
             "reminderEnabled": bool(reminders and normalized_date),
@@ -446,6 +450,31 @@ def _combined_text(item: ImageAnalysisItem | object, context: AiSuggestionContex
         ]
         if part
     )
+
+
+def _date_source_text(item: ImageAnalysisItem | object, context: AiSuggestionContext) -> str:
+    return " ".join(
+        part
+        for part in [
+            _item_value(item, "originalText"),
+            context.image_context,
+            context.custom_instructions,
+        ]
+        if part
+    )
+
+
+def _has_explicit_year(text: str | None) -> bool:
+    source = str(text or "")
+    if re.search(r"\b(?:19|20)\d{2}\b", source):
+        return True
+    return any(match.group(3) for match in DATE_SLASH_RE.finditer(source))
+
+
+def _date_year_source(item: ImageAnalysisItem | object, context: AiSuggestionContext, normalized_date: str | None) -> str | None:
+    if not normalized_date:
+        return "unknown"
+    return "explicit" if _has_explicit_year(_date_source_text(item, context)) else "inferred"
 
 
 def _looks_historical(text: str | None) -> bool:

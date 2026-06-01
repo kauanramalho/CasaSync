@@ -17,6 +17,7 @@ from app.schemas.integration import (
     GoogleCalendarConnectUrl,
     GoogleCalendarDisconnectResponse,
     GoogleCalendarStatus,
+    GoogleCalendarTaskDeleteEventResponse,
     GoogleCalendarTaskSyncResponse,
 )
 from app.services.calendar_provider_adapter import (
@@ -472,6 +473,69 @@ def sync_task_to_calendar(
         task_id=task.id,
         event_id=event_id,
         message=sync_message,
+    )
+
+
+def delete_task_calendar_event(
+    db: Session,
+    *,
+    family_id: str,
+    user_id: str,
+    task_id: str,
+    settings: Settings,
+) -> GoogleCalendarTaskDeleteEventResponse:
+    require_family_member(db, family_id, user_id)
+    task = get_task(db, family_id, task_id)
+    event_id = task.google_calendar_event_id
+
+    if not event_id:
+        return GoogleCalendarTaskDeleteEventResponse(
+            status="no_event",
+            deleted=False,
+            missing=False,
+            task_id=task.id,
+            message="A tarefa nao possui evento vinculado ao Google Agenda.",
+        )
+
+    if not is_google_calendar_enabled(settings):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=GOOGLE_CALENDAR_DISABLED_MESSAGE)
+
+    connection_user_id = task.google_calendar_synced_by_id or user_id
+    connection = _get_connection(db, family_id, connection_user_id)
+    if not connection or not connection.is_connected:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Nao foi possivel apagar no Google Agenda porque a conta vinculada nao esta conectada.",
+        )
+
+    adapter = get_calendar_provider_adapter("google")
+    calendar_id = connection.calendar_id or DEFAULT_GOOGLE_CALENDAR_ID
+    try:
+        access_token = _connection_access_token(db, connection, settings)
+        deleted = adapter.delete_event(
+            calendar_id=calendar_id,
+            access_token=access_token,
+            event_id=event_id,
+            timeout_seconds=settings.google_calendar_request_timeout_seconds,
+        )
+    except CalendarProviderAuthError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Nao foi possivel apagar no Google Agenda. Reconecte sua conta Google e tente novamente.",
+        ) from exc
+    except CalendarProviderError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Nao foi possivel apagar o evento do Google Agenda. Tente novamente ou apague apenas do CasaSync.",
+        ) from exc
+
+    return GoogleCalendarTaskDeleteEventResponse(
+        status="deleted" if deleted else "missing",
+        deleted=deleted,
+        missing=not deleted,
+        task_id=task.id,
+        event_id=event_id,
+        message="Evento do Google Agenda excluido." if deleted else "Evento do Google Agenda ja nao existia.",
     )
 
 

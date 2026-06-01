@@ -7,11 +7,13 @@ import Card from "../components/Card";
 import PageHeader from "../components/PageHeader";
 import SelectMenu from "../components/SelectMenu";
 import StatCard from "../components/StatCard";
+import TaskDeleteConfirmModal from "../components/TaskDeleteConfirmModal";
 import TaskDetailsModal from "../components/TaskDetailsModal";
 import TaskEditorModal from "../components/TaskEditorModal";
 import TaskList from "../components/TaskList";
 import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
+import useTaskDeletion from "../hooks/useTaskDeletion";
 import { useToast } from "../hooks/useToast";
 import { categoriesApi, familiesApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
@@ -197,26 +199,22 @@ export default function Tasks() {
     }
   }, [addNotification, editingTask, showToast, user?.name]);
 
-  const handleDelete = useCallback(async function handleDelete(task) {
-    const confirmed = window.confirm(`Excluir a tarefa "${task.title}"? Essa acao tambem cancela o lembrete associado.`);
-    if (!confirmed) return;
-    try {
-      await tasksApi.delete(task.id);
-      addNotification({
-        title: "Tarefa excluida",
-        description: `${task.title} saiu da lista da casa.`,
-        type: "task",
-        actor: user?.name
-      });
-      setTasks((current) => current.filter((item) => item.id !== task.id));
-      showToast({ type: "success", message: "Tarefa excluida com sucesso." });
-      emitAppDataChanged();
-    } catch (err) {
-      const message = normalizeApiError(err);
-      setError(message);
-      showToast({ type: "error", message });
-    }
-  }, [addNotification, showToast, user?.name]);
+  const handleTaskDeleted = useCallback(function handleTaskDeleted(task) {
+    setTasks((current) => current.filter((item) => item.id !== task.id));
+    setDetailsTask((current) => (current?.id === task.id ? null : current));
+    setEditingTask((current) => (current?.id === task.id ? null : current));
+  }, []);
+
+  const {
+    pendingDeleteTask,
+    deletingTaskId,
+    requestTaskDelete,
+    cancelTaskDelete,
+    confirmTaskDelete
+  } = useTaskDeletion({
+    onDeleted: handleTaskDeleted,
+    onError: setError
+  });
 
   const clearFilters = useCallback(function clearFilters() {
     setCategory("");
@@ -305,7 +303,7 @@ export default function Tasks() {
               tasks={pendingTasks}
               onComplete={handleComplete}
               onEdit={openEditor}
-              onDelete={handleDelete}
+              onDelete={requestTaskDelete}
               onOpenDetails={openDetails}
               emptyMessage="Nenhuma tarefa pendente encontrada."
             />
@@ -339,7 +337,7 @@ export default function Tasks() {
                   tasks={completedTasks}
                   onComplete={handleComplete}
                   onEdit={openEditor}
-                  onDelete={handleDelete}
+                  onDelete={requestTaskDelete}
                   onOpenDetails={openDetails}
                   emptyMessage="Nenhuma tarefa concluida encontrada."
                 />
@@ -366,6 +364,13 @@ export default function Tasks() {
           setEditingTask(null);
         }}
         onSave={handleSaveEdit}
+      />
+
+      <TaskDeleteConfirmModal
+        task={pendingDeleteTask}
+        deleting={Boolean(deletingTaskId)}
+        onCancel={cancelTaskDelete}
+        onConfirm={confirmTaskDelete}
       />
     </>
   );

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -6,7 +6,7 @@ from app.core.config import Settings, get_settings
 from app.core.deps import get_current_user, get_family_id
 from app.database.session import get_db
 from app.models.user import User
-from app.schemas.task import TaskCreate, TaskRead, TaskUpdate
+from app.schemas.task import TaskCreate, TaskDeleteRequest, TaskDeleteResponse, TaskRead, TaskUpdate
 from app.schemas.task_attachment import TaskAttachmentRead
 from app.schemas.task_import import TaskSuggestionsImportRequest, TaskSuggestionsImportResponse
 from app.services.family_service import get_primary_family, require_family_member
@@ -19,6 +19,7 @@ from app.services.task_attachment_service import (
 )
 from app.services.task_import_service import import_task_suggestions
 from app.services.task_service import complete_task, create_task, delete_task, get_task, list_due_reminder_tasks, list_tasks, update_task
+from app.services.calendar_service import delete_task_calendar_event
 
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -129,6 +130,37 @@ def complete(task_id: str, family_id: str = Depends(get_family_id), db: Session 
     return complete_task(db, family_id, task_id)
 
 
-@router.delete("/{task_id}", status_code=204)
-def delete(task_id: str, family_id: str = Depends(get_family_id), db: Session = Depends(get_db)):
+@router.delete("/{task_id}", response_model=TaskDeleteResponse)
+def delete(
+    task_id: str,
+    payload: TaskDeleteRequest | None = Body(default=None),
+    current_user: User = Depends(get_current_user),
+    family_id: str = Depends(get_family_id),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    task = get_task(db, family_id, task_id)
+    google_result = None
+    if payload and payload.delete_google_event and task.google_calendar_event_id:
+        google_result = delete_task_calendar_event(
+            db,
+            family_id=family_id,
+            user_id=current_user.id,
+            task_id=task_id,
+            settings=settings,
+        )
     delete_task(db, family_id, task_id)
+    google_deleted = bool(google_result and google_result.deleted)
+    google_missing = bool(google_result and google_result.missing)
+    if google_deleted:
+        message = "Tarefa e evento do Google Agenda excluidos."
+    elif google_missing:
+        message = "Tarefa excluida. O evento do Google Agenda ja nao existia."
+    else:
+        message = "Tarefa excluida."
+    return TaskDeleteResponse(
+        task_id=task_id,
+        google_calendar_event_deleted=google_deleted,
+        google_calendar_event_missing=google_missing,
+        message=message,
+    )

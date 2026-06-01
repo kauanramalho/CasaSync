@@ -1,13 +1,14 @@
 import unittest
 from datetime import datetime, timedelta, timezone
 
-from app.schemas.image_analysis import ImageAnalysisItem
+from app.schemas.image_analysis import ImageAnalysisItem, ImageAnalysisResponse
 from app.services.ai_task_suggestion_post_processor import (
     AiCategoryOption,
     AiMemberOption,
     AiSuggestionContext,
     detect_explicit_assignee_ids,
     normalize_suggestion_date,
+    post_process_image_analysis_response,
     resolve_assignee_ids_for_suggestion,
     resolve_category_id_for_suggestion,
 )
@@ -152,6 +153,26 @@ class AiTaskSuggestionPostProcessorTest(unittest.TestCase):
         self.assertEqual(date_value, "2026-05-23")
         self.assertEqual(time_value, "16:30")
 
+    def test_haircut_day_month_without_year_uses_current_year(self):
+        item = make_item(title="Cortar cabelo", date="2021-06-05", time="15:00", originalText="Cortar cabelo 05/06 as 15:00")
+        response = ImageAnalysisResponse(overallConfidence=0.9, items=[item], needsUserReview=True)
+        processed = post_process_image_analysis_response(response, self.context)
+        self.assertEqual(processed.items[0].date, "2026-06-05")
+        self.assertEqual(processed.items[0].time, "15:00")
+        self.assertEqual(processed.items[0].dateYearSource, "inferred")
+
+    def test_day_month_without_year_that_already_passed_moves_to_next_year(self):
+        item = make_item(title="Cinema", date="2020-05-23", time="16:30", originalText="Cinema 23/05 16:30")
+        future_context = AiSuggestionContext(
+            members=self.members,
+            categories=self.categories,
+            now=datetime(2026, 5, 24, 12, 0, tzinfo=timezone(timedelta(hours=-3))),
+        )
+        response = ImageAnalysisResponse(overallConfidence=0.9, items=[item], needsUserReview=True)
+        processed = post_process_image_analysis_response(response, future_context)
+        self.assertEqual(processed.items[0].date, "2027-05-23")
+        self.assertEqual(processed.items[0].dateYearSource, "inferred")
+
     def test_old_ai_year_is_corrected_to_current_or_next_year(self):
         item = make_item(date="2020-05-23", time="16:30", originalText="23/05 16:30")
         date_value, _, _ = normalize_suggestion_date(item, self.context)
@@ -164,6 +185,12 @@ class AiTaskSuggestionPostProcessorTest(unittest.TestCase):
         )
         next_year_date, _, _ = normalize_suggestion_date(item, future_context)
         self.assertEqual(next_year_date, "2027-05-23")
+
+    def test_explicit_historical_year_is_preserved(self):
+        item = make_item(date="2025-06-05", time="15:00", originalText="Registro historico 05/06/2025 as 15:00")
+        date_value, time_value, _ = normalize_suggestion_date(item, self.context)
+        self.assertEqual(date_value, "2025-06-05")
+        self.assertEqual(time_value, "15:00")
 
     def test_invalid_144_hours_reminder_is_discarded(self):
         reminders, invalid_count, _ = normalize_reminder_entries([{"value": 144, "unit": "hours"}])
