@@ -1188,9 +1188,9 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
                         <div>
                           <FieldLabel>Responsaveis</FieldLabel>
                           <AssigneePicker members={members} value={item.assigneeIds} onChange={(assigneeIds) => updateReviewItem(item.suggestionId, { assigneeIds })} />
-                          {item.responsible && (
+                          {(item.originalAssigneeText || item.responsible) && (
                             <p className="mt-2 rounded-2xl border border-slate-100 bg-white/70 px-3 py-2 text-xs font-bold text-muted">
-                              Sugestao original: {item.responsible}
+                              Sugestao original: {item.originalAssigneeText || item.responsible}
                             </p>
                           )}
                         </div>

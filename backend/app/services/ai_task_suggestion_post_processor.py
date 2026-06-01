@@ -25,6 +25,26 @@ RESPONSIBLE_RE = re.compile(
 ASSIGNEE_STOP_WORD_RE = re.compile(
     r"\b(?:categoria|data|horario|hora|local|prioridade|lembrete|google|agenda|descricao|observacao|obs|titulo)\b"
 )
+ASSIGNEE_FUZZY_STOP_WORDS = {
+    "a",
+    "as",
+    "com",
+    "de",
+    "do",
+    "da",
+    "e",
+    "eh",
+    "em",
+    "imagem",
+    "original",
+    "para",
+    "pra",
+    "responsavel",
+    "responsaveis",
+    "sera",
+    "serao",
+    "sugestao",
+}
 ASSIGNEE_TEXT_FIELDS = (
     "assignee",
     "assignees",
@@ -74,6 +94,16 @@ class AssigneeResolution:
     ids: list[str]
     warnings: list[str]
     had_signal: bool = False
+    status: str = "unresolved"
+
+
+@dataclass(frozen=True)
+class SuggestionAssigneeResolution:
+    ids: list[str]
+    names: list[str]
+    status: str
+    warnings: list[str]
+    original_text: str | None
 
 
 def normalize_lookup_text(value: str | None) -> str:
@@ -169,7 +199,7 @@ def detect_explicit_assignee_ids(text: str | None, members: tuple[AiMemberOption
     return _resolve_assignees_from_text(text, members, require_explicit=True).ids
 
 
-def resolve_assignee_ids_for_suggestion(item: ImageAnalysisItem | object, context: AiSuggestionContext) -> tuple[list[str], list[str]]:
+def resolve_assignee_resolution_for_suggestion(item: ImageAnalysisItem | object, context: AiSuggestionContext) -> SuggestionAssigneeResolution:
     context_sources = (
         ("contexto da imagem", context.image_context),
         ("instrucoes personalizadas", context.custom_instructions),
@@ -179,23 +209,38 @@ def resolve_assignee_ids_for_suggestion(item: ImageAnalysisItem | object, contex
         resolution = _resolve_assignees_from_text(source_text, context.members, require_explicit=True)
         _log_assignee_resolution(source_label, source_text, context.members, resolution)
         if resolution.had_signal:
-            if resolution.ids:
-                return resolution.ids, []
-            return [], resolution.warnings
+            return _suggestion_assignee_resolution(resolution, context.members, source_text)
 
     for field_name in ASSIGNEE_TEXT_FIELDS:
-        resolution = _resolve_assignees_from_text(_item_value(item, field_name), context.members, require_explicit=False)
-        _log_assignee_resolution(f"campo {field_name}", _item_value(item, field_name), context.members, resolution)
+        source_text = _item_value(item, field_name)
+        resolution = _resolve_assignees_from_text(source_text, context.members, require_explicit=False)
+        _log_assignee_resolution(f"campo {field_name}", source_text, context.members, resolution)
         if resolution.had_signal:
-            if resolution.ids:
-                return resolution.ids, []
-            return [], resolution.warnings or ["Responsavel sugerido pela IA precisa ser confirmado na lista de membros."]
+            warnings = resolution.warnings
+            if not resolution.ids and not warnings:
+                warnings = ["Responsavel sugerido pela IA precisa ser confirmado na lista de membros."]
+            return _suggestion_assignee_resolution(
+                AssigneeResolution(ids=resolution.ids, warnings=warnings, had_signal=True, status=resolution.status),
+                context.members,
+                source_text,
+            )
 
     raw_ids = _valid_raw_assignee_ids(item, context.members)
     if raw_ids:
-        return raw_ids, []
+        return SuggestionAssigneeResolution(
+            ids=raw_ids,
+            names=_assignee_names_for_ids(context.members, raw_ids),
+            status="resolved",
+            warnings=[],
+            original_text=None,
+        )
 
-    return [], []
+    return SuggestionAssigneeResolution(ids=[], names=[], status="unresolved", warnings=[], original_text=None)
+
+
+def resolve_assignee_ids_for_suggestion(item: ImageAnalysisItem | object, context: AiSuggestionContext) -> tuple[list[str], list[str]]:
+    resolution = resolve_assignee_resolution_for_suggestion(item, context)
+    return resolution.ids, resolution.warnings
 
 
 def resolve_category_id_for_suggestion(item: ImageAnalysisItem | object, context: AiSuggestionContext) -> tuple[str | None, list[str]]:
@@ -299,7 +344,9 @@ def post_process_image_analysis_response(response: ImageAnalysisResponse, contex
 
     for item in response.items:
         warnings = list(item.warnings or [])
-        assignee_ids, assignee_warnings = resolve_assignee_ids_for_suggestion(item, context)
+        assignee_resolution = resolve_assignee_resolution_for_suggestion(item, context)
+        assignee_ids = assignee_resolution.ids
+        assignee_warnings = assignee_resolution.warnings
         category_id, category_warnings = resolve_category_id_for_suggestion(item, context)
         normalized_date, normalized_time, date_warnings = normalize_suggestion_date(item, context)
         reminders, reminder_warnings = normalize_suggestion_reminders(item)
@@ -313,6 +360,11 @@ def post_process_image_analysis_response(response: ImageAnalysisResponse, contex
             "categoryId": category_id,
             "assigneeIds": assignee_ids,
             "assigneeId": assignee_ids[0] if assignee_ids else None,
+            "assigneeNames": assignee_resolution.names,
+            "resolvedAssigneeNames": assignee_resolution.names,
+            "originalAssigneeText": assignee_resolution.original_text,
+            "assigneeResolutionStatus": assignee_resolution.status,
+            "assigneeResolutionWarnings": assignee_resolution.warnings,
             "date": normalized_date,
             "time": normalized_time,
             "dateYearSource": _date_year_source(item, context, normalized_date),
@@ -537,6 +589,88 @@ def _split_name_candidates(value: str) -> list[str]:
     ]
 
 
+def _candidate_name_tokens(value: str) -> list[str]:
+    tokens = []
+    for token in re.findall(r"\b[a-z0-9_.-]{3,40}\b", normalize_lookup_text(value)):
+        if token in ASSIGNEE_FUZZY_STOP_WORDS:
+            continue
+        if token not in tokens:
+            tokens.append(token)
+    return tokens[:20]
+
+
+def _fuzzy_member_aliases(member: AiMemberOption) -> list[str]:
+    aliases = []
+    for value in [_first_name(member.name), member.username, _email_local_part(member.email)]:
+        normalized = normalize_lookup_text(value)
+        if normalized and len(normalized) >= 4 and normalized not in aliases:
+            aliases.append(normalized)
+    return aliases
+
+
+def _max_fuzzy_distance(alias: str) -> int:
+    length = len(alias)
+    if length < 4:
+        return 0
+    if length <= 6:
+        return 1
+    return 2
+
+
+def _levenshtein_distance(left: str, right: str, *, max_distance: int) -> int | None:
+    if left == right:
+        return 0
+    if abs(len(left) - len(right)) > max_distance:
+        return None
+
+    previous = list(range(len(right) + 1))
+    for left_index, left_char in enumerate(left, start=1):
+        current = [left_index]
+        row_min = current[0]
+        for right_index, right_char in enumerate(right, start=1):
+            insert_cost = current[right_index - 1] + 1
+            delete_cost = previous[right_index] + 1
+            replace_cost = previous[right_index - 1] + (0 if left_char == right_char else 1)
+            value = min(insert_cost, delete_cost, replace_cost)
+            current.append(value)
+            row_min = min(row_min, value)
+        if row_min > max_distance:
+            return None
+        previous = current
+
+    distance = previous[-1]
+    return distance if distance <= max_distance else None
+
+
+def _assignee_resolution_status(ids: list[str], warnings: list[str]) -> str:
+    if ids:
+        return "resolved"
+    if any("ambiguo" in warning for warning in warnings):
+        return "ambiguous"
+    if warnings:
+        return "not_found"
+    return "unresolved"
+
+
+def _assignee_names_for_ids(members: tuple[AiMemberOption, ...], ids: list[str]) -> list[str]:
+    by_id = {member.id: member.name for member in members}
+    return [by_id[member_id] for member_id in ids if by_id.get(member_id)]
+
+
+def _suggestion_assignee_resolution(
+    resolution: AssigneeResolution,
+    members: tuple[AiMemberOption, ...],
+    original_text: str | list | tuple | None,
+) -> SuggestionAssigneeResolution:
+    return SuggestionAssigneeResolution(
+        ids=resolution.ids,
+        names=_assignee_names_for_ids(members, resolution.ids),
+        status=resolution.status,
+        warnings=resolution.warnings,
+        original_text=_safe_log_excerpt(_stringify_assignee_text(original_text)) or None,
+    )
+
+
 def _resolve_assignees_from_text(
     text: str | list | tuple | None,
     members: tuple[AiMemberOption, ...],
@@ -546,7 +680,7 @@ def _resolve_assignees_from_text(
     raw_text = _stringify_assignee_text(text)
     normalized_text = normalize_lookup_text(raw_text)
     if not normalized_text or not members:
-        return AssigneeResolution(ids=[], warnings=[], had_signal=False)
+        return AssigneeResolution(ids=[], warnings=[], had_signal=False, status="unresolved")
 
     fragments: list[str] = []
     explicit_signal = False
@@ -561,7 +695,7 @@ def _resolve_assignees_from_text(
         fragments.append(normalized_text)
 
     if require_explicit and not explicit_signal and not _looks_like_name_list(normalized_text, members):
-        return AssigneeResolution(ids=[], warnings=[], had_signal=False)
+        return AssigneeResolution(ids=[], warnings=[], had_signal=False, status="unresolved")
 
     ids: list[str] = []
     warnings: list[str] = []
@@ -573,13 +707,19 @@ def _resolve_assignees_from_text(
                 ids.append(member_id)
         warnings.extend(fragment_resolution.warnings)
 
-    return AssigneeResolution(ids=ids, warnings=list(dict.fromkeys(warnings))[:5], had_signal=had_signal)
+    unique_warnings = list(dict.fromkeys(warnings))[:5]
+    return AssigneeResolution(
+        ids=ids,
+        warnings=unique_warnings,
+        had_signal=had_signal,
+        status=_assignee_resolution_status(ids, unique_warnings),
+    )
 
 
 def _resolve_assignees_from_fragment(fragment: str, members: tuple[AiMemberOption, ...]) -> AssigneeResolution:
     normalized_fragment = normalize_lookup_text(fragment)
     if not normalized_fragment:
-        return AssigneeResolution(ids=[], warnings=[], had_signal=False)
+        return AssigneeResolution(ids=[], warnings=[], had_signal=False, status="unresolved")
 
     ids: list[str] = []
     warnings: list[str] = []
@@ -607,12 +747,67 @@ def _resolve_assignees_from_fragment(fragment: str, members: tuple[AiMemberOptio
         if first_name not in exact_matched_first_names:
             warnings.append(f"Responsavel '{first_name}' e ambiguo nesta familia; confirme manualmente.")
 
+    fuzzy_resolution = _resolve_fuzzy_assignees_from_fragment(normalized_fragment, members, set(ids))
+    for member_id in fuzzy_resolution.ids:
+        if member_id not in ids:
+            ids.append(member_id)
+    warnings.extend(fuzzy_resolution.warnings)
+
+    unique_warnings = list(dict.fromkeys(warnings))[:5]
     if ids:
-        return AssigneeResolution(ids=ids, warnings=list(dict.fromkeys(warnings))[:5], had_signal=True)
+        return AssigneeResolution(ids=ids, warnings=unique_warnings, had_signal=True, status=_assignee_resolution_status(ids, unique_warnings))
     return AssigneeResolution(
         ids=[],
-        warnings=list(dict.fromkeys(warnings))[:5] or ["Responsavel sugerido nao foi encontrado entre os membros da familia."],
+        warnings=unique_warnings or ["Responsavel sugerido nao foi encontrado entre os membros da familia."],
         had_signal=True,
+        status="ambiguous" if any("ambiguo" in warning for warning in unique_warnings) else "not_found",
+    )
+
+
+def _resolve_fuzzy_assignees_from_fragment(
+    normalized_fragment: str,
+    members: tuple[AiMemberOption, ...],
+    already_resolved_ids: set[str],
+) -> AssigneeResolution:
+    tokens = _candidate_name_tokens(normalized_fragment)
+    if not tokens:
+        return AssigneeResolution(ids=[], warnings=[], had_signal=False, status="unresolved")
+
+    matches_by_token: dict[str, list[tuple[int, AiMemberOption, str]]] = {}
+    for token in tokens:
+        for member in members:
+            if member.id in already_resolved_ids:
+                continue
+            for alias in _fuzzy_member_aliases(member):
+                max_distance = _max_fuzzy_distance(alias)
+                if max_distance <= 0:
+                    continue
+                distance = _levenshtein_distance(token, alias, max_distance=max_distance)
+                if distance is not None and 0 < distance <= max_distance:
+                    matches_by_token.setdefault(token, []).append((distance, member, alias))
+
+    ids: list[str] = []
+    warnings: list[str] = []
+    for token, matches in matches_by_token.items():
+        best_distance = min(distance for distance, _, _ in matches)
+        best_members = []
+        seen_ids = set()
+        for distance, member, _ in matches:
+            if distance == best_distance and member.id not in seen_ids:
+                best_members.append(member)
+                seen_ids.add(member.id)
+        if len(best_members) == 1:
+            member_id = best_members[0].id
+            if member_id not in ids:
+                ids.append(member_id)
+            continue
+        warnings.append(f"Responsavel parecido com '{token}' e ambiguo nesta familia; confirme manualmente.")
+
+    return AssigneeResolution(
+        ids=ids,
+        warnings=list(dict.fromkeys(warnings))[:5],
+        had_signal=bool(ids or warnings),
+        status=_assignee_resolution_status(ids, warnings),
     )
 
 

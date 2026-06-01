@@ -135,7 +135,14 @@ def _resolve_assignee_ids(
     warnings: list[str],
 ) -> list[str]:
     explicit_ids = item.assigneeIds if item.assigneeIds is not None else ([item.assigneeId] if item.assigneeId else [])
-    assignee_ids = unique_user_ids(explicit_ids)
+    raw_assignee_ids = unique_user_ids(explicit_ids)
+    assignee_ids = []
+    for user_id in raw_assignee_ids:
+        try:
+            require_family_member(db, family_id, user_id)
+            assignee_ids.append(user_id)
+        except HTTPException:
+            warnings.append("Responsavel informado nao pertence a familia ativa e foi ignorado.")
     if assignee_ids:
         return assignee_ids
 

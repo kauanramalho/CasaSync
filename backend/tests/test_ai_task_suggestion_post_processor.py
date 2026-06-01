@@ -62,6 +62,9 @@ class AiTaskSuggestionPostProcessorTest(unittest.TestCase):
     def test_responsavel_kauan_selects_only_kauan(self):
         self.assertEqual(detect_explicit_assignee_ids("Responsavel: Kauan", self.members), ["user-kauan"])
 
+    def test_responsavel_kuan_fuzzy_selects_kauan_when_clear(self):
+        self.assertEqual(detect_explicit_assignee_ids("Responsavel: Kuan", self.members), ["user-kauan"])
+
     def test_responsavel_linguagem_natural_selects_only_kauan(self):
         text = "Essa imagem e um calendario de provas. O responsavel sera Kauan. Crie uma tarefa por prova."
         self.assertEqual(detect_explicit_assignee_ids(text, self.members), ["user-kauan"])
@@ -89,6 +92,27 @@ class AiTaskSuggestionPostProcessorTest(unittest.TestCase):
         assignee_ids, warnings = resolve_assignee_ids_for_suggestion(item, self.context)
         self.assertEqual(assignee_ids, ["user-bia"])
         self.assertFalse(warnings)
+
+    def test_original_suggestion_text_kuan_resolves_for_review_card(self):
+        item = make_item(responsible="Sugestao original: Kuan")
+        assignee_ids, warnings = resolve_assignee_ids_for_suggestion(item, self.context)
+        self.assertEqual(assignee_ids, ["user-kauan"])
+        self.assertFalse(warnings)
+
+    def test_post_process_returns_assignee_resolution_contract(self):
+        item = make_item(
+            responsible="Kuan",
+            originalText="Academia Data: 05/06/2026 Hora: 07:00 Local: Smart Fit Centro Responsavel: Kuan",
+        )
+        response = ImageAnalysisResponse(overallConfidence=0.9, items=[item], needsUserReview=True)
+        processed = post_process_image_analysis_response(response, self.context)
+        processed_item = processed.items[0]
+        self.assertEqual(processed_item.assigneeIds, ["user-kauan"])
+        self.assertEqual(processed_item.assigneeId, "user-kauan")
+        self.assertEqual(processed_item.assigneeNames, ["Kauan Ramalho"])
+        self.assertEqual(processed_item.resolvedAssigneeNames, ["Kauan Ramalho"])
+        self.assertEqual(processed_item.assigneeResolutionStatus, "resolved")
+        self.assertEqual(processed_item.assigneeResolutionWarnings, [])
 
     def test_user_context_overrides_ai_assignee_ids(self):
         context = AiSuggestionContext(members=self.members, categories=self.categories, image_context="Cinema. Responsavel: Kauan")

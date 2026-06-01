@@ -60,11 +60,14 @@ function findValidAssigneeIds(rawItem, members) {
   members.forEach((member) => {
     const userId = member.user_id || member.userId || member.user?.id;
     if (!userId) return;
-    [userId, member.id].filter(Boolean).forEach((id) => memberIdToUserId.set(id, userId));
+    [userId, member.id].filter(Boolean).forEach((id) => memberIdToUserId.set(String(id), String(userId)));
   });
   const rawIds = Array.isArray(rawItem.assigneeIds) ? [...rawItem.assigneeIds] : [];
   if (rawItem.assigneeId) rawIds.push(rawItem.assigneeId);
-  return [...new Set(rawIds.map((id) => memberIdToUserId.get(id)).filter(Boolean))];
+  const normalizedRawIds = [...new Set(rawIds.map((id) => String(id || "").trim()).filter(Boolean))];
+  if (!normalizedRawIds.length) return [];
+  if (!members.length) return normalizedRawIds;
+  return [...new Set(normalizedRawIds.map((id) => memberIdToUserId.get(id)).filter(Boolean))];
 }
 
 export function buildReviewItem(rawItem = {}, index, categories = [], members = []) {
@@ -72,6 +75,12 @@ export function buildReviewItem(rawItem = {}, index, categories = [], members = 
   const categoryId = findValidCategoryId(rawItem, categories);
   const reminders = normalizeReminderList(rawItem).map((reminder) => ({ value: reminder.value, unit: reminder.unit }));
   const firstReminder = reminders[0] || null;
+  const assigneeIds = findValidAssigneeIds(rawItem, members);
+  const assigneeNames = Array.isArray(rawItem.resolvedAssigneeNames)
+    ? rawItem.resolvedAssigneeNames
+    : Array.isArray(rawItem.assigneeNames)
+      ? rawItem.assigneeNames
+      : [];
   return {
     source: {
       origin: "ai_image_import",
@@ -79,6 +88,7 @@ export function buildReviewItem(rawItem = {}, index, categories = [], members = 
       rawType: rawItem.type || "task",
       rawTitle: rawItem.title || "",
       rawResponsible: rawItem.responsible || "",
+      rawAssigneeText: rawItem.originalAssigneeText || "",
       sourceImageName: rawItem.sourceImageName || ""
     },
     suggestionId: rawItem.suggestionId || createSuggestionId(index),
@@ -94,7 +104,12 @@ export function buildReviewItem(rawItem = {}, index, categories = [], members = 
     categoryId,
     priority: rawItem.priority || "medium",
     responsible: rawItem.responsible || "",
-    assigneeIds: findValidAssigneeIds(rawItem, members),
+    assigneeIds,
+    assigneeNames,
+    resolvedAssigneeNames: assigneeNames,
+    originalAssigneeText: rawItem.originalAssigneeText || rawItem.responsible || "",
+    assigneeResolutionStatus: rawItem.assigneeResolutionStatus || (assigneeIds.length ? "resolved" : "unresolved"),
+    assigneeResolutionWarnings: Array.isArray(rawItem.assigneeResolutionWarnings) ? rawItem.assigneeResolutionWarnings : [],
     confidence,
     warnings: Array.isArray(rawItem.warnings) ? rawItem.warnings : [],
     acceptedLowConfidence: confidence >= LOW_CONFIDENCE_THRESHOLD,
@@ -130,7 +145,9 @@ export function getUncertainReviewWarnings(item) {
   }
   if (!item.assigneeIds?.length) {
     warnings.push(
-      item.responsible
+      item.assigneeResolutionStatus === "ambiguous"
+        ? "Responsavel sugerido e ambiguo; confirme manualmente na lista de membros."
+        : item.responsible || item.originalAssigneeText
         ? "Responsavel sugerido precisa ser confirmado na lista de membros."
         : "Responsavel nao identificado; se nenhum for escolhido, o backend usa o usuario atual."
     );

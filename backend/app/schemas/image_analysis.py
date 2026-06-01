@@ -10,6 +10,7 @@ ImageSuggestionType = Literal["task", "event", "reminder"]
 ImageSuggestionPriority = Literal["low", "medium", "high", "urgent"]
 ImageSuggestionReminderUnit = Literal["minutes", "hours", "days"]
 ImageSuggestionDateYearSource = Literal["explicit", "inferred", "unknown"]
+ImageAssigneeResolutionStatus = Literal["resolved", "unresolved", "ambiguous", "not_found"]
 ImageAnalysisJobStatusValue = Literal[
     "pending",
     "processing",
@@ -47,6 +48,11 @@ class ImageAnalysisItem(BaseModel):
     responsible: str | None = Field(default=None, max_length=120)
     assigneeId: str | None = Field(default=None, max_length=36)
     assigneeIds: list[str] = Field(default_factory=list, max_length=20)
+    assigneeNames: list[str] = Field(default_factory=list, max_length=20)
+    resolvedAssigneeNames: list[str] = Field(default_factory=list, max_length=20)
+    originalAssigneeText: str | None = Field(default=None, max_length=180)
+    assigneeResolutionStatus: ImageAssigneeResolutionStatus | None = None
+    assigneeResolutionWarnings: list[str] = Field(default_factory=list, max_length=10)
     confidence: float = Field(ge=0.0, le=1.0)
     warnings: list[str] = Field(default_factory=list, max_length=10)
     reminderEnabled: bool = False
