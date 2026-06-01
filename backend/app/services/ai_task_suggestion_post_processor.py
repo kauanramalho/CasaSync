@@ -19,8 +19,25 @@ SAO_PAULO_FALLBACK_TZ = timezone(timedelta(hours=-3), name="America/Sao_Paulo")
 DATE_SLASH_RE = re.compile(r"\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b")
 TIME_RE = re.compile(r"\b(\d{1,2})[:h](\d{2})\b", re.IGNORECASE)
 RESPONSIBLE_RE = re.compile(
-    r"\b(?:responsavel|responsaveis|responsabilidade|para|com)\b\s*[:=-]?\s*([a-z0-9_.\-\s,&/]+)",
+    r"\b(?:responsavel|responsaveis|responsabilidade|para|pra|com)\b\s*[:=-]?\s*([a-z0-9_.\-\s,&/]+)",
     re.IGNORECASE,
+)
+ASSIGNEE_STOP_WORD_RE = re.compile(
+    r"\b(?:categoria|data|horario|hora|local|prioridade|lembrete|google|agenda|descricao|observacao|obs|titulo)\b"
+)
+ASSIGNEE_TEXT_FIELDS = (
+    "assignee",
+    "assignees",
+    "assigneeName",
+    "assigneeNames",
+    "responsible",
+    "responsibles",
+    "responsibleName",
+    "responsibleNames",
+    "suggestedResponsible",
+    "suggestedResponsibles",
+    "originalAssigneeText",
+    "originalResponsibleText",
 )
 HISTORICAL_HINTS = {"historico", "historica", "passado", "passada", "antigo", "antiga", "retroativo"}
 
@@ -30,6 +47,7 @@ class AiMemberOption:
     id: str
     name: str
     username: str | None = None
+    email: str | None = None
 
 
 @dataclass(frozen=True)
@@ -49,6 +67,13 @@ class AiSuggestionContext:
     now: datetime | None = None
     custom_instructions: str | None = None
     image_context: str | None = None
+
+
+@dataclass(frozen=True)
+class AssigneeResolution:
+    ids: list[str]
+    warnings: list[str]
+    had_signal: bool = False
 
 
 def normalize_lookup_text(value: str | None) -> str:
@@ -86,6 +111,7 @@ def build_ai_suggestion_context(
                 id=member.user_id,
                 name=(member.user.name if member.user else "").strip(),
                 username=(member.user.username if member.user else None),
+                email=(member.user.email if member.user else None),
             )
             for member in members
             if member.user_id and member.user
@@ -108,7 +134,19 @@ def build_ai_suggestion_context(
 
 
 def members_for_prompt(context: AiSuggestionContext) -> list[dict]:
-    return [{"id": member.id, "name": member.name} for member in context.members if member.name]
+    members = []
+    for member in context.members:
+        if not member.name:
+            continue
+        payload = {
+            "id": member.id,
+            "name": member.name,
+            "firstName": _first_name(member.name),
+        }
+        if member.username:
+            payload["username"] = member.username
+        members.append(payload)
+    return members
 
 
 def categories_for_prompt(context: AiSuggestionContext) -> list[dict]:
@@ -128,61 +166,36 @@ def current_backend_datetime_for_prompt(context: AiSuggestionContext) -> str:
 
 
 def detect_explicit_assignee_ids(text: str | None, members: tuple[AiMemberOption, ...]) -> list[str]:
-    normalized_text = normalize_lookup_text(text)
-    if not normalized_text or not members:
-        return []
-
-    candidates: list[str] = []
-    for match in RESPONSIBLE_RE.finditer(normalized_text):
-        fragment = match.group(1)
-        fragment = re.split(r"\b(?:categoria|data|horario|prioridade|lembrete|google|agenda)\b", fragment)[0]
-        fragment = re.sub(r"^(?:sera|vai ser|deve ser|ficara para|ficar para|ser|e|eh)\s+", "", fragment).strip()
-        candidates.extend(_split_name_candidates(fragment))
-
-    if not candidates:
-        return []
-
-    resolved: list[str] = []
-    seen: set[str] = set()
-    for candidate in candidates:
-        member_id = _member_id_for_name(candidate, members) or _member_id_contained_in_text(candidate, members)
-        if member_id and member_id not in seen:
-            seen.add(member_id)
-            resolved.append(member_id)
-    return resolved
+    return _resolve_assignees_from_text(text, members, require_explicit=True).ids
 
 
 def resolve_assignee_ids_for_suggestion(item: ImageAnalysisItem | object, context: AiSuggestionContext) -> tuple[list[str], list[str]]:
-    warnings: list[str] = []
-    explicit_text = "\n".join(part for part in [context.custom_instructions, context.image_context] if part)
-    explicit_ids = detect_explicit_assignee_ids(explicit_text, context.members)
-    if explicit_ids:
-        return explicit_ids, ["Responsavel ajustado para respeitar o contexto informado pelo usuario."]
+    context_sources = (
+        ("contexto da imagem", context.image_context),
+        ("instrucoes personalizadas", context.custom_instructions),
+        ("texto extraido da imagem", _item_value(item, "originalText")),
+    )
+    for source_label, source_text in context_sources:
+        resolution = _resolve_assignees_from_text(source_text, context.members, require_explicit=True)
+        _log_assignee_resolution(source_label, source_text, context.members, resolution)
+        if resolution.had_signal:
+            if resolution.ids:
+                return resolution.ids, []
+            return [], resolution.warnings
 
-    raw_ids = []
-    for value in _list_from_item(item, "assigneeIds"):
-        raw_ids.append(str(value))
-    single_id = _item_value(item, "assigneeId")
-    if single_id:
-        raw_ids.append(str(single_id))
+    for field_name in ASSIGNEE_TEXT_FIELDS:
+        resolution = _resolve_assignees_from_text(_item_value(item, field_name), context.members, require_explicit=False)
+        _log_assignee_resolution(f"campo {field_name}", _item_value(item, field_name), context.members, resolution)
+        if resolution.had_signal:
+            if resolution.ids:
+                return resolution.ids, []
+            return [], resolution.warnings or ["Responsavel sugerido pela IA precisa ser confirmado na lista de membros."]
 
-    valid_member_ids = {member.id for member in context.members}
-    resolved = []
-    for value in raw_ids:
-        if value in valid_member_ids and value not in resolved:
-            resolved.append(value)
-    if resolved:
-        return resolved, warnings
+    raw_ids = _valid_raw_assignee_ids(item, context.members)
+    if raw_ids:
+        return raw_ids, []
 
-    responsible = _item_value(item, "responsible")
-    if responsible:
-        for candidate in _split_name_candidates(normalize_lookup_text(str(responsible))):
-            member_id = _member_id_for_name(candidate, context.members)
-            if member_id and member_id not in resolved:
-                resolved.append(member_id)
-        if not resolved:
-            warnings.append("Responsavel sugerido pela IA nao existe na familia e foi ignorado.")
-    return resolved, warnings
+    return [], []
 
 
 def resolve_category_id_for_suggestion(item: ImageAnalysisItem | object, context: AiSuggestionContext) -> tuple[str | None, list[str]]:
@@ -495,29 +508,176 @@ def _split_name_candidates(value: str) -> list[str]:
     ]
 
 
-def _member_id_for_name(candidate: str, members: tuple[AiMemberOption, ...]) -> str | None:
-    normalized_candidate = normalize_lookup_text(candidate)
-    if not normalized_candidate:
-        return None
-    for member in members:
-        member_names = [member.name, member.username]
-        for name in member_names:
-            normalized_name = normalize_lookup_text(name)
-            if normalized_name and normalized_candidate == normalized_name:
-                return member.id
-    return None
+def _resolve_assignees_from_text(
+    text: str | list | tuple | None,
+    members: tuple[AiMemberOption, ...],
+    *,
+    require_explicit: bool,
+) -> AssigneeResolution:
+    raw_text = _stringify_assignee_text(text)
+    normalized_text = normalize_lookup_text(raw_text)
+    if not normalized_text or not members:
+        return AssigneeResolution(ids=[], warnings=[], had_signal=False)
+
+    fragments: list[str] = []
+    explicit_signal = False
+    for match in RESPONSIBLE_RE.finditer(normalized_text):
+        explicit_signal = True
+        fragment = ASSIGNEE_STOP_WORD_RE.split(match.group(1), maxsplit=1)[0]
+        fragment = re.sub(r"^(?:sera|serao|vai ser|deve ser|ficara para|ficar para|ser|e|eh)\s+", "", fragment).strip()
+        if fragment:
+            fragments.append(fragment)
+
+    if not fragments and (not require_explicit or _looks_like_name_list(normalized_text, members)):
+        fragments.append(normalized_text)
+
+    if require_explicit and not explicit_signal and not _looks_like_name_list(normalized_text, members):
+        return AssigneeResolution(ids=[], warnings=[], had_signal=False)
+
+    ids: list[str] = []
+    warnings: list[str] = []
+    had_signal = explicit_signal or bool(fragments)
+    for fragment in fragments:
+        fragment_resolution = _resolve_assignees_from_fragment(fragment, members)
+        for member_id in fragment_resolution.ids:
+            if member_id not in ids:
+                ids.append(member_id)
+        warnings.extend(fragment_resolution.warnings)
+
+    return AssigneeResolution(ids=ids, warnings=list(dict.fromkeys(warnings))[:5], had_signal=had_signal)
 
 
-def _member_id_contained_in_text(candidate: str, members: tuple[AiMemberOption, ...]) -> str | None:
-    normalized_candidate = normalize_lookup_text(candidate)
-    if not normalized_candidate:
-        return None
+def _resolve_assignees_from_fragment(fragment: str, members: tuple[AiMemberOption, ...]) -> AssigneeResolution:
+    normalized_fragment = normalize_lookup_text(fragment)
+    if not normalized_fragment:
+        return AssigneeResolution(ids=[], warnings=[], had_signal=False)
+
+    ids: list[str] = []
+    warnings: list[str] = []
+    exact_matched_first_names: set[str] = set()
+
     for member in members:
-        for name in [member.name, member.username]:
-            normalized_name = normalize_lookup_text(name)
-            if normalized_name and re.search(rf"(^|[\s.,/&-]){re.escape(normalized_name)}($|[\s.,/&-])", normalized_candidate):
-                return member.id
-    return None
+        for alias in _strong_member_aliases(member):
+            if _text_contains_alias(normalized_fragment, alias):
+                if member.id not in ids:
+                    ids.append(member.id)
+                first_name = _first_name(member.name)
+                if first_name:
+                    exact_matched_first_names.add(first_name)
+                break
+
+    first_name_index = _first_name_index(members)
+    for first_name, matches in first_name_index.items():
+        if not first_name or not _text_contains_alias(normalized_fragment, first_name):
+            continue
+        if len(matches) == 1:
+            member_id = matches[0].id
+            if member_id not in ids:
+                ids.append(member_id)
+            continue
+        if first_name not in exact_matched_first_names:
+            warnings.append(f"Responsavel '{first_name}' e ambiguo nesta familia; confirme manualmente.")
+
+    if ids:
+        return AssigneeResolution(ids=ids, warnings=list(dict.fromkeys(warnings))[:5], had_signal=True)
+    return AssigneeResolution(
+        ids=[],
+        warnings=list(dict.fromkeys(warnings))[:5] or ["Responsavel sugerido nao foi encontrado entre os membros da familia."],
+        had_signal=True,
+    )
+
+
+def _valid_raw_assignee_ids(item: ImageAnalysisItem | object, members: tuple[AiMemberOption, ...]) -> list[str]:
+    raw_ids = []
+    for value in _list_from_item(item, "assigneeIds"):
+        raw_ids.append(str(value))
+    single_id = _item_value(item, "assigneeId")
+    if single_id:
+        raw_ids.append(str(single_id))
+
+    valid_member_ids = {member.id for member in members}
+    resolved = []
+    for value in raw_ids:
+        if value in valid_member_ids and value not in resolved:
+            resolved.append(value)
+    return resolved
+
+
+def _stringify_assignee_text(value: str | list | tuple | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (list, tuple)):
+        return " ".join(_stringify_assignee_text(item) for item in value)
+    return str(value)
+
+
+def _strong_member_aliases(member: AiMemberOption) -> list[str]:
+    aliases = []
+    for value in [member.name, member.username, member.email, _email_local_part(member.email)]:
+        normalized = normalize_lookup_text(value)
+        if normalized and len(normalized) >= 2 and normalized not in aliases:
+            aliases.append(normalized)
+    return aliases
+
+
+def _first_name_index(members: tuple[AiMemberOption, ...]) -> dict[str, list[AiMemberOption]]:
+    index: dict[str, list[AiMemberOption]] = {}
+    for member in members:
+        first_name = _first_name(member.name)
+        if first_name:
+            index.setdefault(first_name, []).append(member)
+    return index
+
+
+def _first_name(name: str | None) -> str:
+    normalized = normalize_lookup_text(name)
+    return normalized.split(" ", 1)[0] if normalized else ""
+
+
+def _email_local_part(email: str | None) -> str | None:
+    if not email or "@" not in email:
+        return None
+    return email.split("@", 1)[0]
+
+
+def _text_contains_alias(text: str, alias: str) -> bool:
+    normalized_text = normalize_lookup_text(text)
+    normalized_alias = normalize_lookup_text(alias)
+    if not normalized_text or not normalized_alias:
+        return False
+    return re.search(rf"(^|[\s,.;/&-]){re.escape(normalized_alias)}($|[\s,.;/&-])", normalized_text) is not None
+
+
+def _looks_like_name_list(text: str, members: tuple[AiMemberOption, ...]) -> bool:
+    normalized_text = normalize_lookup_text(text)
+    if not normalized_text or len(normalized_text) > 120:
+        return False
+    separators_removed = re.sub(r"\s+(?:e|and)\s+|[,/&]+", " ", normalized_text)
+    remaining = separators_removed
+    for member in members:
+        aliases = sorted(_strong_member_aliases(member) + [_first_name(member.name)], key=len, reverse=True)
+        for alias in aliases:
+            if alias:
+                remaining = re.sub(rf"(^|\s){re.escape(alias)}($|\s)", " ", remaining)
+    return not re.sub(r"\s+", "", remaining)
+
+
+def _log_assignee_resolution(
+    source_label: str,
+    text: str | list | tuple | None,
+    members: tuple[AiMemberOption, ...],
+    resolution: AssigneeResolution,
+) -> None:
+    if not LOGGER.isEnabledFor(logging.DEBUG) or not resolution.had_signal:
+        return
+    LOGGER.debug(
+        "AI assignee resolution source=%s text_excerpt=%s members=%s resolved_ids=%s warnings=%s",
+        source_label,
+        _safe_log_excerpt(_stringify_assignee_text(text)),
+        [{"id": member.id, "name": member.name} for member in members],
+        resolution.ids,
+        resolution.warnings,
+    )
 
 
 def _item_value(item: ImageAnalysisItem | object, name: str):

@@ -44,7 +44,7 @@ def make_item(**overrides):
 class AiTaskSuggestionPostProcessorTest(unittest.TestCase):
     def setUp(self):
         self.members = (
-            AiMemberOption(id="user-kauan", name="Kauan"),
+            AiMemberOption(id="user-kauan", name="Kauan Ramalho", username="kauan"),
             AiMemberOption(id="user-bia", name="Bia"),
         )
         self.categories = (
@@ -68,8 +68,67 @@ class AiTaskSuggestionPostProcessorTest(unittest.TestCase):
     def test_responsavel_bia_selects_only_bia(self):
         self.assertEqual(detect_explicit_assignee_ids("responsavel: bia", self.members), ["user-bia"])
 
+    def test_responsavel_sem_acento_bia_selects_only_bia(self):
+        self.assertEqual(detect_explicit_assignee_ids("Responsavel: Bia", self.members), ["user-bia"])
+
     def test_responsavel_kauan_e_bia_selects_both(self):
         self.assertEqual(detect_explicit_assignee_ids("Responsavel: Kauan e Bia", self.members), ["user-kauan", "user-bia"])
+
+    def test_original_text_responsavel_bia_resolves_for_review_card(self):
+        item = make_item(
+            responsible="Bia",
+            originalText="Consulta de Rotina Data: 26/05/2026 Hora: 15:30 Responsavel: Bia",
+        )
+        assignee_ids, warnings = resolve_assignee_ids_for_suggestion(item, self.context)
+        self.assertEqual(assignee_ids, ["user-bia"])
+        self.assertFalse(warnings)
+
+    def test_original_suggestion_text_bia_resolves_for_review_card(self):
+        item = make_item(responsible="Sugestao original: Bia")
+        assignee_ids, warnings = resolve_assignee_ids_for_suggestion(item, self.context)
+        self.assertEqual(assignee_ids, ["user-bia"])
+        self.assertFalse(warnings)
+
+    def test_user_context_overrides_ai_assignee_ids(self):
+        context = AiSuggestionContext(members=self.members, categories=self.categories, image_context="Cinema. Responsavel: Kauan")
+        item = make_item(responsible="Bia", assigneeIds=["user-bia"])
+        assignee_ids, warnings = resolve_assignee_ids_for_suggestion(item, context)
+        self.assertEqual(assignee_ids, ["user-kauan"])
+        self.assertFalse(warnings)
+
+    def test_generic_members_resolve_first_names_and_lists(self):
+        members = (
+            AiMemberOption(id="user-joao", name="Joao Silva"),
+            AiMemberOption(id="user-maria", name="Maria Souza"),
+            AiMemberOption(id="user-ana", name="Ana Oliveira"),
+            AiMemberOption(id="user-pedro", name="Pedro Santos"),
+            AiMemberOption(id="user-lucas", name="Lucas Lima"),
+        )
+        self.assertEqual(detect_explicit_assignee_ids("Responsavel: Joao", members), ["user-joao"])
+        self.assertEqual(detect_explicit_assignee_ids("Responsavel: Maria", members), ["user-maria"])
+        self.assertEqual(detect_explicit_assignee_ids("Responsaveis: Joao e Maria", members), ["user-joao", "user-maria"])
+        self.assertEqual(detect_explicit_assignee_ids("Pra Ana", members), ["user-ana"])
+        self.assertEqual(detect_explicit_assignee_ids("E para Pedro", members), ["user-pedro"])
+        self.assertEqual(detect_explicit_assignee_ids("Joao/Maria", members), ["user-joao", "user-maria"])
+        self.assertEqual(detect_explicit_assignee_ids("Ana, Pedro e Lucas", members), ["user-ana", "user-pedro", "user-lucas"])
+
+    def test_ambiguous_first_name_does_not_auto_select(self):
+        members = (
+            AiMemberOption(id="user-joao-silva", name="Joao Silva"),
+            AiMemberOption(id="user-joao-pereira", name="Joao Pereira"),
+        )
+        item = make_item(responsible="Responsavel: Joao")
+        context = AiSuggestionContext(members=members, categories=self.categories)
+        assignee_ids, warnings = resolve_assignee_ids_for_suggestion(item, context)
+        self.assertEqual(assignee_ids, [])
+        self.assertTrue(any("ambiguo" in warning for warning in warnings))
+
+    def test_ambiguous_first_name_with_full_name_selects_exact_member(self):
+        members = (
+            AiMemberOption(id="user-joao-silva", name="Joao Silva"),
+            AiMemberOption(id="user-joao-pereira", name="Joao Pereira"),
+        )
+        self.assertEqual(detect_explicit_assignee_ids("Responsavel: Joao Silva", members), ["user-joao-silva"])
 
     def test_ai_nonexistent_responsible_is_ignored(self):
         item = make_item(responsible="Pessoa inexistente")

@@ -56,10 +56,15 @@ function findValidCategoryId(rawItem, categories) {
 }
 
 function findValidAssigneeIds(rawItem, members) {
-  const existingIds = new Set(members.map((member) => member.id || member.user_id || member.userId).filter(Boolean));
+  const memberIdToUserId = new Map();
+  members.forEach((member) => {
+    const userId = member.user_id || member.userId || member.user?.id;
+    if (!userId) return;
+    [userId, member.id].filter(Boolean).forEach((id) => memberIdToUserId.set(id, userId));
+  });
   const rawIds = Array.isArray(rawItem.assigneeIds) ? [...rawItem.assigneeIds] : [];
   if (rawItem.assigneeId) rawIds.push(rawItem.assigneeId);
-  return [...new Set(rawIds.filter((id) => existingIds.has(id)))];
+  return [...new Set(rawIds.map((id) => memberIdToUserId.get(id)).filter(Boolean))];
 }
 
 export function buildReviewItem(rawItem = {}, index, categories = [], members = []) {
