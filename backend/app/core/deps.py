@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, Query, status
+from fastapi import Depends, Header, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
 from sqlalchemy.orm import Session
@@ -41,13 +41,15 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 def get_family_id(
     family_id: str | None = Query(default=None),
+    active_family_id: str | None = Header(default=None, alias="X-CasaSync-Family-Id"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> str:
     from app.services.family_service import get_primary_family, require_family_member
 
-    family = get_primary_family(db, current_user.id) if family_id is None else None
-    resolved_family_id = family.id if family else family_id
+    requested_family_id = (family_id or active_family_id or "").strip() or None
+    family = get_primary_family(db, current_user.id) if requested_family_id is None else None
+    resolved_family_id = family.id if family else requested_family_id
     if not resolved_family_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

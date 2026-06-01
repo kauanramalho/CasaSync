@@ -24,6 +24,7 @@ import Card from "../components/Card";
 import ImageAdjustField from "../components/ImageAdjustField";
 import PageHeader from "../components/PageHeader";
 import SelectMenu from "../components/SelectMenu";
+import { useActiveFamily } from "../hooks/useActiveFamily";
 import { useAuth } from "../hooks/useAuth";
 import { useToast } from "../hooks/useToast";
 import { dashboardApi, familiesApi } from "../services/api";
@@ -46,6 +47,7 @@ function dateKey(value) {
 
 export default function Family() {
   const { user } = useAuth();
+  const { refreshFamilies, switchFamily } = useActiveFamily();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const familyImageRef = useRef(null);
@@ -156,11 +158,11 @@ export default function Family() {
     setMessage("");
     setError("");
     try {
-      await familiesApi.create({ name: familyName.trim() });
+      const createdFamily = await familiesApi.create({ name: familyName.trim() });
       setFamilyName("");
       setMessage("Familia criada com sucesso.");
       emitAppDataChanged();
-      load();
+      await switchFamily(createdFamily.id);
     } catch (err) {
       setError(normalizeApiError(err));
     }
@@ -281,7 +283,7 @@ export default function Family() {
       await familiesApi.deleteCurrent();
       setMessage("Familia excluida.");
       emitAppDataChanged();
-      load();
+      await refreshFamilies();
     } catch (err) {
       setError(normalizeApiError(err));
     }
@@ -318,10 +320,10 @@ export default function Family() {
       setMessage("Voce saiu da familia.");
       emitAppDataChanged();
       navigate("/familia");
-      load();
+      setLeavingFamily(false);
+      await refreshFamilies();
     } catch (err) {
       setError(normalizeApiError(err));
-    } finally {
       setLeavingFamily(false);
     }
   }

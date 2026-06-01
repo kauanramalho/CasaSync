@@ -1,13 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="CasaSync">
   <defs>
-    <linearGradient id="mark-bg" x1="10" y1="8" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+    <linearGradient id="casasync-icon-bg" x1="8" y1="6" x2="58" y2="60" gradientUnits="userSpaceOnUse">
       <stop stop-color="#dbeafe"/>
-      <stop offset="0.52" stop-color="#ffffff"/>
+      <stop offset="0.5" stop-color="#ffffff"/>
       <stop offset="1" stop-color="#ede9fe"/>
     </linearGradient>
+    <linearGradient id="casasync-icon-mark" x1="16" y1="15" x2="49" y2="50" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </linearGradient>
+    <filter id="casasync-icon-shadow" x="-20%" y="-20%" width="140%" height="150%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="7" stdDeviation="5" flood-color="#2563eb" flood-opacity="0.18"/>
+    </filter>
   </defs>
-  <rect width="64" height="64" rx="18" fill="url(#mark-bg)"/>
-  <rect x="5" y="5" width="54" height="54" rx="15" fill="none" stroke="#2563eb" stroke-opacity="0.2" stroke-width="2"/>
-  <path d="M32 47c-7.8-5.2-16-11.9-16-20.2 0-5 3.7-8.8 8.6-8.8 3 0 5.7 1.5 7.4 4 1.7-2.5 4.4-4 7.4-4 4.9 0 8.6 3.8 8.6 8.8C48 35.1 39.8 41.8 32 47Z" fill="#2563eb"/>
-  <path d="M23 34.5h18M23 28h18" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+  <rect width="64" height="64" rx="18" fill="url(#casasync-icon-bg)"/>
+  <rect x="5" y="5" width="54" height="54" rx="15" fill="none" stroke="#2563eb" stroke-opacity="0.14" stroke-width="2"/>
+  <g transform="translate(12 12) scale(1.6667)" fill="none" stroke="url(#casasync-icon-mark)" stroke-width="2.35" stroke-linecap="round" stroke-linejoin="round" filter="url(#casasync-icon-shadow)">
+    <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>
+    <path d="M12 5 9.04 7.96a2.17 2.17 0 0 0 0 3.08c.82.82 2.13.85 3 .07l2.07-1.9a2.82 2.82 0 0 1 3.79 0l2.96 2.66"/>
+    <path d="m18 15-2-2"/>
+    <path d="m15 18-2-2"/>
+  </g>
 </svg>

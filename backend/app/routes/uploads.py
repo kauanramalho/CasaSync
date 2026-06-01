@@ -1,6 +1,6 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Header, Query, Request, Response, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
@@ -19,11 +19,12 @@ async def upload_image(
     request: Request,
     scope: Literal["avatar", "family", "date", "system"] = Query(default="system"),
     family_id: str | None = Query(default=None),
+    active_family_id: str | None = Header(default=None, alias="X-CasaSync-Family-Id"),
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    resolved_family_id = family_id
+    resolved_family_id = family_id or (active_family_id if scope in {"family", "date"} else None)
     if scope in {"family", "date"} and resolved_family_id is None:
         family = get_primary_family(db, current_user.id)
         resolved_family_id = family.id if family else None

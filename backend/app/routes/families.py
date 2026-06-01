@@ -5,7 +5,16 @@ from app.core.rate_limit import check_rate_limit, client_identifier
 from app.core.deps import get_current_user, get_family_id
 from app.database.session import get_db
 from app.models.user import User
-from app.schemas.family import FamilyCreate, FamilyJoin, FamilyJoinRequestRead, FamilyMemberRead, FamilyMemberUpdate, FamilyRead, FamilyUpdate
+from app.schemas.family import (
+    FamilyActiveUpdate,
+    FamilyCreate,
+    FamilyJoin,
+    FamilyJoinRequestRead,
+    FamilyMemberRead,
+    FamilyMemberUpdate,
+    FamilyRead,
+    FamilyUpdate,
+)
 from app.services.family_service import (
     create_family,
     decide_join_request,
@@ -17,6 +26,7 @@ from app.services.family_service import (
     list_user_families,
     regenerate_invite_code,
     remove_member,
+    require_family_member,
     request_join_family,
     update_family,
     update_member_role,
@@ -34,6 +44,16 @@ def list_my_families(current_user: User = Depends(get_current_user), db: Session
 @router.get("/current", response_model=FamilyRead)
 def current_family(family_id: str = Depends(get_family_id), db: Session = Depends(get_db)):
     return get_family(db, family_id)
+
+
+@router.patch("/active", response_model=FamilyRead)
+def validate_active_family(
+    payload: FamilyActiveUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    require_family_member(db, payload.family_id, current_user.id)
+    return get_family(db, payload.family_id)
 
 
 @router.post("", response_model=FamilyRead, status_code=201)

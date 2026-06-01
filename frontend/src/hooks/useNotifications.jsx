@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "./useAuth";
-import { notificationsApi } from "../services/api";
-import { APP_DATA_CHANGED_EVENT } from "../utils/events";
+import { getActiveFamilyId, notificationsApi } from "../services/api";
+import { ACTIVE_FAMILY_CHANGED_EVENT, APP_DATA_CHANGED_EVENT } from "../utils/events";
 
 const STORAGE_KEY = "casasync_notifications";
 const REMINDER_CHECK_INTERVAL_MS = 60_000;
@@ -43,6 +43,7 @@ export function NotificationsProvider({ children }) {
   const { user } = useAuth();
   const [localNotifications, setLocalNotifications] = useState(() => readLocalNotifications().map(normalizeLocalNotification));
   const [serverNotifications, setServerNotifications] = useState([]);
+  const [activeFamilyId, setActiveFamilyIdState] = useState(() => getActiveFamilyId());
 
   const updateLocalNotifications = useCallback((updater) => {
     setLocalNotifications((current) => {
@@ -133,24 +134,32 @@ export function NotificationsProvider({ children }) {
     sync({ processReminders: true });
     const interval = window.setInterval(() => sync({ processReminders: true }), REMINDER_CHECK_INTERVAL_MS);
     const handleAppDataChanged = () => sync({ processReminders: true });
+    const handleActiveFamilyChanged = () => {
+      setActiveFamilyIdState(getActiveFamilyId());
+      sync({ processReminders: true });
+    };
     window.addEventListener(APP_DATA_CHANGED_EVENT, handleAppDataChanged);
+    window.addEventListener(ACTIVE_FAMILY_CHANGED_EVENT, handleActiveFamilyChanged);
     return () => {
       alive = false;
       window.clearInterval(interval);
       window.removeEventListener(APP_DATA_CHANGED_EVENT, handleAppDataChanged);
+      window.removeEventListener(ACTIVE_FAMILY_CHANGED_EVENT, handleActiveFamilyChanged);
     };
   }, [refreshServerNotifications, user?.id]);
 
   const value = useMemo(() => {
     const visibleLocalNotifications = user?.id
-      ? localNotifications.filter((item) => !item.user_id || item.user_id === user.id)
+      ? localNotifications.filter(
+          (item) => (!item.user_id || item.user_id === user.id) && (!activeFamilyId || !item.family_id || item.family_id === activeFamilyId)
+        )
       : localNotifications;
     const notifications = [...serverNotifications, ...visibleLocalNotifications].sort(
       (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
     );
     const unreadCount = notifications.filter((item) => !item.read).length;
     return { notifications, unreadCount, addNotification, markAsRead, markAllAsRead, clearAll, refresh: refreshServerNotifications };
-  }, [addNotification, clearAll, localNotifications, markAllAsRead, markAsRead, refreshServerNotifications, serverNotifications, user?.id]);
+  }, [activeFamilyId, addNotification, clearAll, localNotifications, markAllAsRead, markAsRead, refreshServerNotifications, serverNotifications, user?.id]);
 
   return <NotificationsContext.Provider value={value}>{children}</NotificationsContext.Provider>;
 }

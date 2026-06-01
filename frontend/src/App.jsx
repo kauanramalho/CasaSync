@@ -2,6 +2,8 @@ import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import AppLayout from "./layouts/AppLayout";
+import LogoMark from "./components/LogoMark";
+import { ActiveFamilyProvider } from "./hooks/useActiveFamily";
 import { useAuth } from "./hooks/useAuth";
 
 const Calendar = lazy(() => import("./pages/Calendar"));
@@ -19,14 +21,27 @@ const Tasks = lazy(() => import("./pages/Tasks"));
 const VerifyCode = lazy(() => import("./pages/VerifyCode"));
 
 function PageLoader() {
-  return <div className="grid min-h-[40vh] place-items-center text-sm font-semibold text-muted">Carregando CasaSync...</div>;
+  return <AppLoading compact />;
+}
+
+function AppLoading({ compact = false }) {
+  return (
+    <div className={compact ? "app-loading-screen min-h-[40vh]" : "app-loading-screen min-h-screen"}>
+      <div className="app-loading-mark">
+        <LogoMark subtitle="Organizando sua casa" />
+      </div>
+      <div className="app-loading-progress" aria-label="Carregando CasaSync" role="status">
+        <span />
+      </div>
+    </div>
+  );
 }
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <div className="grid min-h-screen place-items-center text-sm font-semibold text-muted">Carregando CasaSync...</div>;
+    return <AppLoading />;
   }
 
   if (!user) return <Navigate to="/login" replace />;
@@ -43,7 +58,9 @@ export default function App() {
         <Route
           element={
             <ProtectedRoute>
-              <AppLayout />
+              <ActiveFamilyProvider>
+                <AppLayout />
+              </ActiveFamilyProvider>
             </ProtectedRoute>
           }
         >

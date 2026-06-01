@@ -109,6 +109,10 @@ def _upgrade_existing_tables() -> None:
             _add_column_if_missing(connection, "families", "description", "description TEXT")
             _add_column_if_missing(connection, "families", "image_url", "image_url TEXT")
 
+        if "family_members" in existing_tables:
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_family_members_family_id ON family_members (family_id)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_family_members_user_id ON family_members (user_id)"))
+
         if "family_join_requests" in existing_tables:
             _add_column_if_missing(connection, "family_join_requests", "expires_at", f"expires_at {_timestamp_with_timezone_type()}")
             connection.execute(
@@ -150,6 +154,7 @@ def _upgrade_existing_tables() -> None:
             _add_column_if_missing(connection, "tasks", "automation_source_label", "automation_source_label VARCHAR(180)")
             _add_column_if_missing(connection, "tasks", "automation_source_reference", "automation_source_reference TEXT")
             _add_column_if_missing(connection, "tasks", "recurrence_rule", "recurrence_rule VARCHAR(255)")
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_tasks_family_id ON tasks (family_id)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_tasks_google_calendar_event_id ON tasks (google_calendar_event_id)"))
             connection.execute(
                 text(
@@ -158,6 +163,9 @@ def _upgrade_existing_tables() -> None:
                     "WHERE automation_external_id IS NOT NULL"
                 )
             )
+
+        if "categories" in existing_tables:
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_categories_family_id ON categories (family_id)"))
 
         if "google_calendar_connections" in existing_tables:
             _add_column_if_missing(connection, "google_calendar_connections", "access_token_expires_at", f"access_token_expires_at {_timestamp_with_timezone_type()}")

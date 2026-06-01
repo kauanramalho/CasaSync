@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.common import ORMModel
 from app.schemas.image import MAX_IMAGE_URL_LENGTH, validate_image_url
@@ -13,6 +13,12 @@ class FamilyCreate(BaseModel):
 
 class FamilyJoin(BaseModel):
     invite_code: str = Field(min_length=4, max_length=16, pattern="^[A-Za-z0-9]+$")
+
+
+class FamilyActiveUpdate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    family_id: str = Field(min_length=1, max_length=36, validation_alias=AliasChoices("family_id", "familyId"))
 
 
 class FamilyRead(ORMModel):

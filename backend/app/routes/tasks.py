@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Query, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -9,7 +9,6 @@ from app.models.user import User
 from app.schemas.task import TaskCreate, TaskDeleteRequest, TaskDeleteResponse, TaskRead, TaskUpdate
 from app.schemas.task_attachment import TaskAttachmentRead
 from app.schemas.task_import import TaskSuggestionsImportRequest, TaskSuggestionsImportResponse
-from app.services.family_service import get_primary_family, require_family_member
 from app.services.task_attachment_service import (
     create_task_attachment,
     delete_task_attachment,
@@ -56,16 +55,13 @@ def due_reminders(family_id: str = Depends(get_family_id), db: Session = Depends
 def import_suggestions(
     payload: TaskSuggestionsImportRequest,
     current_user: User = Depends(get_current_user),
+    family_id: str = Depends(get_family_id),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    family = get_primary_family(db, current_user.id)
-    if not family:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Crie ou entre em uma familia para continuar.")
-    require_family_member(db, family.id, current_user.id)
     return import_task_suggestions(
         db,
-        family_id=family.id,
+        family_id=family_id,
         creator_id=current_user.id,
         items=payload.items,
         sync_google_calendar=payload.syncGoogleCalendar,

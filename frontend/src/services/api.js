@@ -1,9 +1,24 @@
 const TOKEN_KEY = "casasync_token";
 const SESSION_TOKEN_KEY = "casasync_session_token";
 const PENDING_TWO_FACTOR_KEY = "casasync_pending_2fa";
+const ACTIVE_FAMILY_ID_KEY = "casasync_active_family_id";
 const AUTH_SESSION_CHANGED_EVENT = "casasync:auth-session-changed";
 const pendingGetRequests = new Map();
 let cachedApiUrl = null;
+
+const FAMILY_SCOPED_PREFIXES = [
+  "/automation",
+  "/categories",
+  "/couple-space",
+  "/dashboard",
+  "/families/current",
+  "/image-analysis",
+  "/integrations",
+  "/notifications",
+  "/planner",
+  "/tasks",
+  "/uploads"
+];
 
 function configuredApiUrl() {
   return (import.meta.env.VITE_API_URL || import.meta.env.NEXT_PUBLIC_API_URL || "").trim();
@@ -94,6 +109,31 @@ export function setToken(token, { remember = true } = {}) {
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
   sessionStorage.removeItem(SESSION_TOKEN_KEY);
+  clearActiveFamilyId();
+}
+
+export function getActiveFamilyId() {
+  return localStorage.getItem(ACTIVE_FAMILY_ID_KEY) || "";
+}
+
+export function setActiveFamilyId(familyId) {
+  const value = String(familyId || "").trim();
+  if (!value) {
+    clearActiveFamilyId();
+    return "";
+  }
+  localStorage.setItem(ACTIVE_FAMILY_ID_KEY, value);
+  pendingGetRequests.clear();
+  return value;
+}
+
+export function clearActiveFamilyId() {
+  localStorage.removeItem(ACTIVE_FAMILY_ID_KEY);
+  pendingGetRequests.clear();
+}
+
+export function clearApiReadCache() {
+  pendingGetRequests.clear();
 }
 
 export function getPendingTwoFactor() {
@@ -115,8 +155,23 @@ export function clearPendingTwoFactor() {
   sessionStorage.removeItem(PENDING_TWO_FACTOR_KEY);
 }
 
+function shouldAttachActiveFamily(path, auth) {
+  if (!auth || !getToken()) return false;
+  const normalizedPath = apiPath(path);
+  return FAMILY_SCOPED_PREFIXES.some(
+    (prefix) => normalizedPath === prefix || normalizedPath.startsWith(`${prefix}/`) || normalizedPath.startsWith(`${prefix}?`)
+  );
+}
+
+function activeFamilyHeader(path, auth) {
+  if (!shouldAttachActiveFamily(path, auth)) return {};
+  const familyId = getActiveFamilyId();
+  return familyId ? { "X-CasaSync-Family-Id": familyId } : {};
+}
+
 async function request(path, { method = "GET", body, auth = true } = {}) {
-  const cacheKey = method === "GET" ? `${auth ? getToken() || "anon" : "public"}:${path}` : "";
+  const activeFamilyId = shouldAttachActiveFamily(path, auth) ? getActiveFamilyId() : "";
+  const cacheKey = method === "GET" ? `${auth ? getToken() || "anon" : "public"}:${activeFamilyId}:${path}` : "";
   if (cacheKey && pendingGetRequests.has(cacheKey)) {
     return pendingGetRequests.get(cacheKey);
   }
@@ -142,7 +197,7 @@ async function request(path, { method = "GET", body, auth = true } = {}) {
 
 async function performRequest(path, { method = "GET", body, auth = true } = {}) {
   const url = `${getApiUrl()}${apiPath(path)}`;
-  const headers = {};
+  const headers = { ...activeFamilyHeader(path, auth) };
   if (body !== undefined) {
     assertPayloadHasNoInlineImages(body);
     headers["Content-Type"] = "application/json";
@@ -202,7 +257,7 @@ async function uploadRequest(
   } = {}
 ) {
   const url = `${getApiUrl()}${apiPath(path)}`;
-  const headers = {};
+  const headers = { ...activeFamilyHeader(path, auth) };
   const token = getToken();
   if (auth && token) {
     headers.Authorization = `Bearer ${token}`;
@@ -233,7 +288,7 @@ async function uploadRequest(
 
 async function downloadRequest(path, { auth = true } = {}) {
   const url = `${getApiUrl()}${apiPath(path)}`;
-  const headers = {};
+  const headers = { ...activeFamilyHeader(path, auth) };
   const token = getToken();
   if (auth && token) {
     headers.Authorization = `Bearer ${token}`;
@@ -362,6 +417,7 @@ export const imageAnalysisApi = {
 export const familiesApi = {
   list: () => request("/families"),
   current: () => request("/families/current"),
+  activate: (familyId) => request("/families/active", { method: "PATCH", body: { familyId } }),
   create: (payload) => request("/families", { method: "POST", body: payload }),
   join: (payload) => request("/families/join", { method: "POST", body: payload }),
   members: () => request("/families/current/members"),

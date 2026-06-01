@@ -279,6 +279,38 @@
     color: rgb(var(--color-blush));
   }
 
+  .app-loading-screen {
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 1.25rem;
+    padding: 2rem;
+    background:
+      radial-gradient(circle at 50% 38%, rgb(var(--color-blush) / 0.12), transparent 18rem),
+      linear-gradient(135deg, rgb(var(--color-cream)), rgb(var(--color-surface-alt)) 48%, rgb(var(--color-surface)));
+  }
+
+  .app-loading-mark {
+    animation: float-soft 2600ms ease-in-out infinite;
+  }
+
+  .app-loading-progress {
+    width: min(9rem, 46vw);
+    height: 0.28rem;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgb(var(--color-border) / 0.7);
+  }
+
+  .app-loading-progress span {
+    display: block;
+    width: 42%;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, rgb(var(--color-blush)), rgb(var(--color-lavender)));
+    animation: loading-sweep 1400ms ease-in-out infinite;
+  }
+
   .chart-frame {
     position: relative;
     min-width: 0;
@@ -449,5 +481,15 @@
   }
   50% {
     transform: translateY(-4px);
+  }
+}
+
+@keyframes loading-sweep {
+  0% {
+    transform: translateX(-110%);
+  }
+  55%,
+  100% {
+    transform: translateX(250%);
   }
 }

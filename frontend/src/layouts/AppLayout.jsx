@@ -15,8 +15,10 @@ import {
 
 import LogoMark from "../components/LogoMark";
 import ProgressRing from "../components/ProgressRing";
+import SelectMenu from "../components/SelectMenu";
+import { useActiveFamily } from "../hooks/useActiveFamily";
 import { useAuth } from "../hooks/useAuth";
-import { dashboardApi, familiesApi } from "../services/api";
+import { dashboardApi } from "../services/api";
 import { APP_DATA_CHANGED_EVENT } from "../utils/events";
 
 const navItems = [
@@ -33,29 +35,34 @@ const navItems = [
 
 export default function AppLayout() {
   const { logout } = useAuth();
+  const { activeFamily, error: familyError, families, loading: familyLoading, switchFamily, switching } = useActiveFamily();
   const navigate = useNavigate();
-  const [family, setFamily] = useState(null);
   const [sidebarMetrics, setSidebarMetrics] = useState({ done: 0, total: 0, points: 0 });
+  const familyOptions = families.map((familyItem) => ({
+    value: familyItem.id,
+    label: familyItem.name,
+    helper: familyItem.invite_code ? `Codigo ${familyItem.invite_code}` : "Familia CasaSync"
+  }));
 
   useEffect(() => {
     let alive = true;
 
     async function loadSidebarData() {
+      if (!activeFamily?.id) {
+        setSidebarMetrics({ done: 0, total: 0, points: 0 });
+        return;
+      }
       try {
-        const [familyResult, dashboard] = await Promise.allSettled([familiesApi.current(), dashboardApi.get()]);
+        const dashboard = await dashboardApi.get();
         if (!alive) return;
-        if (familyResult.status === "fulfilled") setFamily(familyResult.value);
-        if (familyResult.status === "rejected") setFamily(null);
-        if (dashboard.status === "fulfilled") {
-          const stats = dashboard.value.stats;
-          const done = stats.find((item) => item.key === "done")?.value ?? 0;
-          const pending = stats.find((item) => item.key === "pending")?.value ?? 0;
-          const overdue = stats.find((item) => item.key === "overdue")?.value ?? 0;
-          const points = stats.find((item) => item.key === "points")?.value ?? 0;
-          setSidebarMetrics({ done, total: done + pending + overdue, points });
-        }
+        const stats = dashboard.stats;
+        const done = stats.find((item) => item.key === "done")?.value ?? 0;
+        const pending = stats.find((item) => item.key === "pending")?.value ?? 0;
+        const overdue = stats.find((item) => item.key === "overdue")?.value ?? 0;
+        const points = stats.find((item) => item.key === "points")?.value ?? 0;
+        setSidebarMetrics({ done, total: done + pending + overdue, points });
       } catch {
-        setFamily(null);
+        setSidebarMetrics({ done: 0, total: 0, points: 0 });
       }
     }
 
@@ -65,20 +72,66 @@ export default function AppLayout() {
       alive = false;
       window.removeEventListener(APP_DATA_CHANGED_EVENT, loadSidebarData);
     };
-  }, []);
+  }, [activeFamily?.id]);
 
   async function handleLogout() {
     await logout();
     navigate("/login");
   }
 
+  function handleFamilyChange(familyId) {
+    if (switching) return;
+    switchFamily(familyId).catch(() => undefined);
+  }
+
+  function FamilySwitcher({ compact = false }) {
+    if (familyLoading) {
+      return <div className="mt-4 rounded-[22px] bg-white/70 px-4 py-3 text-xs font-semibold text-muted shadow-card">Carregando familias...</div>;
+    }
+
+    if (!families.length) {
+      return (
+        <div className="mt-4 rounded-[22px] border border-amber-100 bg-amber-50/80 px-4 py-3 text-xs font-semibold text-amber-700">
+          Crie ou entre em uma familia para continuar.
+        </div>
+      );
+    }
+
+    return (
+      <div className={compact ? "mt-3 rounded-[22px] bg-white/80 p-3 shadow-card" : "mt-5 rounded-[24px] bg-white/80 p-4 shadow-card"}>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted">Familia ativa</p>
+          {switching && <span className="text-[11px] font-semibold text-blush">Trocando...</span>}
+        </div>
+        <SelectMenu
+          value={activeFamily?.id || ""}
+          options={familyOptions}
+          onChange={handleFamilyChange}
+          placeholder="Escolher familia"
+          buttonClassName={compact ? "min-h-[44px] rounded-2xl text-sm" : "min-h-[46px] rounded-2xl"}
+        />
+        {activeFamily?.invite_code && <p className="mt-2 text-xs font-medium text-muted">Codigo: {activeFamily.invite_code}</p>}
+        {familyError && <p className="mt-2 text-xs font-semibold text-red-500">{familyError}</p>}
+        {!compact && (
+          <button
+            type="button"
+            onClick={() => navigate("/familia")}
+            className="mt-3 w-full rounded-2xl bg-blush/10 px-3 py-2 text-xs font-bold text-blush transition hover:bg-blush/15"
+          >
+            Gerenciar familias
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[280px_minmax(0,1fr)]">
       <aside className="sticky top-0 z-20 hidden h-screen flex-col border-r border-white/80 bg-white/70 p-6 shadow-soft backdrop-blur-xl lg:flex">
-        <LogoMark subtitle={family?.name || "Minha familia"} />
-        {family && <p className="mt-2 pl-[60px] text-xs font-medium text-muted">Código: {family.invite_code}</p>}
+        <LogoMark subtitle={activeFamily?.name || "Minha familia"} />
+        <FamilySwitcher />
 
-        <nav className="mt-10 flex flex-1 flex-col gap-2 overflow-y-auto pr-1">
+        <nav className="mt-8 flex flex-1 flex-col gap-2 overflow-y-auto pr-1">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
@@ -114,7 +167,8 @@ export default function AppLayout() {
 
       <div className="flex min-h-screen min-w-0 flex-col">
         <div className="sticky top-0 z-10 border-b border-white/70 bg-white/75 px-4 py-3 backdrop-blur-xl lg:hidden">
-          <LogoMark subtitle={family?.name || "Minha familia"} />
+          <LogoMark subtitle={activeFamily?.name || "Minha familia"} />
+          <FamilySwitcher compact />
           <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
             {navItems.map((item) => (
               <NavLink
@@ -133,7 +187,7 @@ export default function AppLayout() {
           </div>
         </div>
         <main className="min-w-0 flex-1 overflow-x-hidden px-4 py-6 md:px-8 lg:px-10 lg:py-8">
-          <Outlet />
+          <Outlet key={activeFamily?.id || "sem-familia"} />
         </main>
         <footer className="pb-8 text-center text-sm text-muted">CasaSync © 2026 · Feito com amor para nós</footer>
       </div>

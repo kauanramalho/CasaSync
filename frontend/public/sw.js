@@ -10,7 +10,7 @@ self.addEventListener("push", (event) => {
   const options = {
     body: data.body || "Voce tem uma nova notificacao.",
     icon: "/icons/icon-192.png",
-    badge: "/favicon.svg",
+    badge: "/icons/favicon-32x32.png",
     tag: data.tag || "casasync-notification",
     data: { url: data.url || "/" }
   };
