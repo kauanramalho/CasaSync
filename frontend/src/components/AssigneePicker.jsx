@@ -3,12 +3,21 @@ import { Check } from "lucide-react";
 
 import Avatar from "./Avatar";
 
+function memberUserId(member) {
+  return member?.user_id || member?.userId || member?.user?.id || member?.id;
+}
+
+function memberProfile(member) {
+  return member?.user || member || {};
+}
+
 export default function AssigneePicker({ members = [], value = [], onChange }) {
-  const selected = new Set(value);
+  const selected = new Set(value.map((item) => String(item)));
 
   function toggle(userId) {
-    const next = selected.has(userId)
-      ? value.filter((item) => item !== userId)
+    const normalizedUserId = String(userId);
+    const next = selected.has(normalizedUserId)
+      ? value.filter((item) => String(item) !== normalizedUserId)
       : [...value, userId];
     onChange?.(next);
   }
@@ -16,12 +25,15 @@ export default function AssigneePicker({ members = [], value = [], onChange }) {
   return (
     <div className="grid gap-2 sm:grid-cols-2">
       {members.map((member) => {
-        const active = selected.has(member.user_id);
+        const userId = memberUserId(member);
+        const profile = memberProfile(member);
+        if (!userId) return null;
+        const active = selected.has(String(userId));
         return (
           <button
-            key={member.user_id}
+            key={userId}
             type="button"
-            onClick={() => toggle(member.user_id)}
+            onClick={() => toggle(userId)}
             className={clsx(
               "flex min-w-0 items-center justify-between gap-3 rounded-[20px] border px-3 py-3 text-left shadow-sm transition hover:-translate-y-0.5",
               active
@@ -30,9 +42,9 @@ export default function AssigneePicker({ members = [], value = [], onChange }) {
             )}
           >
             <span className="flex min-w-0 items-center gap-3">
-              <Avatar user={member.user} size="sm" />
+              <Avatar user={profile} size="sm" />
               <span className="min-w-0">
-                <span className="block truncate text-sm font-bold">{member.user.name}</span>
+                <span className="block truncate text-sm font-bold">{profile.name}</span>
                 {member.role && <span className="block truncate text-[11px] font-semibold text-muted">{member.role}</span>}
               </span>
             </span>

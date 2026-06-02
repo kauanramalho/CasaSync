@@ -36,6 +36,7 @@ import {
   getConfidenceLabel,
   getUncertainReviewWarnings,
   priorityOptions,
+  resolveSuggestionAssigneesFromMembers,
   typeLabels,
   validateReviewItemsBeforeImport
 } from "../utils/taskSuggestionReview";
@@ -273,6 +274,42 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
   useEffect(() => {
     if (!calendarStatus?.can_sync) setSyncGoogleCalendar(false);
   }, [calendarStatus?.can_sync]);
+
+  useEffect(() => {
+    if (!members.length) return;
+    setReviewItems((current) => {
+      let changed = false;
+      const next = current.map((item) => {
+        if (item.assigneeTouched) return item;
+        const resolution = resolveSuggestionAssigneesFromMembers(item, members);
+        const resolvedIds = resolution.assigneeIds || [];
+        const currentIds = item.assigneeIds || [];
+        const sameIds = resolvedIds.length === currentIds.length && resolvedIds.every((id, index) => id === currentIds[index]);
+        if (sameIds && resolution.assigneeResolutionStatus === item.assigneeResolutionStatus) return item;
+        changed = true;
+        return {
+          ...item,
+          assigneeIds: resolvedIds,
+          assigneeId: resolution.assigneeId,
+          assigneeNames: resolution.resolvedAssigneeNames?.length ? resolution.resolvedAssigneeNames : item.assigneeNames,
+          resolvedAssigneeNames: resolution.resolvedAssigneeNames?.length ? resolution.resolvedAssigneeNames : item.resolvedAssigneeNames,
+          originalAssigneeText: resolution.originalAssigneeText || item.originalAssigneeText,
+          assigneeResolutionStatus: resolution.assigneeResolutionStatus,
+          assigneeResolutionWarnings: resolution.assigneeResolutionWarnings || [],
+          warnings: resolution.assigneeWarningsWereCleared
+            ? (item.warnings || []).filter((warning) => {
+                const normalized = String(warning || "")
+                  .normalize("NFD")
+                  .replace(/[\u0300-\u036f]/g, "")
+                  .toLowerCase();
+                return !normalized.includes("responsavel") && !normalized.includes("responsaveis");
+              })
+            : item.warnings
+        };
+      });
+      return changed ? next : current;
+    });
+  }, [members]);
 
   const clearSelection = useCallback(() => {
     revokeImagePreviews();
@@ -1187,7 +1224,19 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
 
                         <div>
                           <FieldLabel>Responsaveis</FieldLabel>
-                          <AssigneePicker members={members} value={item.assigneeIds} onChange={(assigneeIds) => updateReviewItem(item.suggestionId, { assigneeIds })} />
+                          <AssigneePicker
+                            members={members}
+                            value={item.assigneeIds}
+                            onChange={(assigneeIds) =>
+                              updateReviewItem(item.suggestionId, {
+                                assigneeIds,
+                                assigneeId: assigneeIds[0] || null,
+                                assigneeTouched: true,
+                                assigneeResolutionStatus: assigneeIds.length ? "resolved" : "unresolved",
+                                assigneeResolutionWarnings: []
+                              })
+                            }
+                          />
                           {(item.originalAssigneeText || item.responsible) && (
                             <p className="mt-2 rounded-2xl border border-slate-100 bg-white/70 px-3 py-2 text-xs font-bold text-muted">
                               Sugestao original: {item.originalAssigneeText || item.responsible}
