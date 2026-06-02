@@ -1,21 +1,32 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="CasaSync">
   <defs>
-    <linearGradient id="casasync-icon-bg" x1="8" y1="6" x2="58" y2="60" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#dbeafe"/>
-      <stop offset="0.5" stop-color="#ffffff"/>
-      <stop offset="1" stop-color="#ede9fe"/>
+    <linearGradient id="casasync-icon-bg" x1="5" y1="4" x2="60" y2="61" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fbf7ff"/>
+      <stop offset="0.48" stop-color="#fff"/>
+      <stop offset="1" stop-color="#f1e8ff"/>
     </linearGradient>
-    <linearGradient id="casasync-icon-mark" x1="16" y1="15" x2="49" y2="50" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#2563eb"/>
-      <stop offset="1" stop-color="#6366f1"/>
+    <linearGradient id="casasync-glass" x1="14" y1="10" x2="50" y2="55" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff" stop-opacity="0.88"/>
+      <stop offset="0.54" stop-color="#fff" stop-opacity="0.62"/>
+      <stop offset="1" stop-color="#ede7ff" stop-opacity="0.72"/>
     </linearGradient>
-    <filter id="casasync-icon-shadow" x="-20%" y="-20%" width="140%" height="150%" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="7" stdDeviation="5" flood-color="#2563eb" flood-opacity="0.18"/>
+    <linearGradient id="casasync-icon-mark" x1="16" y1="14" x2="49" y2="50" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#a855f7"/>
+      <stop offset="0.48" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+    <filter id="casasync-card-shadow" x="-35%" y="-30%" width="170%" height="180%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="8" flood-color="#8b5cf6" flood-opacity="0.18"/>
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#7c3aed" flood-opacity="0.08"/>
+    </filter>
+    <filter id="casasync-mark-shadow" x="-35%" y="-35%" width="170%" height="180%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#7c3aed" flood-opacity="0.2"/>
     </filter>
   </defs>
   <rect width="64" height="64" rx="18" fill="url(#casasync-icon-bg)"/>
-  <rect x="5" y="5" width="54" height="54" rx="15" fill="none" stroke="#2563eb" stroke-opacity="0.14" stroke-width="2"/>
-  <g transform="translate(12 12) scale(1.6667)" fill="none" stroke="url(#casasync-icon-mark)" stroke-width="2.35" stroke-linecap="round" stroke-linejoin="round" filter="url(#casasync-icon-shadow)">
+  <rect x="8" y="7" width="48" height="50" rx="17" fill="url(#casasync-glass)" stroke="#fff" stroke-opacity="0.82" stroke-width="1.4" filter="url(#casasync-card-shadow)"/>
+  <path d="M17 11.5h19c8.8 0 16 7.2 16 16v4.5" fill="none" stroke="#fff" stroke-opacity="0.56" stroke-width="1.5" stroke-linecap="round"/>
+  <g transform="translate(14 14) scale(1.5)" fill="none" stroke="url(#casasync-icon-mark)" stroke-width="2.15" stroke-linecap="round" stroke-linejoin="round" filter="url(#casasync-mark-shadow)">
     <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>
     <path d="M12 5 9.04 7.96a2.17 2.17 0 0 0 0 3.08c.82.82 2.13.85 3 .07l2.07-1.9a2.82 2.82 0 0 1 3.79 0l2.96 2.66"/>
     <path d="m18 15-2-2"/>

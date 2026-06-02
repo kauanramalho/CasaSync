@@ -9,8 +9,8 @@ self.addEventListener("push", (event) => {
   const title = data.title || "CasaSync";
   const options = {
     body: data.body || "Voce tem uma nova notificacao.",
-    icon: "/icons/icon-192.png",
-    badge: "/icons/favicon-32x32.png",
+    icon: "/icons/icon-192.png?v=20260602-purple",
+    badge: "/icons/favicon-32x32.png?v=20260602-purple",
     tag: data.tag || "casasync-notification",
     data: { url: data.url || "/" }
   };
