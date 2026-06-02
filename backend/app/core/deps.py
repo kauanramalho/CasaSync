@@ -45,10 +45,10 @@ def get_family_id(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> str:
-    from app.services.family_service import get_primary_family, require_family_member
+    from app.services.family_service import get_active_family, require_family_member
 
     requested_family_id = (family_id or active_family_id or "").strip() or None
-    family = get_primary_family(db, current_user.id) if requested_family_id is None else None
+    family = get_active_family(db, current_user) if requested_family_id is None else None
     resolved_family_id = family.id if family else requested_family_id
     if not resolved_family_id:
         raise HTTPException(

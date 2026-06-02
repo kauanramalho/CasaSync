@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.core.rate_limit import check_rate_limit, client_identifier
@@ -10,15 +10,18 @@ from app.schemas.family import (
     FamilyCreate,
     FamilyJoin,
     FamilyJoinRequestRead,
+    FamilyListItemRead,
     FamilyMemberRead,
     FamilyMemberUpdate,
     FamilyRead,
     FamilyUpdate,
 )
+from app.models.family import FamilyMember
 from app.services.family_service import (
     create_family,
     decide_join_request,
     delete_family,
+    get_active_family,
     get_family,
     leave_family,
     list_pending_join_requests,
@@ -26,8 +29,8 @@ from app.services.family_service import (
     list_user_families,
     regenerate_invite_code,
     remove_member,
-    require_family_member,
     request_join_family,
+    set_active_family,
     update_family,
     update_member_role,
 )
@@ -36,9 +39,18 @@ from app.services.family_service import (
 router = APIRouter(prefix="/families", tags=["families"])
 
 
-@router.get("", response_model=list[FamilyRead])
+@router.get("", response_model=list[FamilyListItemRead])
 def list_my_families(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return list_user_families(db, current_user.id)
+    rows = []
+    for family in list_user_families(db, current_user.id):
+        member = (
+            db.query(FamilyMember)
+            .filter(FamilyMember.family_id == family.id, FamilyMember.user_id == current_user.id)
+            .first()
+        )
+        item = FamilyListItemRead.model_validate(family).model_copy(update={"current_user_role": member.role if member else "member"})
+        rows.append(item)
+    return rows
 
 
 @router.get("/current", response_model=FamilyRead)
@@ -46,14 +58,21 @@ def current_family(family_id: str = Depends(get_family_id), db: Session = Depend
     return get_family(db, family_id)
 
 
+@router.get("/active", response_model=FamilyRead)
+def active_family(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    family = get_active_family(db, current_user)
+    if not family:
+        raise HTTPException(status_code=404, detail="Crie ou entre em uma familia para continuar.")
+    return family
+
+
 @router.patch("/active", response_model=FamilyRead)
-def validate_active_family(
+def update_active_family(
     payload: FamilyActiveUpdate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    require_family_member(db, payload.family_id, current_user.id)
-    return get_family(db, payload.family_id)
+    return set_active_family(db, current_user, payload.family_id)
 
 
 @router.post("", response_model=FamilyRead, status_code=201)

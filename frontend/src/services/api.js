@@ -417,6 +417,7 @@ export const imageAnalysisApi = {
 export const familiesApi = {
   list: () => request("/families"),
   current: () => request("/families/current"),
+  active: () => request("/families/active"),
   activate: (familyId) => request("/families/active", { method: "PATCH", body: { familyId } }),
   create: (payload) => request("/families", { method: "POST", body: payload }),
   join: (payload) => request("/families/join", { method: "POST", body: payload }),

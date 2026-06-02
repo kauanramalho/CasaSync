@@ -19,6 +19,7 @@ from app.services.auth_service import (
     register_user,
     update_user_profile,
 )
+from app.services.family_service import get_active_family
 from app.services.two_factor_service import (
     create_two_factor_challenge,
     load_pending_two_factor_context,
@@ -89,6 +90,7 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
     if purpose == "signup" or should_require_login_two_factor(user):
         return _two_factor_response(user, purpose, db)
     user = record_login_without_two_factor(db, user)
+    get_active_family(db, user)
     return AuthResponse(access_token=create_access_token(user.id, token_version=user.token_version), user=user)
 
 
@@ -97,6 +99,7 @@ def verify_two_factor(payload: TwoFactorVerifyRequest, request: Request, db: Ses
     check_rate_limit(f"auth:2fa:verify:{client_identifier(request)}", limit=20, window_seconds=300)
     context = load_pending_two_factor_context(db, payload.pending_token)
     user = verify_two_factor_code(db, context, payload.code)
+    get_active_family(db, user)
     return AuthResponse(access_token=create_access_token(user.id, token_version=user.token_version), user=user)
 
 
@@ -108,7 +111,8 @@ def resend_two_factor(payload: TwoFactorResendRequest, request: Request, db: Ses
 
 
 @router.get("/me", response_model=UserRead)
-def me(current_user: User = Depends(get_current_user)):
+def me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    get_active_family(db, current_user)
     return current_user
 
 

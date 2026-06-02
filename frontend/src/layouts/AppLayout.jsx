@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   CalendarDays,
@@ -33,16 +33,32 @@ const navItems = [
   { to: "/configuracoes", label: "Configurações", icon: Settings }
 ];
 
+const CREATE_FAMILY_ACTION = "__create_family";
+const JOIN_FAMILY_ACTION = "__join_family";
+
+function roleLabel(role) {
+  if (role === "owner") return "Proprietario";
+  if (role === "admin") return "Administrador";
+  return "Membro";
+}
+
 export default function AppLayout() {
   const { logout } = useAuth();
   const { activeFamily, error: familyError, families, loading: familyLoading, switchFamily, switching } = useActiveFamily();
+  const location = useLocation();
   const navigate = useNavigate();
   const [sidebarMetrics, setSidebarMetrics] = useState({ done: 0, total: 0, points: 0 });
-  const familyOptions = families.map((familyItem) => ({
-    value: familyItem.id,
-    label: familyItem.name,
-    helper: familyItem.invite_code ? `Codigo ${familyItem.invite_code}` : "Familia CasaSync"
-  }));
+  const familyOptions = [
+    ...families.map((familyItem) => ({
+      value: familyItem.id,
+      label: familyItem.name,
+      helper: familyItem.current_user_role
+        ? `${roleLabel(familyItem.current_user_role)}${familyItem.invite_code ? ` - Codigo ${familyItem.invite_code}` : ""}`
+        : familyItem.invite_code ? `Codigo ${familyItem.invite_code}` : "Familia CasaSync"
+    })),
+    { value: CREATE_FAMILY_ACTION, label: "Criar nova familia", helper: "Comecar outro grupo" },
+    { value: JOIN_FAMILY_ACTION, label: "Entrar por codigo", helper: "Enviar solicitacao para outra familia" }
+  ];
 
   useEffect(() => {
     let alive = true;
@@ -81,6 +97,10 @@ export default function AppLayout() {
 
   function handleFamilyChange(familyId) {
     if (switching) return;
+    if (familyId === CREATE_FAMILY_ACTION || familyId === JOIN_FAMILY_ACTION) {
+      navigate("/familia");
+      return;
+    }
     switchFamily(familyId).catch(() => undefined);
   }
 
@@ -124,6 +144,8 @@ export default function AppLayout() {
       </div>
     );
   }
+
+  const showNoFamilyState = !familyLoading && !families.length && location.pathname !== "/familia";
 
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[280px_minmax(0,1fr)]">
@@ -187,7 +209,26 @@ export default function AppLayout() {
           </div>
         </div>
         <main className="min-w-0 flex-1 overflow-x-hidden px-4 py-6 md:px-8 lg:px-10 lg:py-8">
-          <Outlet key={activeFamily?.id || "sem-familia"} />
+          {showNoFamilyState ? (
+            <div className="mx-auto grid min-h-[60vh] max-w-2xl place-items-center text-center">
+              <div className="rounded-[28px] bg-white/85 p-8 shadow-soft">
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted">CasaSync</p>
+                <h1 className="mt-3 text-3xl font-bold text-ink">Crie ou entre em uma familia</h1>
+                <p className="mt-3 text-sm leading-relaxed text-muted">
+                  As tarefas, categorias, membros e notificacoes aparecem depois que uma familia estiver ativa.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => navigate("/familia")}
+                  className="mt-6 rounded-2xl bg-gradient-to-r from-blush to-peach px-5 py-3 text-sm font-bold text-white shadow-card transition hover:-translate-y-0.5"
+                >
+                  Abrir familias
+                </button>
+              </div>
+            </div>
+          ) : (
+            <Outlet key={activeFamily?.id || "sem-familia"} />
+          )}
         </main>
         <footer className="pb-8 text-center text-sm text-muted">CasaSync © 2026 · Feito com amor para nós</footer>
       </div>

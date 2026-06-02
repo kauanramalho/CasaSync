@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.models.enums import FamilyRole
 from app.models.family import Family, FamilyJoinRequest, FamilyMember
 from app.models.task import Task, TaskAssignee
+from app.models.user import User
 from app.schemas.family import FamilyCreate, FamilyUpdate
 from app.services.category_service import ensure_default_categories
 
@@ -82,6 +83,10 @@ def create_family(db: Session, payload: FamilyCreate, creator_id: str) -> Family
             points=0,
         )
     )
+    creator = db.get(User, creator_id)
+    if creator:
+        creator.active_family_id = family.id
+        db.add(creator)
     db.commit()
     db.refresh(family)
     ensure_default_categories(db, family.id)
@@ -166,6 +171,48 @@ def get_primary_family(db: Session, user_id: str) -> Family | None:
     )
 
 
+def _user_is_family_member(db: Session, family_id: str | None, user_id: str) -> bool:
+    if not family_id:
+        return False
+    return (
+        db.query(FamilyMember.id)
+        .filter(FamilyMember.family_id == family_id, FamilyMember.user_id == user_id)
+        .first()
+        is not None
+    )
+
+
+def get_active_family(db: Session, user: User) -> Family | None:
+    if user.active_family_id and _user_is_family_member(db, user.active_family_id, user.id):
+        return get_family(db, user.active_family_id)
+
+    fallback = get_primary_family(db, user.id)
+    next_family_id = fallback.id if fallback else None
+    if user.active_family_id != next_family_id:
+        user.active_family_id = next_family_id
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    return fallback
+
+
+def set_active_family(db: Session, user: User, family_id: str) -> Family:
+    require_family_member(db, family_id, user.id)
+    family = get_family(db, family_id)
+    user.active_family_id = family.id
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return family
+
+
+def refresh_user_active_family(db: Session, user_id: str) -> Family | None:
+    user = db.get(User, user_id)
+    if not user:
+        return None
+    return get_active_family(db, user)
+
+
 def get_family(db: Session, family_id: str) -> Family:
     family = db.query(Family).filter(Family.id == family_id).first()
     if not family:
@@ -245,8 +292,13 @@ def decide_join_request(db: Session, family_id: str, user_id: str, request_id: s
         .filter(FamilyMember.family_id == family_id, FamilyMember.user_id == join_request.requester_id)
         .first()
     )
+    requester = db.get(User, join_request.requester_id) if approve else None
+    requester_fallback_family = get_primary_family(db, requester.id) if requester else None
     if approve and not existing_member:
         db.add(FamilyMember(family_id=family_id, user_id=join_request.requester_id, role=FamilyRole.MEMBER.value))
+        if requester and not _user_is_family_member(db, requester.active_family_id, requester.id):
+            requester.active_family_id = requester_fallback_family.id if requester_fallback_family else family_id
+            db.add(requester)
 
     join_request.status = "approved" if approve else "rejected"
     join_request.decided_by_id = user_id
@@ -338,8 +390,10 @@ def remove_member(db: Session, family_id: str, user_id: str, member_id: str) -> 
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Esta acao nao esta disponivel para este membro.")
     if member.role == FamilyRole.ADMIN.value and actor.role != FamilyRole.OWNER.value:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Somente o proprietario pode remover administradores.")
+    removed_user_id = member.user_id
     db.delete(member)
     db.commit()
+    refresh_user_active_family(db, removed_user_id)
 
 
 def leave_family(db: Session, family_id: str, user_id: str) -> None:
@@ -351,6 +405,7 @@ def leave_family(db: Session, family_id: str, user_id: str) -> None:
         family = get_family(db, family_id)
         db.delete(family)
         db.commit()
+        refresh_user_active_family(db, user_id)
         return
 
     if member.role in [FamilyRole.OWNER.value, FamilyRole.ADMIN.value] and len(admins) <= 1:
@@ -371,6 +426,7 @@ def leave_family(db: Session, family_id: str, user_id: str) -> None:
 
     db.delete(member)
     db.commit()
+    refresh_user_active_family(db, user_id)
 
 
 def delete_family(db: Session, family_id: str, user_id: str) -> None:
@@ -380,5 +436,8 @@ def delete_family(db: Session, family_id: str, user_id: str) -> None:
     family = db.query(Family).filter(Family.id == family_id).first()
     if not family:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Familia nao encontrada.")
+    affected_user_ids = [member.user_id for member in db.query(FamilyMember).filter(FamilyMember.family_id == family_id).all()]
     db.delete(family)
     db.commit()
+    for affected_user_id in affected_user_ids:
+        refresh_user_active_family(db, affected_user_id)

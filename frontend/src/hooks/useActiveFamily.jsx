@@ -40,7 +40,7 @@ export function ActiveFamilyProvider({ children }) {
         return null;
       }
 
-      const storedFamilyId = preferFamilyId || getActiveFamilyId();
+      const storedFamilyId = preferFamilyId || user.active_family_id || getActiveFamilyId();
       const selected = rows.find((family) => sameFamily(family.id, storedFamilyId)) || rows[0];
       const shouldAnnounceChange = announceChange || Boolean(storedFamilyId && !sameFamily(storedFamilyId, selected.id));
       setActiveFamilyId(selected.id);
@@ -55,7 +55,7 @@ export function ActiveFamilyProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.active_family_id, user?.id]);
 
   useEffect(() => {
     loadFamilies();

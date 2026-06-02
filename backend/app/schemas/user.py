@@ -59,6 +59,7 @@ class UserRead(ORMModel):
     email_task_reminders_enabled: bool = False
     push_task_reminders_enabled: bool = False
     ai_task_import_instructions: str | None = None
+    active_family_id: str | None = None
     created_at: datetime
 
 

@@ -9,11 +9,14 @@ from app.core.config import Settings
 from app.core.deps import get_family_id
 from app.database.base import Base
 from app.models import Family, FamilyMember, User
+from app.routes.auth import me as me_route
 from app.routes.tasks import import_suggestions as import_suggestions_route
 from app.schemas.category import CategoryCreate
 from app.schemas.task import TaskCreate
 from app.schemas.task_import import TaskSuggestionImportItem, TaskSuggestionsImportRequest, TaskSuggestionsImportResponse
 from app.services.category_service import create_category, list_categories
+from app.services.dashboard_service import get_dashboard
+from app.services.family_service import decide_join_request, list_members, refresh_user_active_family, request_join_family, set_active_family
 from app.services.task_service import create_task, get_task, list_tasks
 
 
@@ -59,11 +62,35 @@ class MultiFamilyContextTest(unittest.TestCase):
         self.engine.dispose()
 
     def test_get_family_id_uses_requested_or_header_family_and_rejects_non_member(self):
+        set_active_family(self.db, self.user, self.family_b.id)
+        self.assertEqual(get_family_id(family_id=None, active_family_id=None, current_user=self.user, db=self.db), self.family_b.id)
         self.assertEqual(get_family_id(family_id=self.family_b.id, active_family_id=None, current_user=self.user, db=self.db), self.family_b.id)
         self.assertEqual(get_family_id(family_id=None, active_family_id=self.family_b.id, current_user=self.user, db=self.db), self.family_b.id)
 
         with self.assertRaises(HTTPException):
             get_family_id(family_id=self.family_c.id, active_family_id=None, current_user=self.user, db=self.db)
+
+    def test_active_family_persists_and_auth_me_returns_it(self):
+        active_family = set_active_family(self.db, self.user, self.family_b.id)
+        self.assertEqual(active_family.id, self.family_b.id)
+        self.assertEqual(self.user.active_family_id, self.family_b.id)
+
+        response = me_route(current_user=self.user, db=self.db)
+        self.assertEqual(response.active_family_id, self.family_b.id)
+
+        with self.assertRaises(HTTPException):
+            set_active_family(self.db, self.user, self.family_c.id)
+
+    def test_active_family_falls_back_when_membership_is_removed(self):
+        set_active_family(self.db, self.user, self.family_b.id)
+        member = self.db.query(FamilyMember).filter(FamilyMember.family_id == self.family_b.id, FamilyMember.user_id == self.user.id).one()
+        self.db.delete(member)
+        self.db.commit()
+
+        fallback = refresh_user_active_family(self.db, self.user.id)
+
+        self.assertEqual(fallback.id, self.family_a.id)
+        self.assertEqual(self.user.active_family_id, self.family_a.id)
 
     def test_tasks_stay_isolated_by_active_family(self):
         task_a = create_task(self.db, self.family_a.id, self.user.id, TaskCreate(title="Tarefa da familia A"))
@@ -81,6 +108,40 @@ class MultiFamilyContextTest(unittest.TestCase):
 
         self.assertEqual([category.id for category in list_categories(self.db, self.family_a.id)], [category_a.id])
         self.assertEqual([category.id for category in list_categories(self.db, self.family_b.id)], [category_b.id])
+
+    def test_members_and_dashboard_are_scoped_to_family(self):
+        create_task(self.db, self.family_a.id, self.user.id, TaskCreate(title="Tarefa da familia A"))
+        create_task(self.db, self.family_b.id, self.user.id, TaskCreate(title="Tarefa da familia B"))
+
+        self.assertEqual([member.family_id for member in list_members(self.db, self.family_a.id)], [self.family_a.id])
+        dashboard_a = get_dashboard(self.db, self.family_a.id)
+        dashboard_b = get_dashboard(self.db, self.family_b.id)
+
+        self.assertEqual([task.title for task in dashboard_a.recent_tasks], ["Tarefa da familia A"])
+        self.assertEqual([task.title for task in dashboard_b.recent_tasks], ["Tarefa da familia B"])
+
+    def test_task_creation_rejects_foreign_category_and_assignee(self):
+        category_b = create_category(self.db, self.family_b.id, CategoryCreate(name="Categoria B", color="rose", icon="heart"))
+
+        with self.assertRaises(HTTPException):
+            create_task(self.db, self.family_a.id, self.user.id, TaskCreate(title="Categoria errada", category_id=category_b.id))
+
+        with self.assertRaises(HTTPException):
+            create_task(self.db, self.family_a.id, self.user.id, TaskCreate(title="Responsavel errado", assignee_ids=[self.other_user.id]))
+
+    def test_join_request_stays_pending_until_family_admin_approves(self):
+        join_request = request_join_family(self.db, self.family_c.invite_code, self.user.id)
+
+        with self.assertRaises(HTTPException):
+            get_family_id(family_id=self.family_c.id, active_family_id=None, current_user=self.user, db=self.db)
+
+        with self.assertRaises(HTTPException):
+            decide_join_request(self.db, self.family_c.id, self.user.id, join_request.id, True)
+
+        approved = decide_join_request(self.db, self.family_c.id, self.other_user.id, join_request.id, True)
+
+        self.assertEqual(approved.status, "approved")
+        self.assertEqual(get_family_id(family_id=self.family_c.id, active_family_id=None, current_user=self.user, db=self.db), self.family_c.id)
 
     def test_import_suggestions_route_uses_active_family(self):
         payload = TaskSuggestionsImportRequest(

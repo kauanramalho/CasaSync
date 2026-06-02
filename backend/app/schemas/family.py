@@ -31,6 +31,10 @@ class FamilyRead(ORMModel):
     created_at: datetime
 
 
+class FamilyListItemRead(FamilyRead):
+    current_user_role: str
+
+
 class FamilyUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=140)
     description: str | None = Field(default=None, max_length=1200)

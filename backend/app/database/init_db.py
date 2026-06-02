@@ -99,9 +99,11 @@ def _upgrade_existing_tables() -> None:
             _add_column_if_missing(connection, "users", "email_task_reminders_enabled", "email_task_reminders_enabled BOOLEAN DEFAULT FALSE NOT NULL")
             _add_column_if_missing(connection, "users", "push_task_reminders_enabled", "push_task_reminders_enabled BOOLEAN DEFAULT FALSE NOT NULL")
             _add_column_if_missing(connection, "users", "ai_task_import_instructions", "ai_task_import_instructions TEXT")
+            _add_column_if_missing(connection, "users", "active_family_id", "active_family_id VARCHAR(36)")
             _backfill_missing_usernames(connection)
             connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username_unique ON users (username) WHERE username IS NOT NULL"))
             connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username_lower_unique ON users (LOWER(username)) WHERE username IS NOT NULL"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_users_active_family_id ON users (active_family_id)"))
             if engine.dialect.name == "postgresql":
                 connection.execute(text("ALTER TABLE users ALTER COLUMN avatar_url TYPE TEXT"))
 
