@@ -500,6 +500,9 @@ export const coupleApi = {
 
 export const integrationsApi = {
   googleCalendarStatus: () => request("/integrations/google-calendar/status"),
+  googleCalendarSettings: () => request("/integrations/google-calendar/settings"),
+  updateGoogleCalendarSettings: (payload) => request("/integrations/google-calendar/settings", { method: "PATCH", body: payload }),
+  ensureGoogleFamilyCalendar: () => request("/integrations/google-calendar/family-calendar", { method: "POST" }),
   googleCalendarConnectUrl: () => request("/integrations/google-calendar/connect-url"),
   disconnectGoogleCalendar: () => request("/integrations/google-calendar/disconnect", { method: "POST" }),
   syncGoogleCalendarTask: (taskId) => request(`/integrations/google-calendar/tasks/${taskId}/sync`, { method: "POST" })

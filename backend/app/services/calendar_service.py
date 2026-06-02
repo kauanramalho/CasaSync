@@ -9,13 +9,17 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.security import create_access_token, decode_token
-from app.models.integration import GoogleCalendarConnection
+from app.models.family import Family
+from app.models.integration import GoogleCalendarConnection, GoogleCalendarFamilySettings, GoogleCalendarUserConnection
 from app.models.task import Task
 from app.models.user import User
 from app.schemas.integration import (
     GoogleCalendarCallbackResponse,
     GoogleCalendarConnectUrl,
     GoogleCalendarDisconnectResponse,
+    GoogleCalendarFamilyCalendarResponse,
+    GoogleCalendarFamilySettingsRead,
+    GoogleCalendarFamilySettingsUpdate,
     GoogleCalendarStatus,
     GoogleCalendarTaskDeleteEventResponse,
     GoogleCalendarTaskSyncResponse,
@@ -39,6 +43,10 @@ GOOGLE_CALENDAR_NOT_CONNECTED_MESSAGE = "Google Agenda ainda nao esta conectado 
 OAUTH_STATE_TTL_SECONDS = 10 * 60
 DEFAULT_GOOGLE_CALENDAR_ID = "primary"
 SAO_PAULO_FALLBACK_TZ = timezone(timedelta(hours=-3), name="America/Sao_Paulo")
+GOOGLE_CALENDAR_MODE_PRIMARY = "primary"
+GOOGLE_CALENDAR_MODE_FAMILY = "family_calendar"
+GOOGLE_CALENDAR_MODE_DISABLED = "disabled"
+GOOGLE_CALENDAR_MODES = {GOOGLE_CALENDAR_MODE_PRIMARY, GOOGLE_CALENDAR_MODE_FAMILY, GOOGLE_CALENDAR_MODE_DISABLED}
 
 
 def is_google_calendar_enabled(settings: Settings) -> bool:
@@ -69,6 +77,79 @@ def _get_legacy_family_connection(db: Session, family_id: str) -> GoogleCalendar
     )
 
 
+def _get_user_connection(
+    db: Session,
+    user_id: str,
+    preferred_family_id: str | None = None,
+) -> GoogleCalendarUserConnection | GoogleCalendarConnection | None:
+    connection = (
+        db.query(GoogleCalendarUserConnection)
+        .filter(
+            GoogleCalendarUserConnection.user_id == user_id,
+            GoogleCalendarUserConnection.is_connected.is_(True),
+        )
+        .first()
+    )
+    if connection:
+        return connection
+
+    if preferred_family_id:
+        family_connection = _get_connection(db, preferred_family_id, user_id)
+        if family_connection and family_connection.is_connected:
+            return family_connection
+
+    return (
+        db.query(GoogleCalendarConnection)
+        .filter(
+            GoogleCalendarConnection.user_id == user_id,
+            GoogleCalendarConnection.is_connected.is_(True),
+        )
+        .order_by(GoogleCalendarConnection.connected_at.desc())
+        .first()
+    )
+
+
+def _get_family_settings(db: Session, family_id: str, user_id: str) -> GoogleCalendarFamilySettings | None:
+    return (
+        db.query(GoogleCalendarFamilySettings)
+        .filter(GoogleCalendarFamilySettings.family_id == family_id, GoogleCalendarFamilySettings.user_id == user_id)
+        .first()
+    )
+
+
+def _ensure_family_settings(db: Session, family_id: str, user_id: str) -> GoogleCalendarFamilySettings:
+    settings_row = _get_family_settings(db, family_id, user_id)
+    if settings_row:
+        return settings_row
+    settings_row = GoogleCalendarFamilySettings(
+        family_id=family_id,
+        user_id=user_id,
+        mode=GOOGLE_CALENDAR_MODE_PRIMARY,
+    )
+    db.add(settings_row)
+    db.flush()
+    return settings_row
+
+
+def _calendar_mode(settings_row: GoogleCalendarFamilySettings | None) -> str:
+    mode = (settings_row.mode if settings_row else GOOGLE_CALENDAR_MODE_PRIMARY) or GOOGLE_CALENDAR_MODE_PRIMARY
+    return mode if mode in GOOGLE_CALENDAR_MODES else GOOGLE_CALENDAR_MODE_PRIMARY
+
+
+def _effective_calendar_id(settings_row: GoogleCalendarFamilySettings | None) -> str | None:
+    mode = _calendar_mode(settings_row)
+    if mode == GOOGLE_CALENDAR_MODE_DISABLED:
+        return None
+    if mode == GOOGLE_CALENDAR_MODE_FAMILY:
+        return settings_row.google_calendar_id if settings_row else None
+    return DEFAULT_GOOGLE_CALENDAR_ID
+
+
+def _family_display_name(db: Session, family_id: str) -> str:
+    family = db.query(Family).filter(Family.id == family_id).first()
+    return family.name if family and family.name else "Familia CasaSync"
+
+
 def _oauth_config(settings: Settings) -> GoogleCalendarOAuthConfig:
     return GoogleCalendarOAuthConfig(
         client_id=settings.google_client_id,
@@ -92,13 +173,20 @@ def get_google_calendar_status(db: Session, family_id: str, user_id: str, settin
         )
 
     require_family_member(db, family_id, user_id)
-    connection = _get_connection(db, family_id, user_id)
+    connection = _get_user_connection(db, user_id, preferred_family_id=family_id)
+    family_settings = _get_family_settings(db, family_id, user_id)
+    mode = _calendar_mode(family_settings)
+    effective_calendar_id = _effective_calendar_id(family_settings)
     is_connected = bool(connection and connection.is_connected and connection.refresh_token_encrypted)
     encryption_ready = _token_encryption_ready(settings)
     if not configured:
         message = "Google Agenda habilitado, mas OAuth ainda nao configurado."
     elif not encryption_ready:
         message = "Google Agenda habilitado, mas a chave de criptografia de tokens nao foi configurada."
+    elif mode == GOOGLE_CALENDAR_MODE_DISABLED:
+        message = "Google Agenda esta desativado para esta familia."
+    elif mode == GOOGLE_CALENDAR_MODE_FAMILY and not effective_calendar_id:
+        message = "Google Agenda conectado. Crie a agenda separada desta familia antes de sincronizar."
     elif is_connected:
         message = "Google Agenda conectado para sua conta."
     else:
@@ -108,10 +196,139 @@ def get_google_calendar_status(db: Session, family_id: str, user_id: str, settin
         is_enabled=True,
         is_connected=is_connected,
         can_connect=configured and encryption_ready,
-        can_sync=is_connected and encryption_ready,
-        calendar_id=connection.calendar_id if connection else DEFAULT_GOOGLE_CALENDAR_ID,
+        can_sync=is_connected and encryption_ready and mode != GOOGLE_CALENDAR_MODE_DISABLED and not (mode == GOOGLE_CALENDAR_MODE_FAMILY and not effective_calendar_id),
+        family_id=family_id,
+        mode=mode,
+        calendar_id=(family_settings.google_calendar_id if family_settings else None) or DEFAULT_GOOGLE_CALENDAR_ID,
+        calendar_name=family_settings.google_calendar_name if family_settings else None,
+        effective_calendar_id=effective_calendar_id,
+        family_calendar_configured=bool(mode == GOOGLE_CALENDAR_MODE_FAMILY and effective_calendar_id),
         connected_at=connection.connected_at if connection and is_connected else None,
         message=message,
+    )
+
+
+def get_google_calendar_family_settings(
+    db: Session,
+    *,
+    family_id: str,
+    user_id: str,
+) -> GoogleCalendarFamilySettingsRead:
+    require_family_member(db, family_id, user_id)
+    settings_row = _get_family_settings(db, family_id, user_id)
+    mode = _calendar_mode(settings_row)
+    effective_calendar_id = _effective_calendar_id(settings_row)
+    return GoogleCalendarFamilySettingsRead(
+        family_id=family_id,
+        user_id=user_id,
+        mode=mode,
+        google_calendar_id=settings_row.google_calendar_id if settings_row else None,
+        google_calendar_name=settings_row.google_calendar_name if settings_row else None,
+        effective_calendar_id=effective_calendar_id,
+        message="Configuracao do Google Agenda carregada para a familia ativa.",
+    )
+
+
+def update_google_calendar_family_settings(
+    db: Session,
+    *,
+    family_id: str,
+    user_id: str,
+    payload: GoogleCalendarFamilySettingsUpdate,
+) -> GoogleCalendarFamilySettingsRead:
+    require_family_member(db, family_id, user_id)
+    settings_row = _ensure_family_settings(db, family_id, user_id)
+    settings_row.mode = payload.mode
+    if payload.mode == GOOGLE_CALENDAR_MODE_PRIMARY:
+        settings_row.google_calendar_id = None
+        settings_row.google_calendar_name = None
+    elif payload.mode == GOOGLE_CALENDAR_MODE_DISABLED:
+        settings_row.google_calendar_id = None
+        settings_row.google_calendar_name = None
+    else:
+        settings_row.google_calendar_id = (payload.google_calendar_id or settings_row.google_calendar_id or "").strip() or None
+        settings_row.google_calendar_name = (payload.google_calendar_name or settings_row.google_calendar_name or "").strip() or None
+    db.commit()
+    return get_google_calendar_family_settings(db, family_id=family_id, user_id=user_id)
+
+
+def ensure_google_family_calendar(
+    db: Session,
+    *,
+    family_id: str,
+    user_id: str,
+    settings: Settings,
+) -> GoogleCalendarFamilyCalendarResponse:
+    require_family_member(db, family_id, user_id)
+
+    if not is_google_calendar_enabled(settings):
+        return GoogleCalendarFamilyCalendarResponse(
+            status="disabled",
+            family_id=family_id,
+            message=GOOGLE_CALENDAR_DISABLED_MESSAGE,
+        )
+    if not settings.google_calendar_configured or not _token_encryption_ready(settings):
+        return GoogleCalendarFamilyCalendarResponse(
+            status="not_configured",
+            family_id=family_id,
+            message="Google Agenda ainda nao esta configurado com seguranca no backend.",
+        )
+
+    connection = _get_user_connection(db, user_id, preferred_family_id=family_id)
+    if not connection or not connection.is_connected:
+        return GoogleCalendarFamilyCalendarResponse(
+            status="not_connected",
+            family_id=family_id,
+            message=GOOGLE_CALENDAR_NOT_CONNECTED_MESSAGE,
+        )
+
+    settings_row = _ensure_family_settings(db, family_id, user_id)
+    if settings_row.google_calendar_id:
+        settings_row.mode = GOOGLE_CALENDAR_MODE_FAMILY
+        db.commit()
+        return GoogleCalendarFamilyCalendarResponse(
+            status="already_configured",
+            family_id=family_id,
+            calendar_id=settings_row.google_calendar_id,
+            calendar_name=settings_row.google_calendar_name,
+            message="Agenda da familia ja estava configurada.",
+        )
+
+    family_name = _family_display_name(db, family_id)
+    calendar_name = f"CasaSync - {family_name}"
+    timezone_name = settings.google_calendar_default_timezone or "America/Sao_Paulo"
+    adapter = get_calendar_provider_adapter("google")
+    try:
+        access_token = _connection_access_token(db, connection, settings)
+        calendar = adapter.create_calendar(
+            access_token=access_token,
+            summary=calendar_name,
+            time_zone=timezone_name,
+            timeout_seconds=settings.google_calendar_request_timeout_seconds,
+        )
+    except CalendarProviderAuthError as exc:
+        return GoogleCalendarFamilyCalendarResponse(
+            status="auth_required",
+            family_id=family_id,
+            message=str(exc),
+        )
+    except CalendarProviderError as exc:
+        return GoogleCalendarFamilyCalendarResponse(
+            status="provider_error",
+            family_id=family_id,
+            message=str(exc),
+        )
+
+    settings_row.mode = GOOGLE_CALENDAR_MODE_FAMILY
+    settings_row.google_calendar_id = calendar["id"]
+    settings_row.google_calendar_name = calendar.get("summary") or calendar_name
+    db.commit()
+    return GoogleCalendarFamilyCalendarResponse(
+        status="created",
+        family_id=family_id,
+        calendar_id=settings_row.google_calendar_id,
+        calendar_name=settings_row.google_calendar_name,
+        message="Agenda separada da familia criada no Google Agenda.",
     )
 
 
@@ -160,7 +377,7 @@ def get_google_auth_url(
 
 
 def _apply_token_result(
-    connection: GoogleCalendarConnection,
+    connection: GoogleCalendarUserConnection | GoogleCalendarConnection,
     token_result: CalendarTokenResult,
     settings: Settings,
 ) -> None:
@@ -170,7 +387,8 @@ def _apply_token_result(
     connection.access_token_expires_at = token_result.expires_at
     connection.token_scope = token_result.token_scope
     connection.token_type = token_result.token_type
-    connection.calendar_id = connection.calendar_id or DEFAULT_GOOGLE_CALENDAR_ID
+    if hasattr(connection, "calendar_id"):
+        connection.calendar_id = connection.calendar_id or DEFAULT_GOOGLE_CALENDAR_ID
     connection.is_connected = True
     connection.connected_at = _now()
     connection.disconnected_at = None
@@ -207,16 +425,16 @@ def handle_google_callback(
     except (CalendarProviderConfigurationError, CalendarProviderError) as exc:
         return GoogleCalendarCallbackResponse(status="error", message=str(exc))
 
-    connection = _get_connection(db, family_id, user_id) or _get_legacy_family_connection(db, family_id)
+    connection = (
+        db.query(GoogleCalendarUserConnection)
+        .filter(GoogleCalendarUserConnection.user_id == user_id)
+        .first()
+    )
     if not connection:
-        connection = GoogleCalendarConnection(
-            family_id=family_id,
+        connection = GoogleCalendarUserConnection(
             user_id=user_id,
-            calendar_id=DEFAULT_GOOGLE_CALENDAR_ID,
         )
         db.add(connection)
-    else:
-        connection.user_id = user_id
 
     _apply_token_result(connection, token_result, settings)
     if not connection.refresh_token_encrypted:
@@ -279,7 +497,7 @@ def _task_reminder_minutes(task: Task) -> list[int]:
     return sorted(minutes)[:5]
 
 
-def create_calendar_event_from_task(task: Task, settings: Settings) -> dict:
+def create_calendar_event_from_task(task: Task, settings: Settings, *, family_name: str | None = None, sync_user_id: str | None = None) -> dict:
     if not task.due_date:
         raise ValueError("Defina data e horario antes de sincronizar com o Google Agenda.")
 
@@ -288,17 +506,38 @@ def create_calendar_event_from_task(task: Task, settings: Settings) -> dict:
     start = _as_event_timezone(task.due_date, timezone_name)
     end = start + timedelta(minutes=duration_minutes)
 
+    display_family_name = family_name or (task.family.name if task.family else None) or "Familia CasaSync"
+    assignee_names = [
+        assignee.name
+        for assignee in (getattr(task, "assignees", []) or [])
+        if assignee and assignee.name
+    ]
     description_parts = [task.description.strip()] if task.description else []
+    description_parts.append("Criado pelo CasaSync")
+    description_parts.append(f"Familia: {display_family_name}")
+    if assignee_names:
+        description_parts.append(f"Responsaveis: {', '.join(assignee_names)}")
     if task.category:
-        description_parts.append(f"Categoria CasaSync: {task.category.name}")
-    description_parts.append("Origem: CasaSync.")
+        description_parts.append(f"Categoria: {task.category.name}")
+    description_parts.append(f"Tarefa CasaSync ID: {task.id}")
+    description_parts.append(f"Familia CasaSync ID: {task.family_id}")
+
+    private_properties = {
+        "casasyncTaskId": task.id,
+        "casasyncFamilyId": task.family_id,
+        "casasync_task_id": task.id,
+        "casasync_family_id": task.family_id,
+        "casasync_source": "task_sync",
+    }
+    if sync_user_id:
+        private_properties["casasync_user_id"] = sync_user_id
 
     event = {
-        "summary": task.title,
+        "summary": f"[CasaSync - {display_family_name}] {task.title}",
         "description": "\n\n".join(description_parts),
         "start": {"dateTime": start.isoformat(), "timeZone": timezone_name},
         "end": {"dateTime": end.isoformat(), "timeZone": timezone_name},
-        "extendedProperties": {"private": {"casasyncTaskId": task.id, "casasyncFamilyId": task.family_id}},
+        "extendedProperties": {"private": private_properties},
     }
 
     reminder_minutes = _task_reminder_minutes(task)
@@ -349,11 +588,41 @@ def _connection_access_token(
     return refreshed_token
 
 
-def _mark_task_synced(db: Session, task: Task, event_id: str, user_id: str) -> None:
+def _mark_task_synced(db: Session, task: Task, event_id: str, user_id: str, calendar_id: str) -> None:
     task.google_calendar_event_id = event_id
+    task.google_calendar_id = calendar_id
+    task.google_calendar_sync_enabled = True
     task.google_calendar_synced_at = _now()
     task.google_calendar_synced_by_id = user_id
     db.commit()
+
+
+def _sync_connection_and_calendar_id(
+    db: Session,
+    *,
+    family_id: str,
+    user_id: str,
+    settings: Settings,
+) -> tuple[GoogleCalendarUserConnection | GoogleCalendarConnection | None, str | None, str | None, str | None]:
+    settings_row = _get_family_settings(db, family_id, user_id)
+    mode = _calendar_mode(settings_row)
+    if mode == GOOGLE_CALENDAR_MODE_DISABLED:
+        return None, None, "disabled_for_family", "Google Agenda esta desativado para esta familia."
+
+    if mode == GOOGLE_CALENDAR_MODE_FAMILY and not _effective_calendar_id(settings_row):
+        calendar_response = ensure_google_family_calendar(db, family_id=family_id, user_id=user_id, settings=settings)
+        if calendar_response.status not in {"created", "already_configured"}:
+            return None, None, calendar_response.status, calendar_response.message
+        settings_row = _get_family_settings(db, family_id, user_id)
+
+    connection = _get_user_connection(db, user_id, preferred_family_id=family_id)
+    if not connection or not connection.is_connected:
+        return None, None, "not_connected", GOOGLE_CALENDAR_NOT_CONNECTED_MESSAGE
+
+    calendar_id = _effective_calendar_id(settings_row)
+    if not calendar_id:
+        return None, None, "calendar_not_configured", "Agenda da familia ainda nao esta configurada."
+    return connection, calendar_id, None, None
 
 
 def sync_task_to_calendar(
@@ -376,22 +645,32 @@ def sync_task_to_calendar(
 
     try:
         task = get_task(db, family_id, task_id)
-        event_payload = create_calendar_event_from_task(task, settings)
     except ValueError as exc:
         return GoogleCalendarTaskSyncResponse(status="invalid_task", synced=False, task_id=task_id, message=str(exc))
 
-    connection = _get_connection(db, family_id, user_id)
-    if not connection or not connection.is_connected:
+    connection, configured_calendar_id, blocked_status, blocked_message = _sync_connection_and_calendar_id(
+        db,
+        family_id=family_id,
+        user_id=user_id,
+        settings=settings,
+    )
+    family_name = _family_display_name(db, family_id)
+    try:
+        event_payload = create_calendar_event_from_task(task, settings, family_name=family_name, sync_user_id=user_id)
+    except ValueError as exc:
+        return GoogleCalendarTaskSyncResponse(status="invalid_task", synced=False, task_id=task_id, message=str(exc))
+
+    if blocked_status or not connection or not configured_calendar_id:
         return GoogleCalendarTaskSyncResponse(
-            status="not_connected",
+            status=blocked_status or "not_connected",
             synced=False,
             task_id=task.id,
-            message=GOOGLE_CALENDAR_NOT_CONNECTED_MESSAGE,
+            message=blocked_message or GOOGLE_CALENDAR_NOT_CONNECTED_MESSAGE,
             event=event_payload,
         )
 
     adapter = get_calendar_provider_adapter("google")
-    calendar_id = connection.calendar_id or DEFAULT_GOOGLE_CALENDAR_ID
+    calendar_id = (task.google_calendar_id or DEFAULT_GOOGLE_CALENDAR_ID) if task.google_calendar_event_id else configured_calendar_id
     try:
         access_token = _connection_access_token(db, connection, settings)
         if task.google_calendar_event_id:
@@ -417,7 +696,7 @@ def sync_task_to_calendar(
                     timeout_seconds=settings.google_calendar_request_timeout_seconds,
                 )
                 sync_message = "Evento existente atualizado no Google Agenda sem lembretes porque o Google recusou os avisos."
-            _mark_task_synced(db, task, updated_event_id, user_id)
+            _mark_task_synced(db, task, updated_event_id, user_id, calendar_id)
             return GoogleCalendarTaskSyncResponse(
                 status="updated",
                 synced=True,
@@ -433,7 +712,7 @@ def sync_task_to_calendar(
             timeout_seconds=settings.google_calendar_request_timeout_seconds,
         )
         if existing_event_id:
-            _mark_task_synced(db, task, existing_event_id, user_id)
+            _mark_task_synced(db, task, existing_event_id, user_id, calendar_id)
             return GoogleCalendarTaskSyncResponse(
                 status="already_synced",
                 synced=True,
@@ -466,7 +745,7 @@ def sync_task_to_calendar(
     except CalendarProviderError as exc:
         return GoogleCalendarTaskSyncResponse(status="provider_error", synced=False, task_id=task.id, message=str(exc))
 
-    _mark_task_synced(db, task, event_id, user_id)
+    _mark_task_synced(db, task, event_id, user_id, calendar_id)
     return GoogleCalendarTaskSyncResponse(
         status="synced",
         synced=True,
@@ -501,7 +780,7 @@ def delete_task_calendar_event(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=GOOGLE_CALENDAR_DISABLED_MESSAGE)
 
     connection_user_id = task.google_calendar_synced_by_id or user_id
-    connection = _get_connection(db, family_id, connection_user_id)
+    connection = _get_user_connection(db, connection_user_id, preferred_family_id=family_id)
     if not connection or not connection.is_connected:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -509,7 +788,7 @@ def delete_task_calendar_event(
         )
 
     adapter = get_calendar_provider_adapter("google")
-    calendar_id = connection.calendar_id or DEFAULT_GOOGLE_CALENDAR_ID
+    calendar_id = task.google_calendar_id or (connection.calendar_id if hasattr(connection, "calendar_id") else None) or DEFAULT_GOOGLE_CALENDAR_ID
     try:
         access_token = _connection_access_token(db, connection, settings)
         deleted = adapter.delete_event(
@@ -551,7 +830,7 @@ def disconnect_google_calendar(
     if not is_google_calendar_enabled(settings):
         return GoogleCalendarDisconnectResponse(status="disabled", disconnected=False, message=GOOGLE_CALENDAR_DISABLED_MESSAGE)
 
-    connection = _get_connection(db, family_id, user_id)
+    connection = _get_user_connection(db, user_id, preferred_family_id=family_id)
     if not connection or not connection.is_connected:
         return GoogleCalendarDisconnectResponse(status="not_connected", disconnected=True, message="Google Agenda ja estava desconectado.")
 
@@ -566,13 +845,24 @@ def disconnect_google_calendar(
     except (SecretDecryptionError, CalendarProviderError):
         revoke_warning = "A conexao local foi removida, mas a revogacao no Google deve ser conferida na conta Google."
 
-    connection.is_connected = False
-    connection.access_token_encrypted = None
-    connection.refresh_token_encrypted = None
-    connection.access_token_expires_at = None
-    connection.token_scope = None
-    connection.token_type = None
-    connection.disconnected_at = _now()
+    connections_to_clear = [connection]
+    legacy_connections = (
+        db.query(GoogleCalendarConnection)
+        .filter(GoogleCalendarConnection.user_id == user_id)
+        .all()
+    )
+    for legacy_connection in legacy_connections:
+        if legacy_connection not in connections_to_clear:
+            connections_to_clear.append(legacy_connection)
+
+    for item in connections_to_clear:
+        item.is_connected = False
+        item.access_token_encrypted = None
+        item.refresh_token_encrypted = None
+        item.access_token_expires_at = None
+        item.token_scope = None
+        item.token_type = None
+        item.disconnected_at = _now()
     db.commit()
 
     return GoogleCalendarDisconnectResponse(

@@ -9,16 +9,22 @@ from app.models.user import User
 from app.schemas.integration import (
     GoogleCalendarConnectUrl,
     GoogleCalendarDisconnectResponse,
+    GoogleCalendarFamilyCalendarResponse,
+    GoogleCalendarFamilySettingsRead,
+    GoogleCalendarFamilySettingsUpdate,
     GoogleCalendarStatus,
     GoogleCalendarTaskSyncResponse,
 )
 from app.services.calendar_service import (
     build_google_callback_redirect,
     disconnect_google_calendar,
+    ensure_google_family_calendar,
     get_google_auth_url,
+    get_google_calendar_family_settings,
     get_google_calendar_status,
     handle_google_callback,
     sync_task_to_calendar,
+    update_google_calendar_family_settings,
 )
 
 
@@ -33,6 +39,35 @@ def google_calendar_status(
     settings: Settings = Depends(get_settings),
 ):
     return get_google_calendar_status(db, family_id, current_user.id, settings)
+
+
+@router.get("/google-calendar/settings", response_model=GoogleCalendarFamilySettingsRead)
+def google_calendar_family_settings(
+    current_user: User = Depends(get_current_user),
+    family_id: str = Depends(get_family_id),
+    db: Session = Depends(get_db),
+):
+    return get_google_calendar_family_settings(db, family_id=family_id, user_id=current_user.id)
+
+
+@router.patch("/google-calendar/settings", response_model=GoogleCalendarFamilySettingsRead)
+def google_calendar_update_family_settings(
+    payload: GoogleCalendarFamilySettingsUpdate,
+    current_user: User = Depends(get_current_user),
+    family_id: str = Depends(get_family_id),
+    db: Session = Depends(get_db),
+):
+    return update_google_calendar_family_settings(db, family_id=family_id, user_id=current_user.id, payload=payload)
+
+
+@router.post("/google-calendar/family-calendar", response_model=GoogleCalendarFamilyCalendarResponse)
+def google_calendar_ensure_family_calendar(
+    current_user: User = Depends(get_current_user),
+    family_id: str = Depends(get_family_id),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    return ensure_google_family_calendar(db, family_id=family_id, user_id=current_user.id, settings=settings)
 
 
 @router.get("/google-calendar/connect-url", response_model=GoogleCalendarConnectUrl)

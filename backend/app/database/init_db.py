@@ -149,6 +149,8 @@ def _upgrade_existing_tables() -> None:
             _add_column_if_missing(connection, "tasks", "reminder_at", f"reminder_at {_timestamp_with_timezone_type()}")
             _add_column_if_missing(connection, "tasks", "reminder_sent", "reminder_sent BOOLEAN DEFAULT FALSE NOT NULL")
             _add_column_if_missing(connection, "tasks", "google_calendar_event_id", "google_calendar_event_id VARCHAR(255)")
+            _add_column_if_missing(connection, "tasks", "google_calendar_id", "google_calendar_id VARCHAR(255)")
+            _add_column_if_missing(connection, "tasks", "google_calendar_sync_enabled", "google_calendar_sync_enabled BOOLEAN DEFAULT FALSE NOT NULL")
             _add_column_if_missing(connection, "tasks", "google_calendar_synced_at", f"google_calendar_synced_at {_timestamp_with_timezone_type()}")
             _add_column_if_missing(connection, "tasks", "google_calendar_synced_by_id", "google_calendar_synced_by_id VARCHAR(36)")
             _add_column_if_missing(connection, "tasks", "automation_source", "automation_source VARCHAR(80)")
@@ -158,6 +160,7 @@ def _upgrade_existing_tables() -> None:
             _add_column_if_missing(connection, "tasks", "recurrence_rule", "recurrence_rule VARCHAR(255)")
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_tasks_family_id ON tasks (family_id)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_tasks_google_calendar_event_id ON tasks (google_calendar_event_id)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_tasks_google_calendar_id ON tasks (google_calendar_id)"))
             connection.execute(
                 text(
                     "CREATE UNIQUE INDEX IF NOT EXISTS ix_tasks_automation_external_unique "
@@ -181,5 +184,23 @@ def _upgrade_existing_tables() -> None:
                     "CREATE UNIQUE INDEX IF NOT EXISTS ix_google_calendar_connections_family_user_unique "
                     "ON google_calendar_connections (family_id, user_id) "
                     "WHERE user_id IS NOT NULL"
+                )
+            )
+
+        if "google_calendar_user_connections" in existing_tables:
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS ix_google_calendar_user_connections_user_unique "
+                    "ON google_calendar_user_connections (user_id)"
+                )
+            )
+
+        if "google_calendar_family_settings" in existing_tables:
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_google_calendar_family_settings_family_id ON google_calendar_family_settings (family_id)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_google_calendar_family_settings_user_id ON google_calendar_family_settings (user_id)"))
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS ix_google_calendar_family_settings_family_user_unique "
+                    "ON google_calendar_family_settings (family_id, user_id)"
                 )
             )

@@ -40,11 +40,14 @@ Use este guia antes de alterar notificacoes, lembretes, email, push, Google Agen
 - Backend principal: `backend/app/services/calendar_service.py`.
 - Provider externo: `backend/app/services/calendar_provider_adapter.py`.
 - Rotas: `backend/app/routes/integrations.py`.
-- Modelo de conexao: `backend/app/models/integration.py`.
+- Modelos de integracao: `GoogleCalendarUserConnection` guarda tokens por usuario; `GoogleCalendarFamilySettings` guarda o modo por usuario + familia; `GoogleCalendarConnection` permanece como legado/fallback.
+- Campos da tarefa: `google_calendar_event_id`, `google_calendar_id`, `google_calendar_sync_enabled`, `google_calendar_synced_at` e `google_calendar_synced_by_id`.
 - Tokens devem ficar criptografados no backend e nunca ir para o frontend.
 - Status/conectar/desconectar aparecem nas configuracoes por meio de `integrationsApi`.
-- Sync de tarefa usa `sync_task_to_calendar`, valida familia/membro, evita duplicar se `google_calendar_event_id` ja existir e tambem procura evento existente pelo id da tarefa.
-- Evento Google e montado por `create_calendar_event_from_task`, com timezone padrao `America/Sao_Paulo`, duracao padrao configuravel e `reminders.overrides` para cada lembrete valido.
+- Sync de tarefa usa `sync_task_to_calendar`, valida familia/membro, usa a configuracao da familia ativa para eventos novos e usa `task.google_calendar_id` para editar/excluir eventos ja vinculados.
+- Modos por familia: `primary` cria na agenda principal com a familia no titulo/metadados; `family_calendar` usa uma agenda separada salva em `GoogleCalendarFamilySettings`; `disabled` bloqueia sync naquela familia.
+- Evento Google e montado por `create_calendar_event_from_task`, com timezone padrao `America/Sao_Paulo`, duracao padrao configuravel, `reminders.overrides` para cada lembrete valido e `extendedProperties.private` com IDs da task/familia/usuario.
+- Responsaveis entram na descricao do evento; nao virar convidados automaticamente.
 
 ## Responsaveis
 

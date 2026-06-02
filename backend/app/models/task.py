@@ -70,6 +70,8 @@ class Task(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     reminder_at = Column(DateTime(timezone=True), nullable=True)
     reminder_sent = Column(Boolean, default=False, nullable=False)
     google_calendar_event_id = Column(String(255), nullable=True)
+    google_calendar_id = Column(String(255), nullable=True)
+    google_calendar_sync_enabled = Column(Boolean, default=False, nullable=False)
     google_calendar_synced_at = Column(DateTime(timezone=True), nullable=True)
     google_calendar_synced_by_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     automation_source = Column(String(80), nullable=True)

@@ -11,8 +11,12 @@ from urllib.request import Request, urlopen
 GOOGLE_CALENDAR_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
+GOOGLE_CALENDARS_URL = "https://www.googleapis.com/calendar/v3/calendars"
 GOOGLE_CALENDAR_EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events"
-GOOGLE_CALENDAR_SCOPES = ("https://www.googleapis.com/auth/calendar.events",)
+GOOGLE_CALENDAR_SCOPES = (
+    "https://www.googleapis.com/auth/calendar.events",
+    "https://www.googleapis.com/auth/calendar",
+)
 
 
 class CalendarProviderConfigurationError(RuntimeError):
@@ -69,6 +73,9 @@ class CalendarProviderAdapter(Protocol):
         ...
 
     def delete_event(self, *, calendar_id: str, access_token: str, event_id: str, timeout_seconds: float) -> bool:
+        ...
+
+    def create_calendar(self, *, access_token: str, summary: str, time_zone: str, timeout_seconds: float) -> dict:
         ...
 
     def revoke_token(self, *, token: str, timeout_seconds: float) -> None:
@@ -240,6 +247,26 @@ class GoogleCalendarProviderAdapter:
             raise CalendarProviderError("Google Agenda recusou a exclusao do evento. Tente novamente mais tarde.") from exc
         except (URLError, TimeoutError, socket.timeout) as exc:
             raise CalendarProviderError("Nao foi possivel falar com o Google Agenda agora.") from exc
+
+    def create_calendar(self, *, access_token: str, summary: str, time_zone: str, timeout_seconds: float) -> dict:
+        payload = {"summary": summary, "timeZone": time_zone}
+        request = Request(
+            GOOGLE_CALENDARS_URL,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        response = _json_request(request, timeout_seconds)
+        calendar_id = response.get("id") if isinstance(response, dict) else None
+        if not calendar_id:
+            raise CalendarProviderError("Google Agenda nao retornou o id da agenda criada.")
+        return {
+            "id": str(calendar_id),
+            "summary": str(response.get("summary") or summary),
+        }
 
     def revoke_token(self, *, token: str, timeout_seconds: float) -> None:
         request = Request(

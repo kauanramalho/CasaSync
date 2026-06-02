@@ -21,8 +21,10 @@ class FakeCalendarAdapter:
         self.deleted = deleted
         self.error = error
         self.deleted_event_ids = []
+        self.deleted_calendar_ids = []
 
     def delete_event(self, *, calendar_id, access_token, event_id, timeout_seconds):
+        self.deleted_calendar_ids.append(calendar_id)
         self.deleted_event_ids.append(event_id)
         if self.error:
             raise self.error
@@ -63,6 +65,7 @@ class TaskDeletionTest(unittest.TestCase):
             assignee_id=self.user.id,
             due_date=overrides.pop("due_date", datetime(2026, 6, 5, 15, 0, tzinfo=timezone.utc)),
             google_calendar_event_id=overrides.pop("google_calendar_event_id", None),
+            google_calendar_id=overrides.pop("google_calendar_id", None),
             google_calendar_synced_by_id=overrides.pop("google_calendar_synced_by_id", None),
             **overrides,
         )
@@ -94,7 +97,7 @@ class TaskDeletionTest(unittest.TestCase):
         self.assertIsNone(self.db.get(Task, task.id))
 
     def test_google_event_delete_success_can_precede_local_delete(self):
-        task = self.create_task(google_calendar_event_id="event-1", google_calendar_synced_by_id=self.user.id)
+        task = self.create_task(google_calendar_event_id="event-1", google_calendar_id="calendar-task", google_calendar_synced_by_id=self.user.id)
         self.create_google_connection()
         adapter = FakeCalendarAdapter(deleted=True)
         settings = Settings(google_calendar_enabled=True)
@@ -113,6 +116,7 @@ class TaskDeletionTest(unittest.TestCase):
 
         self.assertTrue(result.deleted)
         self.assertEqual(adapter.deleted_event_ids, ["event-1"])
+        self.assertEqual(adapter.deleted_calendar_ids, ["calendar-task"])
         delete_task(self.db, self.family.id, task.id)
         self.assertIsNone(self.db.get(Task, task.id))
 

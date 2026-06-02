@@ -120,6 +120,8 @@ class TaskRead(ORMModel):
     reminder_at: datetime | None = None
     reminder_sent: bool
     google_calendar_event_id: str | None = None
+    google_calendar_id: str | None = None
+    google_calendar_sync_enabled: bool = False
     google_calendar_synced_at: datetime | None = None
     google_calendar_synced_by_id: str | None = None
     automation_source: str | None = None

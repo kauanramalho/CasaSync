@@ -41,6 +41,12 @@ const tabs = [
   { key: "security", label: "Seguranca", icon: LockKeyhole }
 ];
 
+const calendarModeOptions = [
+  { value: "primary", label: "Usar minha agenda principal" },
+  { value: "family_calendar", label: "Usar agenda separada desta familia" },
+  { value: "disabled", label: "Desativar nesta familia" }
+];
+
 function isAdminRole(role) {
   return role === "owner" || role === "admin";
 }
@@ -56,6 +62,7 @@ export default function Settings() {
   const [calendarStatus, setCalendarStatus] = useState(null);
   const [calendarMessage, setCalendarMessage] = useState("");
   const [calendarBusy, setCalendarBusy] = useState(false);
+  const [calendarMode, setCalendarMode] = useState("primary");
   const [notificationSettings, setNotificationSettings] = useState(null);
   const [notificationBusy, setNotificationBusy] = useState("");
   const [notificationMessage, setNotificationMessage] = useState("");
@@ -78,7 +85,10 @@ export default function Settings() {
       ]);
       if (!alive) return;
 
-      if (calendarResult.status === "fulfilled") setCalendarStatus(calendarResult.value);
+      if (calendarResult.status === "fulfilled") {
+        setCalendarStatus(calendarResult.value);
+        setCalendarMode(calendarResult.value?.mode || "primary");
+      }
       if (notificationResult.status === "fulfilled") setNotificationSettings(notificationResult.value);
       if (familyResult.status === "fulfilled") {
         setFamily(familyResult.value);
@@ -122,6 +132,7 @@ export default function Settings() {
   async function refreshCalendarStatus() {
     const nextStatus = await integrationsApi.googleCalendarStatus();
     setCalendarStatus(nextStatus);
+    setCalendarMode(nextStatus?.mode || "primary");
     return nextStatus;
   }
 
@@ -229,13 +240,50 @@ export default function Settings() {
   }
 
   async function disconnectCalendar() {
-    if (!window.confirm("Desconectar o Google Agenda desta familia neste usuario?")) return;
+    if (!window.confirm("Desconectar sua conta Google do CasaSync? As configuracoes de cada familia serao preservadas.")) return;
     setCalendarBusy(true);
     setError("");
     try {
       const response = await integrationsApi.disconnectGoogleCalendar();
       setCalendarMessage(response.message);
       showToast({ type: response.disconnected ? "success" : "info", message: response.message });
+      await refreshCalendarStatus();
+    } catch (err) {
+      const message = normalizeApiError(err);
+      setError(message);
+      showToast({ type: "error", message });
+    } finally {
+      setCalendarBusy(false);
+    }
+  }
+
+  async function saveCalendarSettings() {
+    setCalendarBusy(true);
+    setError("");
+    try {
+      const response = await integrationsApi.updateGoogleCalendarSettings({ mode: calendarMode });
+      setCalendarMessage(response.message);
+      showToast({ type: "success", message: "Configuracao do Google Agenda salva para a familia ativa." });
+      await refreshCalendarStatus();
+    } catch (err) {
+      const message = normalizeApiError(err);
+      setError(message);
+      showToast({ type: "error", message });
+    } finally {
+      setCalendarBusy(false);
+    }
+  }
+
+  async function createFamilyCalendar() {
+    setCalendarBusy(true);
+    setError("");
+    try {
+      if (calendarMode !== "family_calendar") {
+        await integrationsApi.updateGoogleCalendarSettings({ mode: "family_calendar" });
+      }
+      const response = await integrationsApi.ensureGoogleFamilyCalendar();
+      setCalendarMessage(response.message);
+      showToast({ type: response.calendar_id ? "success" : "info", message: response.message });
       await refreshCalendarStatus();
     } catch (err) {
       const message = normalizeApiError(err);
@@ -404,12 +452,62 @@ export default function Settings() {
               <CalendarDays className="h-6 w-6 text-blush" />
               <h2 className="section-title">Google Agenda</h2>
             </div>
+            <p className="mt-4 text-sm text-muted">
+              Sua conta Google continua a mesma. Esta configuracao define em qual agenda os eventos da familia ativa serao criados.
+            </p>
+            <div className="mt-5 grid gap-3 rounded-2xl bg-white/75 px-4 py-4 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-semibold text-muted">Familia ativa</span>
+                <span className="rounded-full bg-blush/10 px-3 py-1 text-xs font-bold text-blush">{family?.name || "Carregando..."}</span>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-semibold text-muted">Conta Google</span>
+                <span className={`rounded-full px-3 py-1 text-xs font-bold ${calendarStatus?.is_connected ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-muted"}`}>
+                  {calendarStatus?.is_connected ? "Conectada" : "Desconectada"}
+                </span>
+              </div>
+            </div>
             <p className="mt-4 text-sm text-muted">{calendarStatus?.message || "Verificando conexao..."}</p>
             {calendarStatus?.is_connected && (
               <p className="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
                 Sua conta esta conectada. O envio de tarefas continua exigindo confirmacao manual.
               </p>
             )}
+            <div className="mt-5 space-y-4 rounded-2xl bg-white/75 px-4 py-4">
+              <label className="block">
+                <span className="mb-2 block text-sm font-semibold text-muted">Modo de sincronizacao desta familia</span>
+                <SelectMenu value={calendarMode} onChange={setCalendarMode} options={calendarModeOptions} />
+              </label>
+              {calendarMode === "family_calendar" && (
+                <div className="space-y-3 rounded-2xl bg-violet-50 px-4 py-3 text-sm text-violet-800">
+                  <p className="font-bold">Agenda separada da familia</p>
+                  <p>
+                    {calendarStatus?.calendar_name
+                      ? `Agenda atual: ${calendarStatus.calendar_name}`
+                      : "Nenhuma agenda separada foi criada para esta familia ainda."}
+                  </p>
+                  {calendarStatus?.effective_calendar_id && <p className="break-all text-xs font-semibold text-violet-700">ID: {calendarStatus.effective_calendar_id}</p>}
+                  <Button type="button" variant="secondary" onClick={createFamilyCalendar} disabled={calendarBusy || !calendarStatus?.is_connected}>
+                    <CalendarDays className="h-4 w-4" />
+                    {calendarStatus?.family_calendar_configured ? "Conferir agenda da familia" : "Criar agenda da familia"}
+                  </Button>
+                </div>
+              )}
+              {calendarMode === "primary" && (
+                <p className="rounded-2xl bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700">
+                  Os eventos desta familia serao criados na sua agenda principal com o nome da familia no titulo e nos metadados.
+                </p>
+              )}
+              {calendarMode === "disabled" && (
+                <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+                  A sincronizacao com Google Agenda ficara desativada apenas para esta familia.
+                </p>
+              )}
+              <Button type="button" onClick={saveCalendarSettings} disabled={calendarBusy || !calendarStatus?.is_enabled}>
+                <Check className="h-4 w-4" />
+                {calendarBusy ? "Salvando..." : "Salvar configuracao"}
+              </Button>
+            </div>
             {calendarMessage && <p className="mt-4 rounded-2xl bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-600">{calendarMessage}</p>}
             <div className="mt-6 flex flex-wrap gap-3">
               {!calendarStatus?.is_connected && (
