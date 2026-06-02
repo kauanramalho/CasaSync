@@ -46,6 +46,51 @@ def _backfill_missing_usernames(connection) -> None:
         )
 
 
+def _backfill_active_family_ids(connection) -> None:
+    existing_tables = set(inspect(connection).get_table_names())
+    if not {"users", "families", "family_members"}.issubset(existing_tables):
+        return
+    if "active_family_id" not in _table_columns(connection, "users"):
+        return
+
+    member_columns = _table_columns(connection, "family_members")
+    membership_order = "fm.created_at ASC" if "created_at" in member_columns else "fm.family_id ASC"
+    membership_rows = (
+        connection.execute(
+            text(
+                "SELECT fm.user_id, fm.family_id "
+                "FROM family_members fm "
+                "JOIN families f ON f.id = fm.family_id "
+                f"ORDER BY {membership_order}"
+            )
+        )
+        .mappings()
+        .all()
+    )
+    first_family_by_user = {}
+    valid_family_ids_by_user = {}
+    for row in membership_rows:
+        user_id = row["user_id"]
+        family_id = row["family_id"]
+        valid_family_ids_by_user.setdefault(user_id, set()).add(family_id)
+        first_family_by_user.setdefault(user_id, family_id)
+
+    user_rows = connection.execute(text("SELECT id, active_family_id FROM users")).mappings().all()
+    for row in user_rows:
+        user_id = row["id"]
+        active_family_id = row["active_family_id"]
+        valid_family_ids = valid_family_ids_by_user.get(user_id, set())
+        if active_family_id in valid_family_ids:
+            continue
+        fallback_family_id = first_family_by_user.get(user_id)
+        if fallback_family_id == active_family_id:
+            continue
+        connection.execute(
+            text("UPDATE users SET active_family_id = :family_id WHERE id = :user_id"),
+            {"family_id": fallback_family_id, "user_id": user_id},
+        )
+
+
 def _backfill_task_reminders() -> None:
     from app.models.task import Task, TaskReminder
 
@@ -114,6 +159,7 @@ def _upgrade_existing_tables() -> None:
         if "family_members" in existing_tables:
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_family_members_family_id ON family_members (family_id)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_family_members_user_id ON family_members (user_id)"))
+            _backfill_active_family_ids(connection)
 
         if "family_join_requests" in existing_tables:
             _add_column_if_missing(connection, "family_join_requests", "expires_at", f"expires_at {_timestamp_with_timezone_type()}")

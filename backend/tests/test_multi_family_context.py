@@ -10,6 +10,7 @@ from app.core.deps import get_family_id
 from app.database.base import Base
 from app.models import Family, FamilyMember, User
 from app.routes.auth import me as me_route
+from app.routes.families import active_family as active_family_route, list_my_families
 from app.routes.tasks import import_suggestions as import_suggestions_route
 from app.schemas.category import CategoryCreate
 from app.schemas.task import TaskCreate
@@ -80,6 +81,58 @@ class MultiFamilyContextTest(unittest.TestCase):
 
         with self.assertRaises(HTTPException):
             set_active_family(self.db, self.user, self.family_c.id)
+
+    def test_legacy_user_without_active_family_recovers_existing_membership(self):
+        self.assertIsNone(self.user.active_family_id)
+
+        response = me_route(current_user=self.user, db=self.db)
+        active_family = active_family_route(current_user=self.user, db=self.db)
+
+        self.assertEqual(response.active_family_id, self.family_a.id)
+        self.assertEqual(active_family.id, self.family_a.id)
+        self.assertEqual(self.user.active_family_id, self.family_a.id)
+        self.assertEqual([family.id for family in list_my_families(current_user=self.user, db=self.db)], [self.family_a.id, self.family_b.id])
+
+    def test_invalid_active_family_is_corrected_to_valid_membership(self):
+        self.user.active_family_id = self.family_c.id
+        self.db.add(self.user)
+        self.db.commit()
+
+        response = me_route(current_user=self.user, db=self.db)
+
+        self.assertEqual(response.active_family_id, self.family_a.id)
+        self.assertEqual(self.user.active_family_id, self.family_a.id)
+
+    def test_orphan_active_family_reference_does_not_break_auth_me(self):
+        self.db.add(FamilyMember(id="member-orphan", family_id="missing-family", user_id=self.user.id, role="member"))
+        self.user.active_family_id = "missing-family"
+        self.db.add(self.user)
+        self.db.commit()
+
+        response = me_route(current_user=self.user, db=self.db)
+
+        self.assertEqual(response.active_family_id, self.family_a.id)
+        self.assertEqual(self.user.active_family_id, self.family_a.id)
+
+    def test_empty_family_header_uses_backend_fallback(self):
+        self.assertEqual(get_family_id(family_id=None, active_family_id="   ", current_user=self.user, db=self.db), self.family_a.id)
+        self.assertEqual(self.user.active_family_id, self.family_a.id)
+
+    def test_user_without_real_family_still_has_empty_state(self):
+        lonely_user = User(
+            id="user-lonely",
+            name="Sem Familia",
+            username="semfamilia",
+            email="semfamilia@example.com",
+            hashed_password="hash",
+            is_active=True,
+        )
+        self.db.add(lonely_user)
+        self.db.commit()
+
+        self.assertEqual(list_my_families(current_user=lonely_user, db=self.db), [])
+        with self.assertRaises(HTTPException):
+            active_family_route(current_user=lonely_user, db=self.db)
 
     def test_active_family_falls_back_when_membership_is_removed(self):
         set_active_family(self.db, self.user, self.family_b.id)

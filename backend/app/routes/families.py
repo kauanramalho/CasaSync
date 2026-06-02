@@ -41,6 +41,7 @@ router = APIRouter(prefix="/families", tags=["families"])
 
 @router.get("", response_model=list[FamilyListItemRead])
 def list_my_families(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    get_active_family(db, current_user)
     rows = []
     for family in list_user_families(db, current_user.id):
         member = (
@@ -48,7 +49,8 @@ def list_my_families(current_user: User = Depends(get_current_user), db: Session
             .filter(FamilyMember.family_id == family.id, FamilyMember.user_id == current_user.id)
             .first()
         )
-        item = FamilyListItemRead.model_validate(family).model_copy(update={"current_user_role": member.role if member else "member"})
+        family_payload = FamilyRead.model_validate(family).model_dump()
+        item = FamilyListItemRead(**family_payload, current_user_role=member.role if member else "member")
         rows.append(item)
     return rows
 

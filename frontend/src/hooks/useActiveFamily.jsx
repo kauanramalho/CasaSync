@@ -40,17 +40,27 @@ export function ActiveFamilyProvider({ children }) {
         return null;
       }
 
-      const storedFamilyId = preferFamilyId || user.active_family_id || getActiveFamilyId();
-      const selected = rows.find((family) => sameFamily(family.id, storedFamilyId)) || rows[0];
+      let backendActiveFamily = null;
+      try {
+        backendActiveFamily = await familiesApi.active();
+      } catch (activeError) {
+        if (activeError?.status !== 404) {
+          throw activeError;
+        }
+      }
+
+      const storedFamilyId = preferFamilyId || backendActiveFamily?.id || user.active_family_id || getActiveFamilyId();
+      const selected = rows.find((family) => sameFamily(family.id, storedFamilyId)) || backendActiveFamily || rows[0];
       const shouldAnnounceChange = announceChange || Boolean(storedFamilyId && !sameFamily(storedFamilyId, selected.id));
-      setActiveFamilyId(selected.id);
-      const validatedFamily = await familiesApi.activate(selected.id);
+      const validatedFamily = backendActiveFamily && sameFamily(backendActiveFamily.id, selected.id)
+        ? backendActiveFamily
+        : await familiesApi.activate(selected.id);
+      setActiveFamilyId(validatedFamily.id);
       setActiveFamily(validatedFamily);
       if (shouldAnnounceChange) emitActiveFamilyChanged(validatedFamily.id);
       return validatedFamily;
     } catch (loadError) {
       setError(loadError.message || "Nao foi possivel carregar as familias.");
-      setActiveFamily(null);
       return null;
     } finally {
       setLoading(false);

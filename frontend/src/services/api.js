@@ -96,6 +96,12 @@ function apiPath(path) {
   return path.startsWith("/") ? path : `/${path}`;
 }
 
+function makeApiError(message, metadata = {}) {
+  const error = new Error(message);
+  Object.assign(error, metadata);
+  return error;
+}
+
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(SESSION_TOKEN_KEY);
 }
@@ -224,8 +230,9 @@ async function performRequest(path, { method = "GET", body, auth = true } = {}) 
     if (import.meta.env.DEV) {
       console.error("[CasaSync API]", "network-error", method, url, error);
     }
-    throw new Error(
-      "Nao foi possivel conectar a API. O servidor pode estar indisponivel ou bloqueando a origem do site."
+    throw makeApiError(
+      "Nao foi possivel conectar a API. O servidor pode estar indisponivel ou bloqueando a origem do site.",
+      { isNetworkError: true }
     );
   }
 
@@ -241,7 +248,7 @@ async function performRequest(path, { method = "GET", body, auth = true } = {}) 
       window.dispatchEvent(new Event(AUTH_SESSION_CHANGED_EVENT));
     }
     const detail = extractApiErrorMessage(data);
-    throw new Error(detail || "Nao foi possivel concluir a acao.");
+    throw makeApiError(detail || "Nao foi possivel concluir a acao.", { status: response.status, data });
   }
 
   return data;

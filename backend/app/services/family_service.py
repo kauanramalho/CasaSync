@@ -176,6 +176,7 @@ def _user_is_family_member(db: Session, family_id: str | None, user_id: str) -> 
         return False
     return (
         db.query(FamilyMember.id)
+        .join(Family, Family.id == FamilyMember.family_id)
         .filter(FamilyMember.family_id == family_id, FamilyMember.user_id == user_id)
         .first()
         is not None
@@ -184,7 +185,9 @@ def _user_is_family_member(db: Session, family_id: str | None, user_id: str) -> 
 
 def get_active_family(db: Session, user: User) -> Family | None:
     if user.active_family_id and _user_is_family_member(db, user.active_family_id, user.id):
-        return get_family(db, user.active_family_id)
+        family = db.query(Family).filter(Family.id == user.active_family_id).first()
+        if family:
+            return family
 
     fallback = get_primary_family(db, user.id)
     next_family_id = fallback.id if fallback else None

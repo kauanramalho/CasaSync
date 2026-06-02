@@ -55,8 +55,10 @@ export function AuthProvider({ children }) {
       try {
         const me = await authApi.me();
         if (alive) setUser(me);
-      } catch {
-        clearToken();
+      } catch (error) {
+        if (error?.status === 401) {
+          clearToken();
+        }
         if (alive) setUser(null);
       } finally {
         if (alive) setLoading(false);
