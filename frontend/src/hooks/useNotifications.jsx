@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 import { useAuth } from "./useAuth";
 import { getActiveFamilyId, notificationsApi } from "../services/api";
-import { ACTIVE_FAMILY_CHANGED_EVENT, APP_DATA_CHANGED_EVENT } from "../utils/events";
+import { ACTIVE_FAMILY_CHANGED_EVENT, APP_DATA_CHANGED_EVENT, APP_RESUMED_EVENT } from "../utils/events";
 
 const STORAGE_KEY = "casasync_notifications";
 const REMINDER_CHECK_INTERVAL_MS = 60_000;
@@ -139,11 +139,13 @@ export function NotificationsProvider({ children }) {
       sync({ processReminders: true });
     };
     window.addEventListener(APP_DATA_CHANGED_EVENT, handleAppDataChanged);
+    window.addEventListener(APP_RESUMED_EVENT, handleAppDataChanged);
     window.addEventListener(ACTIVE_FAMILY_CHANGED_EVENT, handleActiveFamilyChanged);
     return () => {
       alive = false;
       window.clearInterval(interval);
       window.removeEventListener(APP_DATA_CHANGED_EVENT, handleAppDataChanged);
+      window.removeEventListener(APP_RESUMED_EVENT, handleAppDataChanged);
       window.removeEventListener(ACTIVE_FAMILY_CHANGED_EVENT, handleActiveFamilyChanged);
     };
   }, [refreshServerNotifications, user?.id]);

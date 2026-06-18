@@ -16,7 +16,7 @@ import { useNotifications } from "../hooks/useNotifications";
 import useTaskDeletion from "../hooks/useTaskDeletion";
 import { useToast } from "../hooks/useToast";
 import { categoriesApi, familiesApi, tasksApi } from "../services/api";
-import { emitAppDataChanged } from "../utils/events";
+import { APP_RESUMED_EVENT, emitAppDataChanged } from "../utils/events";
 import { normalizeApiError, priorityLabels, statusLabels } from "../utils/formatters";
 import { syncTaskToGoogleCalendarSafely } from "../utils/googleCalendarTasks";
 import { applyTaskAttachmentChanges, hasTaskAttachmentChanges } from "../utils/taskAttachments";
@@ -83,6 +83,8 @@ export default function Tasks() {
 
   useEffect(() => {
     load();
+    window.addEventListener(APP_RESUMED_EVENT, load);
+    return () => window.removeEventListener(APP_RESUMED_EVENT, load);
   }, [load]);
 
   useEffect(() => {

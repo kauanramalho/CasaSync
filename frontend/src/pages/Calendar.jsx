@@ -16,7 +16,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
 import { useToast } from "../hooks/useToast";
 import { categoriesApi, familiesApi, integrationsApi, tasksApi } from "../services/api";
-import { emitAppDataChanged } from "../utils/events";
+import { APP_RESUMED_EVENT, emitAppDataChanged } from "../utils/events";
 import { formatDate, normalizeApiError } from "../utils/formatters";
 import { syncTaskToGoogleCalendarSafely } from "../utils/googleCalendarTasks";
 import { buildMonthDays, getStoredPreferences, getWeekdayLabels, startOfWeek as getPreferenceStartOfWeek } from "../utils/preferences";
@@ -302,7 +302,11 @@ export default function Calendar() {
 
   useEffect(() => {
     load();
-    return () => window.clearTimeout(previewTimer.current);
+    window.addEventListener(APP_RESUMED_EVENT, load);
+    return () => {
+      window.clearTimeout(previewTimer.current);
+      window.removeEventListener(APP_RESUMED_EVENT, load);
+    };
   }, [load]);
 
   const weekdayLabels = useMemo(() => getWeekdayLabels(preferences.weekStart) || weekdays, [preferences.weekStart]);

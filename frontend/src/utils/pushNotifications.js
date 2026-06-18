@@ -18,7 +18,7 @@ export async function registerCasaSyncServiceWorker() {
   if (!("serviceWorker" in navigator)) {
     throw new Error("Este navegador nao suporta notificacoes em segundo plano.");
   }
-  return navigator.serviceWorker.register("/sw.js");
+  return navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" });
 }
 
 export async function subscribeToBrowserPush(publicKey) {

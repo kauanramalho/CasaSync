@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 
 import App from "./App";
+import PwaLifecycle from "./components/PwaLifecycle";
 import { AuthProvider } from "./hooks/useAuth";
 import { NotificationsProvider } from "./hooks/useNotifications";
 import { ThemeProvider } from "./hooks/useTheme";
@@ -20,6 +21,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           <NotificationsProvider>
             <ToastProvider>
               <App />
+              <PwaLifecycle />
             </ToastProvider>
           </NotificationsProvider>
         </AuthProvider>

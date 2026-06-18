@@ -16,7 +16,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
 import useTaskDeletion from "../hooks/useTaskDeletion";
 import { categoriesApi, coupleApi, dashboardApi, familiesApi, tasksApi } from "../services/api";
-import { emitAppDataChanged } from "../utils/events";
+import { APP_RESUMED_EVENT, emitAppDataChanged } from "../utils/events";
 import { formatDate, normalizeApiError, toValidDate } from "../utils/formatters";
 import { syncTaskToGoogleCalendarSafely } from "../utils/googleCalendarTasks";
 import { getHiddenRecentTaskIds, hideRecentTask } from "../utils/recentTasks";
@@ -205,6 +205,8 @@ export default function Dashboard() {
 
   useEffect(() => {
     load();
+    window.addEventListener(APP_RESUMED_EVENT, load);
+    return () => window.removeEventListener(APP_RESUMED_EVENT, load);
   }, [load]);
 
   const handleComplete = useCallback(async function handleComplete(task) {
