@@ -83,7 +83,9 @@ self.addEventListener("push", (event) => {
     icon: "/icons/icon-192.png?v=20260602-purple",
     badge: "/icons/favicon-32x32.png?v=20260602-purple",
     tag: data.tag || "casasync-notification",
-    data: { url: data.url || "/" }
+    renotify: false,
+    timestamp: data.timestamp || Date.now(),
+    data: { url: data.url || "/", taskId: data.taskId || null }
   };
 
   event.waitUntil(self.registration.showNotification(title, options));

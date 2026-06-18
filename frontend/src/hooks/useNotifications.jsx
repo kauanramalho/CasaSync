@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "./useAuth";
 import { getActiveFamilyId, notificationsApi } from "../services/api";
@@ -44,6 +44,7 @@ export function NotificationsProvider({ children }) {
   const [localNotifications, setLocalNotifications] = useState(() => readLocalNotifications().map(normalizeLocalNotification));
   const [serverNotifications, setServerNotifications] = useState([]);
   const [activeFamilyId, setActiveFamilyIdState] = useState(() => getActiveFamilyId());
+  const refreshInFlight = useRef(new Map());
 
   const updateLocalNotifications = useCallback((updater) => {
     setLocalNotifications((current) => {
@@ -58,11 +59,28 @@ export function NotificationsProvider({ children }) {
       setServerNotifications([]);
       return;
     }
-    if (processReminders) {
-      await notificationsApi.processReminders();
+    const requestedFamilyId = getActiveFamilyId();
+    const requestKey = `${user.id}:${requestedFamilyId || "no-family"}`;
+    const existingRequest = refreshInFlight.current.get(requestKey);
+    if (existingRequest) return existingRequest;
+
+    const refreshPromise = (async () => {
+      if (processReminders) {
+        await notificationsApi.processReminders();
+      }
+      const rows = await notificationsApi.list();
+      if (getActiveFamilyId() === requestedFamilyId) {
+        setServerNotifications(rows.map(normalizeServerNotification));
+      }
+    })();
+    refreshInFlight.current.set(requestKey, refreshPromise);
+    try {
+      return await refreshPromise;
+    } finally {
+      if (refreshInFlight.current.get(requestKey) === refreshPromise) {
+        refreshInFlight.current.delete(requestKey);
+      }
     }
-    const rows = await notificationsApi.list();
-    setServerNotifications(rows.map(normalizeServerNotification));
   }, [user?.id]);
 
   const addNotification = useCallback(({ title, description, type = "info", actor, dedupe_key, family_id, user_id }) => {

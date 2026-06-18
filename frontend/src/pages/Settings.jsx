@@ -31,7 +31,14 @@ import { familiesApi, integrationsApi, notificationsApi } from "../services/api"
 import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError } from "../utils/formatters";
 import { timezoneOptions, weekStartOptions } from "../utils/preferences";
-import { getBrowserPushSupport, getNotificationPermission, subscribeToBrowserPush, unsubscribeFromBrowserPush } from "../utils/pushNotifications";
+import {
+  getBrowserPushSupport,
+  getBrowserPushSubscription,
+  getNotificationPermission,
+  getNotificationPermissionLabel,
+  subscribeToBrowserPush,
+  unsubscribeFromBrowserPush
+} from "../utils/pushNotifications";
 
 const tabs = [
   { key: "general", label: "Gerais", icon: SettingsIcon },
@@ -66,6 +73,7 @@ export default function Settings() {
   const [notificationSettings, setNotificationSettings] = useState(null);
   const [notificationBusy, setNotificationBusy] = useState("");
   const [notificationMessage, setNotificationMessage] = useState("");
+  const [devicePushEnabled, setDevicePushEnabled] = useState(false);
   const [family, setFamily] = useState(null);
   const [currentMember, setCurrentMember] = useState(null);
   const [familyForm, setFamilyForm] = useState({ name: "" });
@@ -77,11 +85,12 @@ export default function Settings() {
     let alive = true;
 
     async function loadSettings() {
-      const [calendarResult, notificationResult, familyResult, membersResult] = await Promise.allSettled([
+      const [calendarResult, notificationResult, familyResult, membersResult, pushSubscriptionResult] = await Promise.allSettled([
         integrationsApi.googleCalendarStatus(),
         notificationsApi.settings(),
         familiesApi.current(),
-        familiesApi.members()
+        familiesApi.members(),
+        getBrowserPushSubscription()
       ]);
       if (!alive) return;
 
@@ -96,6 +105,9 @@ export default function Settings() {
       }
       if (membersResult.status === "fulfilled") {
         setCurrentMember(membersResult.value.find((member) => member.user_id === user?.id) || null);
+      }
+      if (pushSubscriptionResult.status === "fulfilled") {
+        setDevicePushEnabled(Boolean(pushSubscriptionResult.value));
       }
       if (calendarResult.status === "rejected") {
         const message = normalizeApiError(calendarResult.reason);
@@ -173,6 +185,7 @@ export default function Settings() {
       }
       const subscription = await subscribeToBrowserPush(settings.vapid_public_key);
       const response = await notificationsApi.savePushSubscription(subscription);
+      setDevicePushEnabled(true);
       const nextSettings = await refreshNotificationSettings();
       updateUser({ ...user, push_task_reminders_enabled: nextSettings.push_task_reminders_enabled });
       setNotificationMessage(response.message);
@@ -192,6 +205,7 @@ export default function Settings() {
     try {
       const subscription = await unsubscribeFromBrowserPush();
       const response = await notificationsApi.deletePushSubscription(subscription);
+      setDevicePushEnabled(false);
       const nextSettings = await refreshNotificationSettings();
       updateUser({ ...user, push_task_reminders_enabled: nextSettings.push_task_reminders_enabled });
       setNotificationMessage(response.message);
@@ -588,13 +602,18 @@ export default function Settings() {
                     : "Push esta habilitado, mas as chaves VAPID ainda nao foram configuradas."
                   : "Push esta desativado por configuracao."}
               </p>
-              <p>Permissao do navegador: {pushPermission === "unsupported" ? "nao suportado" : pushPermission}.</p>
+              <p>Permissao do navegador: {getNotificationPermissionLabel(pushPermission)}.</p>
               {!pushSupported && <p className="rounded-2xl bg-amber-50 px-4 py-3 font-semibold text-amber-700">Este navegador nao oferece suporte completo a Web Push.</p>}
+              {pushPermission === "denied" && (
+                <p className="rounded-2xl bg-amber-50 px-4 py-3 font-semibold text-amber-700">
+                  A permissao foi bloqueada. Libere as notificacoes nas configuracoes do navegador para ativar este dispositivo.
+                </p>
+              )}
             </div>
             <div className="mt-6 flex flex-wrap gap-3">
-              {!notificationSettings?.push_task_reminders_enabled ? (
+              {!devicePushEnabled ? (
                 <Button
-                  disabled={notificationBusy === "push" || !pushSupported || !notificationSettings?.push_feature_enabled || !notificationSettings?.push_configured}
+                  disabled={notificationBusy === "push" || !pushSupported || pushPermission === "denied" || !notificationSettings?.push_feature_enabled || !notificationSettings?.push_configured}
                   onClick={enableBrowserPush}
                 >
                   <Smartphone className="h-4 w-4" />

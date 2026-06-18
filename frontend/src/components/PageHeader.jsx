@@ -16,6 +16,7 @@ const notificationTone = {
   done: "bg-emerald-50 text-emerald-600",
   reopened: "bg-orange-50 text-orange-600",
   reminder: "bg-blue-50 text-blue-600",
+  task_assigned: "bg-violet-50 text-violet-600",
   couple: "bg-rose-50 text-blush",
   info: "bg-slate-100 text-muted"
 };
@@ -25,6 +26,7 @@ const notificationLabels = {
   done: "Concluida",
   reopened: "Reaberta",
   reminder: "Lembrete",
+  task_assigned: "Nova tarefa",
   couple: "Casal",
   info: "Info"
 };
@@ -81,6 +83,14 @@ export default function PageHeader({ title, subtitle, action, user }) {
   async function handleLogout() {
     await logout();
     navigate("/login");
+  }
+
+  function handleNotificationClick(item) {
+    markAsRead(item);
+    if (item.task_id) {
+      setOpenNotifications(false);
+      navigate("/tarefas");
+    }
   }
 
   async function decideJoinRequest(requestId, approve) {
@@ -177,7 +187,7 @@ export default function PageHeader({ title, subtitle, action, user }) {
                   notifications.map((item) => (
                     <button
                       key={item.id}
-                      onClick={() => markAsRead(item)}
+                      onClick={() => handleNotificationClick(item)}
                       className={`w-full rounded-2xl px-3 py-3 text-left transition hover:bg-rose-50/60 ${item.read ? "opacity-70" : "bg-slate-50/70"}`}
                     >
                       <div className="flex items-start gap-3">

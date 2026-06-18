@@ -16,6 +16,7 @@ from app.schemas.notification import (
 from app.services.notification_service import (
     clear_user_notifications,
     disable_web_push_subscription,
+    has_active_web_push_subscription,
     list_user_notifications,
     mark_all_notifications_read,
     mark_notification_read,
@@ -149,8 +150,14 @@ def delete_push_subscription(
     db: Session = Depends(get_db),
 ):
     disable_web_push_subscription(db, user_id=current_user.id, endpoint=payload.endpoint if payload else None)
-    update_notification_preferences(db, user=current_user, push_task_reminders_enabled=False)
-    return WebPushSubscriptionStatus(enabled=False, message="Notificacoes do navegador desativadas.")
+    still_enabled = has_active_web_push_subscription(db, user_id=current_user.id)
+    update_notification_preferences(db, user=current_user, push_task_reminders_enabled=still_enabled)
+    message = (
+        "Notificacoes desativadas neste dispositivo. Os outros dispositivos continuam ativos."
+        if still_enabled
+        else "Notificacoes do navegador desativadas."
+    )
+    return WebPushSubscriptionStatus(enabled=still_enabled, message=message)
 
 
 @router.post("/reminders/process", response_model=ReminderProcessResult)

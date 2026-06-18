@@ -12,6 +12,7 @@ from app.models.user import User
 from app.schemas.task import TaskCreate, TaskUpdate
 from app.services.category_service import get_category_by_name
 from app.services.family_service import require_family_member
+from app.services.notification_service import create_task_assignment_notifications
 from app.services.ranking_service import record_task_score, revoke_task_score
 from app.services.retention_service import maintain_task_retention
 from app.services.task_attachment_service import collect_attachment_file_paths, delete_attachment_paths
@@ -195,6 +196,17 @@ def _mark_task_reminders_sent(task: Task) -> None:
         task.reminder_sent = True
 
 
+def _reset_future_task_reminders(task: Task) -> None:
+    now = datetime.now(timezone.utc)
+    if task.reminders:
+        for reminder in task.reminders:
+            reminder.sent = _as_aware_utc(reminder.reminder_at) <= now
+        _mirror_legacy_reminder_fields(task)
+        return
+    if task.reminder_enabled and task.reminder_at is not None:
+        task.reminder_sent = _as_aware_utc(task.reminder_at) <= now
+
+
 def _apply_member_points(db: Session, family_id: str, user_id: str, points: int) -> None:
     member = (
         db.query(FamilyMember)
@@ -256,10 +268,13 @@ def _complete_task_without_commit(db: Session, task: Task, completed_at: datetim
 
 
 def _reopen_task_without_commit(db: Session, task: Task, status_value: str = TaskStatus.PENDING.value) -> None:
-    if task.status == TaskStatus.DONE.value or task.points_awarded:
+    was_completed = task.status == TaskStatus.DONE.value or bool(task.points_awarded)
+    if was_completed:
         _revoke_task_points(db, task)
     task.status = status_value
     task.completed_at = None
+    if was_completed:
+        _reset_future_task_reminders(task)
 
 
 def list_tasks(
@@ -394,12 +409,21 @@ def create_task(db: Session, family_id: str, creator_id: str, payload: TaskCreat
     else:
         task.status = payload.status.value
 
+    create_task_assignment_notifications(
+        db,
+        task=task,
+        assignee_ids=assignee_ids,
+        actor_id=creator_id,
+        event_key="created",
+    )
+
     db.commit()
     return get_task(db, family_id, task.id)
 
 
 def update_task(db: Session, family_id: str, task_id: str, payload: TaskUpdate) -> Task:
     task = get_task(db, family_id, task_id)
+    previous_assignee_ids = set(get_task_assignee_ids(task))
     data = payload.model_dump(exclude_unset=True)
     was_done = task.status == TaskStatus.DONE.value
     previous_completed_at = task.completed_at
@@ -482,6 +506,17 @@ def update_task(db: Session, family_id: str, task_id: str, payload: TaskUpdate) 
         _reopen_task_without_commit(db, task, status_value.value)
     elif was_done:
         _complete_task_without_commit(db, task, previous_completed_at)
+
+    if assignee_ids is not None:
+        newly_assigned_ids = [user_id for user_id in assignee_ids if user_id not in previous_assignee_ids]
+        if newly_assigned_ids:
+            create_task_assignment_notifications(
+                db,
+                task=task,
+                assignee_ids=newly_assigned_ids,
+                actor_id=task.creator_id,
+                event_key=datetime.now(timezone.utc).isoformat(),
+            )
 
     db.commit()
     return get_task(db, family_id, task.id)

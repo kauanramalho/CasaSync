@@ -1,6 +1,7 @@
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session, selectinload
@@ -15,10 +16,8 @@ from app.schemas.notification import ReminderProcessResult, WebPushSubscriptionI
 from app.services.email_service import send_task_reminder_email
 from app.services.family_service import require_family_member
 from app.services.task_metrics import get_task_assignee_ids, unique_user_ids
-from app.services.task_service import refresh_overdue_tasks
-
-
 logger = logging.getLogger(__name__)
+SAO_PAULO_FALLBACK_TZ = timezone(timedelta(hours=-3), name="America/Sao_Paulo")
 
 
 def _utcnow() -> datetime:
@@ -28,7 +27,13 @@ def _utcnow() -> datetime:
 def _format_due_date(value: datetime | None) -> str:
     if not value:
         return ""
-    return value.strftime("%d/%m/%Y as %H:%M")
+    settings = get_settings()
+    try:
+        target_timezone = ZoneInfo(settings.google_calendar_default_timezone or "America/Sao_Paulo")
+    except ZoneInfoNotFoundError:
+        target_timezone = SAO_PAULO_FALLBACK_TZ
+    aware_value = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return aware_value.astimezone(target_timezone).strftime("%d/%m/%Y as %H:%M")
 
 
 def _notification_description(task: Task) -> str:
@@ -154,6 +159,15 @@ def disable_web_push_subscription(db: Session, *, user_id: str, endpoint: str | 
     return len(rows)
 
 
+def has_active_web_push_subscription(db: Session, *, user_id: str) -> bool:
+    return (
+        db.query(WebPushSubscription.id)
+        .filter(WebPushSubscription.user_id == user_id, WebPushSubscription.is_active.is_(True))
+        .first()
+        is not None
+    )
+
+
 def _push_payload(task: Task, reminder_id: str | None = None) -> str:
     return json.dumps(
         {
@@ -161,6 +175,8 @@ def _push_payload(task: Task, reminder_id: str | None = None) -> str:
             "body": _notification_description(task),
             "url": "/tarefas",
             "tag": f"task-reminder-{task.id}-{reminder_id or 'legacy'}",
+            "taskId": task.id,
+            "timestamp": int(_utcnow().timestamp() * 1000),
         }
     )
 
@@ -231,6 +247,51 @@ def _active_recipients(db: Session, task: Task) -> list[User]:
     ]
 
 
+def create_task_assignment_notifications(
+    db: Session,
+    *,
+    task: Task,
+    assignee_ids: list[str],
+    actor_id: str,
+    event_key: str,
+) -> int:
+    recipient_ids = [user_id for user_id in unique_user_ids(assignee_ids) if user_id != actor_id]
+    if not recipient_ids:
+        return 0
+
+    actor = db.get(User, actor_id)
+    actor_name = actor.name if actor else "Um membro da familia"
+    recipients = [
+        member.user
+        for member in (
+            db.query(FamilyMember)
+            .options(selectinload(FamilyMember.user))
+            .filter(FamilyMember.family_id == task.family_id, FamilyMember.user_id.in_(recipient_ids))
+            .all()
+        )
+        if member.user and member.user.is_active
+    ]
+
+    created = 0
+    for recipient in recipients:
+        dedupe_key = f"task-assigned:{task.family_id}:{task.id}:{recipient.id}:{event_key}"
+        if db.query(Notification.id).filter(Notification.dedupe_key == dedupe_key).first():
+            continue
+        db.add(
+            Notification(
+                family_id=task.family_id,
+                user_id=recipient.id,
+                task_id=task.id,
+                type="task_assigned",
+                title="Nova tarefa para voce",
+                description=f'{actor_name} atribuiu "{task.title}" a voce.',
+                dedupe_key=dedupe_key,
+            )
+        )
+        created += 1
+    return created
+
+
 def _family_name(db: Session, family_id: str) -> str | None:
     family = db.query(Family).filter(Family.id == family_id).first()
     return family.name if family else None
@@ -263,6 +324,8 @@ def _record_push(notification: Notification, status_value: str, result: Reminder
 
 
 def process_due_task_reminders(db: Session, *, family_id: str | None = None, now: datetime | None = None) -> ReminderProcessResult:
+    from app.services.task_service import refresh_overdue_tasks
+
     current_time = now or _utcnow()
     if family_id:
         refresh_overdue_tasks(db, family_id)
