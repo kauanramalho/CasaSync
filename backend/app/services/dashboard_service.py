@@ -1,5 +1,6 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.enums import TaskStatus
@@ -8,6 +9,7 @@ from app.schemas.dashboard import (
     CategoryStat,
     DailyProductivityPoint,
     DashboardRead,
+    DashboardSummaryRead,
     DashboardStat,
     MemberProductivityPoint,
     MonthlyWinnerRead,
@@ -15,6 +17,7 @@ from app.schemas.dashboard import (
 )
 from app.services.family_service import list_members
 from app.services.ranking_service import get_current_scores_by_user, get_previous_month_winner, sort_members_by_monthly_score
+from app.services.retention_service import maintain_task_retention
 from app.services.task_metrics import get_task_assignee_ids, get_task_points_by_user, is_task_completed_on
 from app.services.task_service import list_tasks, refresh_overdue_tasks
 
@@ -29,17 +32,74 @@ def _recent_task_query(db: Session):
     )
 
 
-def get_dashboard(db: Session, family_id: str) -> DashboardRead:
+def _visible_task_status_counts(db: Session, family_id: str) -> dict[str, int]:
+    rows = (
+        db.query(Task.status, func.count(Task.id))
+        .filter(Task.family_id == family_id, Task.archived_at.is_(None))
+        .group_by(Task.status)
+        .all()
+    )
+    return {status: count for status, count in rows}
+
+
+def get_dashboard_summary(db: Session, family_id: str) -> DashboardSummaryRead:
     refresh_overdue_tasks(db, family_id)
+    maintain_task_retention(db, family_id)
+
+    status_counts = _visible_task_status_counts(db, family_id)
+    done = status_counts.get(TaskStatus.DONE.value, 0)
+    pending = status_counts.get(TaskStatus.PENDING.value, 0) + status_counts.get(TaskStatus.IN_PROGRESS.value, 0)
+    overdue = status_counts.get(TaskStatus.OVERDUE.value, 0)
+    monthly_scores = get_current_scores_by_user(db, family_id)
+
+    return DashboardSummaryRead(
+        done=done,
+        pending=pending,
+        overdue=overdue,
+        total=done + pending + overdue,
+        points=sum(item.points for item in monthly_scores.values()),
+    )
+
+
+def get_dashboard(db: Session, family_id: str) -> DashboardRead:
     tasks = list_tasks(db, family_id)
     members = list_members(db, family_id)
 
-    completed = [task for task in tasks if task.status == TaskStatus.DONE.value]
-    pending = [task for task in tasks if task.status in [TaskStatus.PENDING.value, TaskStatus.IN_PROGRESS.value]]
-    overdue = [task for task in tasks if task.status == TaskStatus.OVERDUE.value]
+    today = datetime.now(timezone.utc).date()
+    week_days = [today - timedelta(days=offset) for offset in range(6, -1, -1)]
+    week_day_set = set(week_days)
+    completed: list[Task] = []
+    pending: list[Task] = []
+    overdue: list[Task] = []
+    completed_by_day: dict[date, list[Task]] = {day: [] for day in week_days}
+    pending_due_by_day: dict[date, list[Task]] = {day: [] for day in week_days}
+    overdue_due_by_day: dict[date, list[Task]] = {day: [] for day in week_days}
+    assignee_ids_by_task: dict[str, set[str]] = {}
+    points_by_task: dict[str, dict[str, int]] = {}
 
     category_map: dict[str, CategoryStat] = {}
     for task in tasks:
+        if task.status == TaskStatus.DONE.value:
+            completed.append(task)
+            assignee_ids_by_task[task.id] = set(get_task_assignee_ids(task))
+            points_by_task[task.id] = get_task_points_by_user(task)
+            if task.completed_at:
+                completed_day = task.completed_at.date()
+                if completed_day in week_day_set:
+                    completed_by_day[completed_day].append(task)
+        elif task.status in [TaskStatus.PENDING.value, TaskStatus.IN_PROGRESS.value]:
+            pending.append(task)
+        elif task.status == TaskStatus.OVERDUE.value:
+            overdue.append(task)
+
+        if task.due_date:
+            due_day = task.due_date.date()
+            if due_day in week_day_set:
+                if task.status in [TaskStatus.PENDING.value, TaskStatus.IN_PROGRESS.value]:
+                    pending_due_by_day[due_day].append(task)
+                elif task.status == TaskStatus.OVERDUE.value:
+                    overdue_due_by_day[due_day].append(task)
+
         if not task.category:
             continue
         stat = category_map.setdefault(
@@ -62,26 +122,23 @@ def get_dashboard(db: Session, family_id: str) -> DashboardRead:
         for index, member in enumerate(ranked_members)
     ]
 
-    today = datetime.now(timezone.utc).date()
     weekly_points = []
-    for offset in range(6, -1, -1):
-        day = today - timedelta(days=offset)
-        day_tasks = [task for task in completed if is_task_completed_on(task, day)]
-        due_tasks = [task for task in tasks if task.due_date and task.due_date.date() == day]
-        pending_tasks = [task for task in due_tasks if task.status in [TaskStatus.PENDING.value, TaskStatus.IN_PROGRESS.value]]
-        overdue_tasks = [task for task in due_tasks if task.status == TaskStatus.OVERDUE.value]
+    for day in week_days:
+        day_tasks = [task for task in completed_by_day[day] if is_task_completed_on(task, day)]
+        pending_tasks = pending_due_by_day[day]
+        overdue_tasks = overdue_due_by_day[day]
         member_points = []
         for member in members:
             member_tasks = [
                 task
                 for task in day_tasks
-                if member.user_id in get_task_assignee_ids(task)
+                if member.user_id in assignee_ids_by_task.get(task.id, set())
             ]
             member_points.append(
                 MemberProductivityPoint(
                     user=member.user,
                     total=len(member_tasks),
-                    points=sum(get_task_points_by_user(task).get(member.user_id, 0) for task in member_tasks),
+                    points=sum(points_by_task.get(task.id, {}).get(member.user_id, 0) for task in member_tasks),
                     tasks=member_tasks,
                 )
             )

@@ -489,7 +489,8 @@ export const notificationsApi = {
 };
 
 export const dashboardApi = {
-  get: () => request("/dashboard")
+  get: () => request("/dashboard"),
+  summary: () => request("/dashboard/summary")
 };
 
 export const coupleApi = {

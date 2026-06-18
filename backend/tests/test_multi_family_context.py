@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from app.core.config import Settings
 from app.core.deps import get_family_id
 from app.database.base import Base
+from app.models.enums import TaskStatus
 from app.models import Family, FamilyMember, User
 from app.routes.auth import me as me_route
 from app.routes.families import active_family as active_family_route, list_my_families
@@ -16,7 +17,7 @@ from app.schemas.category import CategoryCreate
 from app.schemas.task import TaskCreate
 from app.schemas.task_import import TaskSuggestionImportItem, TaskSuggestionsImportRequest, TaskSuggestionsImportResponse
 from app.services.category_service import create_category, list_categories
-from app.services.dashboard_service import get_dashboard
+from app.services.dashboard_service import get_dashboard, get_dashboard_summary
 from app.services.family_service import decide_join_request, list_members, refresh_user_active_family, request_join_family, set_active_family
 from app.services.task_service import create_task, get_task, list_tasks
 
@@ -172,6 +173,20 @@ class MultiFamilyContextTest(unittest.TestCase):
 
         self.assertEqual([task.title for task in dashboard_a.recent_tasks], ["Tarefa da familia A"])
         self.assertEqual([task.title for task in dashboard_b.recent_tasks], ["Tarefa da familia B"])
+
+    def test_dashboard_summary_is_scoped_to_family(self):
+        create_task(self.db, self.family_a.id, self.user.id, TaskCreate(title="Pendente A"))
+        create_task(self.db, self.family_a.id, self.user.id, TaskCreate(title="Concluida A", status=TaskStatus.DONE))
+        create_task(self.db, self.family_a.id, self.user.id, TaskCreate(title="Atrasada A", status=TaskStatus.OVERDUE))
+        create_task(self.db, self.family_b.id, self.user.id, TaskCreate(title="Concluida B", status=TaskStatus.DONE))
+
+        summary_a = get_dashboard_summary(self.db, self.family_a.id)
+        summary_b = get_dashboard_summary(self.db, self.family_b.id)
+
+        self.assertEqual((summary_a.done, summary_a.pending, summary_a.overdue, summary_a.total), (1, 1, 1, 3))
+        self.assertEqual(summary_a.points, 10)
+        self.assertEqual((summary_b.done, summary_b.pending, summary_b.overdue, summary_b.total), (1, 0, 0, 1))
+        self.assertEqual(summary_b.points, 10)
 
     def test_task_creation_rejects_foreign_category_and_assignee(self):
         category_b = create_category(self.db, self.family_b.id, CategoryCreate(name="Categoria B", color="rose", icon="heart"))

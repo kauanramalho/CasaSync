@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
@@ -48,17 +48,24 @@ export default function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarMetrics, setSidebarMetrics] = useState({ done: 0, total: 0, points: 0 });
-  const familyOptions = [
-    ...families.map((familyItem) => ({
-      value: familyItem.id,
-      label: familyItem.name,
-      helper: familyItem.current_user_role
-        ? `${roleLabel(familyItem.current_user_role)}${familyItem.invite_code ? ` - Codigo ${familyItem.invite_code}` : ""}`
-        : familyItem.invite_code ? `Codigo ${familyItem.invite_code}` : "Familia CasaSync"
-    })),
-    { value: CREATE_FAMILY_ACTION, label: "Criar nova familia", helper: "Comecar outro grupo" },
-    { value: JOIN_FAMILY_ACTION, label: "Entrar por codigo", helper: "Enviar solicitacao para outra familia" }
-  ];
+  const familyOptions = useMemo(
+    () => [
+      ...families.map((familyItem) => ({
+        value: familyItem.id,
+        label: familyItem.name,
+        helper: familyItem.current_user_role
+          ? `${roleLabel(familyItem.current_user_role)}${familyItem.invite_code ? ` - Codigo ${familyItem.invite_code}` : ""}`
+          : familyItem.invite_code ? `Codigo ${familyItem.invite_code}` : "Familia CasaSync"
+      })),
+      { value: CREATE_FAMILY_ACTION, label: "Criar nova familia", helper: "Comecar outro grupo" },
+      { value: JOIN_FAMILY_ACTION, label: "Entrar por codigo", helper: "Enviar solicitacao para outra familia" }
+    ],
+    [families]
+  );
+  const sidebarProgress = useMemo(
+    () => (sidebarMetrics.total ? Math.round((sidebarMetrics.done / sidebarMetrics.total) * 100) : 0),
+    [sidebarMetrics.done, sidebarMetrics.total]
+  );
 
   useEffect(() => {
     let alive = true;
@@ -69,14 +76,16 @@ export default function AppLayout() {
         return;
       }
       try {
-        const dashboard = await dashboardApi.get();
+        const summary = await dashboardApi.summary();
         if (!alive) return;
-        const stats = dashboard.stats;
-        const done = stats.find((item) => item.key === "done")?.value ?? 0;
-        const pending = stats.find((item) => item.key === "pending")?.value ?? 0;
-        const overdue = stats.find((item) => item.key === "overdue")?.value ?? 0;
-        const points = stats.find((item) => item.key === "points")?.value ?? 0;
-        setSidebarMetrics({ done, total: done + pending + overdue, points });
+        const done = summary.done ?? 0;
+        const pending = summary.pending ?? 0;
+        const overdue = summary.overdue ?? 0;
+        setSidebarMetrics({
+          done,
+          total: summary.total ?? done + pending + overdue,
+          points: summary.points ?? 0
+        });
       } catch {
         setSidebarMetrics({ done: 0, total: 0, points: 0 });
       }
@@ -173,7 +182,7 @@ export default function AppLayout() {
         <div className="mt-6 rounded-[24px] bg-white/80 p-5 shadow-card">
           <p className="text-sm font-semibold text-ink">Progresso da familia</p>
           <div className="mt-5 flex items-center gap-4">
-            <ProgressRing value={sidebarMetrics.total ? Math.round((sidebarMetrics.done / sidebarMetrics.total) * 100) : 0} />
+            <ProgressRing value={sidebarProgress} />
             <div>
               <p className="font-semibold text-ink">{sidebarMetrics.done} / {sidebarMetrics.total} tarefas</p>
               <p className="mt-1 text-xs text-muted">{sidebarMetrics.points} pontos</p>

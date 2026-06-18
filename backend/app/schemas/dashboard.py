@@ -60,6 +60,14 @@ class DailyProductivityPoint(ProductivityPoint):
     members: list[MemberProductivityPoint] = Field(default_factory=list)
 
 
+class DashboardSummaryRead(BaseModel):
+    done: int = 0
+    pending: int = 0
+    overdue: int = 0
+    total: int = 0
+    points: int = 0
+
+
 class DashboardRead(BaseModel):
     stats: list[DashboardStat]
     tasks_by_category: list[CategoryStat]
