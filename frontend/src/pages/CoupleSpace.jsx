@@ -31,7 +31,7 @@ import { useNotifications } from "../hooks/useNotifications";
 import { useToast } from "../hooks/useToast";
 import { coupleApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
-import { formatDate, normalizeApiError, toIsoOrNull } from "../utils/formatters";
+import { formatDate, normalizeApiError, toIsoOrNull, toValidDate } from "../utils/formatters";
 import { getStoredPreferences } from "../utils/preferences";
 import { findColor } from "../utils/categoryDesign";
 import { getCategoryTone } from "../utils/tasks";
@@ -64,12 +64,13 @@ function domainFromUrl(url) {
 }
 
 function formatTime(value) {
-  if (!value) return "";
+  const date = toValidDate(value);
+  if (!date) return "";
   return new Intl.DateTimeFormat("pt-BR", {
     hour: "2-digit",
     minute: "2-digit",
     timeZone: getStoredPreferences().timezone
-  }).format(new Date(value));
+  }).format(date);
 }
 
 export default function CoupleSpace() {

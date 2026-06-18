@@ -1,4 +1,4 @@
-import { getStoredPreferences } from "./preferences";
+import { getStoredPreferences } from "./preferences.js";
 
 export const priorityLabels = {
   baixa: "Baixa",
@@ -13,24 +13,31 @@ export const statusLabels = {
   atrasada: "Atrasada"
 };
 
+export function toValidDate(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 export function formatDate(value, fallback = "Sem prazo") {
-  if (!value) return fallback;
+  const date = toValidDate(value);
+  if (!date) return fallback;
   return new Intl.DateTimeFormat("pt-BR", {
     day: "2-digit",
     month: "short",
     timeZone: getStoredPreferences().timezone
-  }).format(new Date(value));
+  }).format(date);
 }
 
 export function formatDateTimeLocal(value) {
-  if (!value) return "";
-  const date = new Date(value);
+  const date = toValidDate(value);
+  if (!date) return "";
   const pad = (part) => String(part).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 export function toIsoOrNull(value) {
-  return value ? new Date(value).toISOString() : null;
+  return toValidDate(value)?.toISOString() ?? null;
 }
 
 export function initials(name = "") {

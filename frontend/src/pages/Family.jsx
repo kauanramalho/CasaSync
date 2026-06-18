@@ -29,7 +29,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useToast } from "../hooks/useToast";
 import { dashboardApi, familiesApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
-import { normalizeApiError } from "../utils/formatters";
+import { normalizeApiError, toValidDate } from "../utils/formatters";
 
 function isAdminRole(role) {
   return role === "owner" || role === "admin";
@@ -41,8 +41,8 @@ function roleLabel(role) {
 }
 
 function dateKey(value) {
-  if (!value) return "";
-  return new Date(value).toISOString().slice(0, 10);
+  const date = toValidDate(value);
+  return date ? date.toISOString().slice(0, 10) : "";
 }
 
 export default function Family() {

@@ -9,6 +9,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
 import { familiesApi } from "../services/api";
 import { APP_DATA_CHANGED_EVENT, emitAppDataChanged } from "../utils/events";
+import { toValidDate } from "../utils/formatters";
 
 const notificationTone = {
   task: "bg-blue-50 text-blue-600",
@@ -27,6 +28,12 @@ const notificationLabels = {
   couple: "Casal",
   info: "Info"
 };
+
+function formatHeaderDate(value) {
+  const date = toValidDate(value);
+  if (!date) return "Data indisponivel";
+  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(date);
+}
 
 export default function PageHeader({ title, subtitle, action, user }) {
   const navigate = useNavigate();
@@ -139,7 +146,7 @@ export default function PageHeader({ title, subtitle, action, user }) {
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="rounded-full bg-blush/15 px-2 py-0.5 text-[11px] font-bold text-blush">Familia</span>
                           <span className="text-[11px] font-semibold text-muted">
-                            {new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(request.created_at))}
+                            {formatHeaderDate(request.created_at)}
                           </span>
                         </div>
                         <p className="mt-1 font-semibold text-ink">Pedido para entrar na familia</p>
@@ -181,7 +188,7 @@ export default function PageHeader({ title, subtitle, action, user }) {
                               {notificationLabels[item.type] || notificationLabels.info}
                             </span>
                             <span className="text-[11px] font-semibold text-muted">
-                              {new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(item.created_at))}
+                              {formatHeaderDate(item.created_at)}
                             </span>
                           </div>
                           <p className="mt-1 font-semibold text-ink">{item.title}</p>

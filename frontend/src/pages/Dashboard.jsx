@@ -17,7 +17,7 @@ import { useNotifications } from "../hooks/useNotifications";
 import useTaskDeletion from "../hooks/useTaskDeletion";
 import { categoriesApi, coupleApi, dashboardApi, familiesApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
-import { formatDate, normalizeApiError } from "../utils/formatters";
+import { formatDate, normalizeApiError, toValidDate } from "../utils/formatters";
 import { syncTaskToGoogleCalendarSafely } from "../utils/googleCalendarTasks";
 import { getHiddenRecentTaskIds, hideRecentTask } from "../utils/recentTasks";
 import { applyTaskAttachmentChanges, hasTaskAttachmentChanges } from "../utils/taskAttachments";
@@ -36,8 +36,9 @@ function timestamp(value) {
 }
 
 function formatTime(value) {
-  if (!value) return "";
-  return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+  const date = toValidDate(value);
+  if (!date) return "";
+  return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(date);
 }
 
 function relativeDateLabel(value) {
