@@ -20,6 +20,7 @@ from app.services.category_service import create_category, list_categories
 from app.services.dashboard_service import get_dashboard, get_dashboard_summary
 from app.services.family_service import decide_join_request, list_members, refresh_user_active_family, request_join_family, set_active_family
 from app.services.task_service import create_task, get_task, list_tasks
+from app.services.task_import_service import import_task_suggestions
 
 
 class MultiFamilyContextTest(unittest.TestCase):
@@ -237,6 +238,29 @@ class MultiFamilyContextTest(unittest.TestCase):
         self.assertIs(result, expected)
         self.assertEqual(import_service.call_args.kwargs["family_id"], self.family_b.id)
         self.assertEqual(import_service.call_args.kwargs["creator_id"], self.user.id)
+
+    def test_reviewed_ai_suggestion_creates_task_for_selected_family_member(self):
+        self.db.add(FamilyMember(id="member-bia-family-a", family_id=self.family_a.id, user_id=self.other_user.id, role="member"))
+        self.db.commit()
+        item = TaskSuggestionImportItem(
+            suggestionId="suggestion-assignee",
+            title="Lavar a louca",
+            originalText="Bia lavar a louca hoje",
+            assigneeIds=[self.other_user.id],
+            confidence=0.95,
+        )
+
+        result = import_task_suggestions(
+            self.db,
+            family_id=self.family_a.id,
+            creator_id=self.user.id,
+            items=[item],
+            settings=Settings(),
+        )
+
+        self.assertEqual(len(result.created), 1)
+        task = get_task(self.db, self.family_a.id, result.created[0].taskId)
+        self.assertEqual(task.assignee_ids, [self.other_user.id])
 
 
 if __name__ == "__main__":

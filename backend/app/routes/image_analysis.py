@@ -55,6 +55,7 @@ async def analyze_task_suggestions(
         custom_instructions=current_user.ai_task_import_instructions,
         image_context=normalized_image_context,
         db=db,
+        current_user_id=current_user.id,
     )
 
 

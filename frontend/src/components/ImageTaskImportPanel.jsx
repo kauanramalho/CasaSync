@@ -176,7 +176,7 @@ function clipboardImageFiles(clipboardData) {
   return files;
 }
 
-export default function ImageTaskImportPanel({ categories = [], members = [], onImported }) {
+export default function ImageTaskImportPanel({ categories = [], members = [], currentUserId = null, onImported }) {
   const { showToast } = useToast();
   const inputRef = useRef(null);
   const selectedImagesRef = useRef([]);
@@ -281,7 +281,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
       let changed = false;
       const next = current.map((item) => {
         if (item.assigneeTouched) return item;
-        const resolution = resolveSuggestionAssigneesFromMembers(item, members);
+        const resolution = resolveSuggestionAssigneesFromMembers(item, members, currentUserId);
         const resolvedIds = resolution.assigneeIds || [];
         const currentIds = item.assigneeIds || [];
         const sameIds = resolvedIds.length === currentIds.length && resolvedIds.every((id, index) => id === currentIds[index]);
@@ -309,7 +309,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
       });
       return changed ? next : current;
     });
-  }, [members]);
+  }, [currentUserId, members]);
 
   const clearSelection = useCallback(() => {
     revokeImagePreviews();
@@ -667,7 +667,9 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
       activeAnalysisJobRef.current = startedJob.jobId;
       setAnalysisJob(startedJob);
       const response = await waitForAnalysisJob(startedJob.jobId);
-      const nextReviewItems = (response.items || []).map((item, index) => buildReviewItem(item, index, categories, members));
+      const nextReviewItems = (response.items || []).map((item, index) =>
+        buildReviewItem(item, index, categories, members, currentUserId)
+      );
       const hasGoogleSuggestion = nextReviewItems.some((item) => item.googleCalendarSuggestion && item.date && item.time);
       const shouldSyncGoogleCalendar = Boolean(
         calendarStatus?.can_sync && (syncGoogleCalendar || (!calendarPreferenceTouched && hasGoogleSuggestion))

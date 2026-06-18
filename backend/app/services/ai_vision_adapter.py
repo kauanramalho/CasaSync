@@ -381,6 +381,8 @@ class OpenAIVisionAdapter:
                                 "Retorne responsaveis em assigneeIds usando somente ids existentes na lista de membros reais. "
                                 "Se o usuario especificar um ou mais responsaveis por nome, primeiro nome, username ou linguagem natural, "
                                 "respeite essa escolha e retorne somente os ids correspondentes. "
+                                "O membro com isCurrentUser=true representa o usuario logado: expressoes como eu, me lembra, para mim ou minha tarefa devem usar esse id. "
+                                "Considere apelidos somente quando corresponderem claramente a um unico membro real; nunca escolha entre nomes ambiguos. "
                                 "Se o nome for ambiguo ou nao existir na lista, deixe assigneeIds vazio, mantenha o texto em responsible e adicione warning. "
                                 "Retorne categoryId usando somente uma categoria existente. Nunca invente id, nome de categoria ou responsavel. "
                                 "Para cinema, filme, date, passeio, encontro ou casal, prefira categoria existente relacionada a relacionamento, lazer, casal ou pessoal. "

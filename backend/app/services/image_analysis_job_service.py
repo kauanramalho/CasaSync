@@ -232,6 +232,7 @@ def process_image_analysis_job(job_id: str) -> None:
             custom_instructions=custom_instructions,
             image_context=job.image_context,
             db=db,
+            current_user_id=job.user_id,
         )
 
         stored_errors = _safe_json_loads(job.image_errors_json, [])

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildReviewItem, resolveSuggestionAssigneesFromMembers } from "../src/utils/taskSuggestionReview.js";
+import { buildReviewItem, buildTaskImportPayload, resolveSuggestionAssigneesFromMembers } from "../src/utils/taskSuggestionReview.js";
 
 const members = [
   {
@@ -88,4 +88,76 @@ test("ambiguous first name is not auto-selected", () => {
   assert.deepEqual(item.assigneeIds, []);
   assert.equal(item.assigneeResolutionStatus, "ambiguous");
   assert.ok(item.assigneeResolutionWarnings.length > 0);
+});
+
+test("natural language assignee matrix resolves only clear family members", () => {
+  const cases = [
+    ["Bia lavar a louca hoje", ["user-bia"], "resolved"],
+    ["Kauan pagar a internet sexta", ["user-kauan"], "resolved"],
+    ["Coloca para a Bia comprar leite amanha as 8", ["user-bia"], "resolved"],
+    ["Criar tarefa para Kauan limpar a cozinha", ["user-kauan"], "resolved"],
+    ["Me lembra de estudar magnetismo hoje a noite", ["user-kauan"], "resolved"],
+    ["Eu preciso tirar o lixo as 20h", ["user-kauan"], "resolved"],
+    ["A Bia precisa levar o remedio amanha cedo", ["user-bia"], "resolved"],
+    ["Fulano fazer mercado amanha", [], "not_found"],
+    ["Ela precisa comprar pao", [], "ambiguous"],
+    ["Comprar leite amanha", [], "unresolved"]
+  ];
+
+  cases.forEach(([text, expectedIds, expectedStatus]) => {
+    const result = resolveSuggestionAssigneesFromMembers(
+      { title: text, originalText: text },
+      members,
+      "user-kauan"
+    );
+    assert.deepEqual(result.assigneeIds, expectedIds, text);
+    assert.equal(result.assigneeResolutionStatus, expectedStatus, text);
+  });
+});
+
+test("Bia alias resolves Ana Beatriz only when unique", () => {
+  const uniqueMembers = [{ id: "m-bia", user_id: "user-beatriz", user: { id: "user-beatriz", name: "Ana Beatriz" } }];
+  const resolved = resolveSuggestionAssigneesFromMembers(
+    { originalText: "Bia lavar a louca" },
+    uniqueMembers,
+    "user-beatriz"
+  );
+  assert.deepEqual(resolved.assigneeIds, ["user-beatriz"]);
+
+  const ambiguousMembers = [
+    { id: "m1", user_id: "user-ana-beatriz", user: { id: "user-ana-beatriz", name: "Ana Beatriz" } },
+    { id: "m2", user_id: "user-maria-beatriz", user: { id: "user-maria-beatriz", name: "Maria Beatriz" } }
+  ];
+  const ambiguous = resolveSuggestionAssigneesFromMembers({ originalText: "Bia lavar a louca" }, ambiguousMembers);
+  assert.deepEqual(ambiguous.assigneeIds, []);
+  assert.equal(ambiguous.assigneeResolutionStatus, "ambiguous");
+
+  const collisionMembers = [
+    { id: "m-bia", user_id: "user-bia", user: { id: "user-bia", name: "Bia Souza" } },
+    { id: "m-beatriz", user_id: "user-ana-beatriz", user: { id: "user-ana-beatriz", name: "Ana Beatriz" } }
+  ];
+  const collision = resolveSuggestionAssigneesFromMembers({ originalText: "Bia lavar a louca" }, collisionMembers);
+  assert.deepEqual(collision.assigneeIds, []);
+  assert.equal(collision.assigneeResolutionStatus, "ambiguous");
+});
+
+test("reviewed assignee ids are preserved in final import payload", () => {
+  const item = buildReviewItem(
+    { suggestionId: "suggestion-bia", title: "Lavar a louca", originalText: "Bia lavar a louca", confidence: 0.95 },
+    0,
+    [],
+    members,
+    "user-kauan"
+  );
+  const payload = buildTaskImportPayload([item]);
+  assert.deepEqual(payload.items[0].assigneeIds, ["user-bia"]);
+});
+
+test("explicit family member wins over self reference", () => {
+  const result = resolveSuggestionAssigneesFromMembers(
+    { originalText: "Pedir para Bia me lembrar da conta" },
+    members,
+    "user-kauan"
+  );
+  assert.deepEqual(result.assigneeIds, ["user-bia"]);
 });

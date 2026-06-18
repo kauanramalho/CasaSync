@@ -7,8 +7,10 @@ from app.services.ai_task_suggestion_post_processor import (
     AiMemberOption,
     AiSuggestionContext,
     detect_explicit_assignee_ids,
+    members_for_prompt,
     normalize_suggestion_date,
     post_process_image_analysis_response,
+    resolve_assignee_resolution_for_suggestion,
     resolve_assignee_ids_for_suggestion,
     resolve_category_id_for_suggestion,
 )
@@ -56,6 +58,7 @@ class AiTaskSuggestionPostProcessorTest(unittest.TestCase):
         self.context = AiSuggestionContext(
             members=self.members,
             categories=self.categories,
+            current_user_id="user-kauan",
             now=datetime(2026, 5, 22, 12, 0, tzinfo=timezone(timedelta(hours=-3))),
         )
 
@@ -160,6 +163,76 @@ class AiTaskSuggestionPostProcessorTest(unittest.TestCase):
         assignee_ids, warnings = resolve_assignee_ids_for_suggestion(item, self.context)
         self.assertEqual(assignee_ids, [])
         self.assertTrue(warnings)
+
+    def test_natural_language_assignee_matrix_is_conservative(self):
+        cases = {
+            "Bia lavar a louca hoje": (["user-bia"], "resolved"),
+            "Kauan pagar a internet sexta": (["user-kauan"], "resolved"),
+            "Coloca para a Bia comprar leite amanha as 8": (["user-bia"], "resolved"),
+            "Criar tarefa para Kauan limpar a cozinha": (["user-kauan"], "resolved"),
+            "Me lembra de estudar magnetismo hoje a noite": (["user-kauan"], "resolved"),
+            "Eu preciso tirar o lixo as 20h": (["user-kauan"], "resolved"),
+            "A Bia precisa levar o remedio amanha cedo": (["user-bia"], "resolved"),
+            "Fulano fazer mercado amanha": ([], "not_found"),
+            "Ela precisa comprar pao": ([], "ambiguous"),
+            "Comprar leite amanha": ([], "unresolved"),
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                resolution = resolve_assignee_resolution_for_suggestion(
+                    make_item(title=text, originalText=text),
+                    self.context,
+                )
+                self.assertEqual((resolution.ids, resolution.status), expected)
+
+    def test_bia_alias_resolves_only_one_beatriz(self):
+        single_context = AiSuggestionContext(
+            members=(AiMemberOption(id="user-beatriz", name="Ana Beatriz"),),
+        )
+        single = resolve_assignee_resolution_for_suggestion(
+            make_item(title="Bia lavar a louca", originalText="Bia lavar a louca"),
+            single_context,
+        )
+        self.assertEqual(single.ids, ["user-beatriz"])
+
+        ambiguous_context = AiSuggestionContext(
+            members=(
+                AiMemberOption(id="user-ana-beatriz", name="Ana Beatriz"),
+                AiMemberOption(id="user-maria-beatriz", name="Maria Beatriz"),
+            ),
+        )
+        ambiguous = resolve_assignee_resolution_for_suggestion(
+            make_item(title="Bia lavar a louca", originalText="Bia lavar a louca"),
+            ambiguous_context,
+        )
+        self.assertEqual(ambiguous.ids, [])
+        self.assertEqual(ambiguous.status, "ambiguous")
+
+        collision_context = AiSuggestionContext(
+            members=(
+                AiMemberOption(id="user-bia", name="Bia Souza"),
+                AiMemberOption(id="user-ana-beatriz", name="Ana Beatriz"),
+            ),
+        )
+        collision = resolve_assignee_resolution_for_suggestion(
+            make_item(title="Bia lavar a louca", originalText="Bia lavar a louca"),
+            collision_context,
+        )
+        self.assertEqual(collision.ids, [])
+        self.assertEqual(collision.status, "ambiguous")
+
+    def test_prompt_marks_only_logged_in_family_member(self):
+        prompt_members = members_for_prompt(self.context)
+        by_id = {member["id"]: member for member in prompt_members}
+        self.assertTrue(by_id["user-kauan"]["isCurrentUser"])
+        self.assertNotIn("isCurrentUser", by_id["user-bia"])
+
+    def test_explicit_member_wins_over_self_reference(self):
+        resolution = resolve_assignee_resolution_for_suggestion(
+            make_item(title="Pedir para Bia me lembrar da conta", originalText="Pedir para Bia me lembrar da conta"),
+            self.context,
+        )
+        self.assertEqual(resolution.ids, ["user-bia"])
 
     def test_category_result_always_belongs_to_existing_categories(self):
         item = make_item(category="Categoria inventada")

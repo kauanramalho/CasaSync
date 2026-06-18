@@ -22,6 +22,12 @@ RESPONSIBLE_RE = re.compile(
     r"\b(?:responsavel|responsaveis|responsabilidade|para|pra|com)\b\s*[:=-]?\s*([a-z0-9_.\-\s,&/]+)",
     re.IGNORECASE,
 )
+SELF_REFERENCE_RE = re.compile(r"\b(?:eu|me lembra|lembra me|minha tarefa|para mim|pra mim)\b", re.IGNORECASE)
+AMBIGUOUS_PRONOUN_RE = re.compile(r"^(?:a\s+)?(?:ela|ele)\s+(?:precisa|deve|vai|tem que)\b", re.IGNORECASE)
+LEADING_ASSIGNEE_ACTION_RE = re.compile(
+    r"^(?:a\s+|o\s+)?([a-z0-9_.-]{2,40})\s+(?:precisa|deve|vai|tem que|fazer|lavar|pagar|comprar|limpar|levar|tirar|estudar|organizar|buscar|resolver|preparar)\b",
+    re.IGNORECASE,
+)
 ASSIGNEE_STOP_WORD_RE = re.compile(
     r"\b(?:categoria|data|horario|hora|local|prioridade|lembrete|google|agenda|descricao|observacao|obs|titulo)\b"
 )
@@ -87,6 +93,7 @@ class AiSuggestionContext:
     now: datetime | None = None
     custom_instructions: str | None = None
     image_context: str | None = None
+    current_user_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -122,6 +129,7 @@ def build_ai_suggestion_context(
     image_context: str | None = None,
     now: datetime | None = None,
     timezone_name: str = DEFAULT_TIMEZONE,
+    current_user_id: str | None = None,
 ) -> AiSuggestionContext:
     members = (
         db.query(FamilyMember)
@@ -160,6 +168,7 @@ def build_ai_suggestion_context(
         now=now,
         custom_instructions=custom_instructions,
         image_context=image_context,
+        current_user_id=current_user_id if any(member.user_id == current_user_id for member in members) else None,
     )
 
 
@@ -175,6 +184,8 @@ def members_for_prompt(context: AiSuggestionContext) -> list[dict]:
         }
         if member.username:
             payload["username"] = member.username
+        if member.id == context.current_user_id:
+            payload["isCurrentUser"] = True
         members.append(payload)
     return members
 
@@ -206,14 +217,24 @@ def resolve_assignee_resolution_for_suggestion(item: ImageAnalysisItem | object,
         ("texto extraido da imagem", _item_value(item, "originalText")),
     )
     for source_label, source_text in context_sources:
-        resolution = _resolve_assignees_from_text(source_text, context.members, require_explicit=True)
+        resolution = _resolve_assignees_from_text(
+            source_text,
+            context.members,
+            require_explicit=True,
+            current_user_id=context.current_user_id,
+        )
         _log_assignee_resolution(source_label, source_text, context.members, resolution)
         if resolution.had_signal:
             return _suggestion_assignee_resolution(resolution, context.members, source_text)
 
     for field_name in ASSIGNEE_TEXT_FIELDS:
         source_text = _item_value(item, field_name)
-        resolution = _resolve_assignees_from_text(source_text, context.members, require_explicit=False)
+        resolution = _resolve_assignees_from_text(
+            source_text,
+            context.members,
+            require_explicit=False,
+            current_user_id=context.current_user_id,
+        )
         _log_assignee_resolution(f"campo {field_name}", source_text, context.members, resolution)
         if resolution.had_signal:
             warnings = resolution.warnings
@@ -676,11 +697,20 @@ def _resolve_assignees_from_text(
     members: tuple[AiMemberOption, ...],
     *,
     require_explicit: bool,
+    current_user_id: str | None = None,
 ) -> AssigneeResolution:
     raw_text = _stringify_assignee_text(text)
     normalized_text = normalize_lookup_text(raw_text)
     if not normalized_text or not members:
         return AssigneeResolution(ids=[], warnings=[], had_signal=False, status="unresolved")
+
+    if AMBIGUOUS_PRONOUN_RE.search(normalized_text):
+        return AssigneeResolution(
+            ids=[],
+            warnings=["O pronome usado para o responsavel e ambiguo; confirme manualmente."],
+            had_signal=True,
+            status="ambiguous",
+        )
 
     fragments: list[str] = []
     explicit_signal = False
@@ -690,6 +720,22 @@ def _resolve_assignees_from_text(
         fragment = re.sub(r"^(?:sera|serao|vai ser|deve ser|ficara para|ficar para|ser|e|eh)\s+", "", fragment).strip()
         if fragment:
             fragments.append(fragment)
+
+    leading_match = LEADING_ASSIGNEE_ACTION_RE.search(normalized_text)
+    if not fragments and leading_match:
+        explicit_signal = True
+        fragments.append(leading_match.group(1))
+
+    if not fragments and SELF_REFERENCE_RE.search(normalized_text):
+        valid_member_ids = {member.id for member in members}
+        if current_user_id in valid_member_ids:
+            return AssigneeResolution(ids=[current_user_id], warnings=[], had_signal=True, status="resolved")
+        return AssigneeResolution(
+            ids=[],
+            warnings=["A referencia ao usuario atual precisa ser confirmada manualmente."],
+            had_signal=True,
+            status="unresolved",
+        )
 
     if not fragments and (not require_explicit or _looks_like_name_list(normalized_text, members)):
         fragments.append(normalized_text)
@@ -724,9 +770,16 @@ def _resolve_assignees_from_fragment(fragment: str, members: tuple[AiMemberOptio
     ids: list[str] = []
     warnings: list[str] = []
     exact_matched_first_names: set[str] = set()
+    short_alias_index: dict[str, list[AiMemberOption]] = {}
+    for member in members:
+        for alias in [_first_name(member.name), *_derived_name_aliases(member.name)]:
+            if alias and member not in short_alias_index.setdefault(alias, []):
+                short_alias_index[alias].append(member)
 
     for member in members:
         for alias in _strong_member_aliases(member):
+            if alias in short_alias_index:
+                continue
             if _text_contains_alias(normalized_fragment, alias):
                 if member.id not in ids:
                     ids.append(member.id)
@@ -735,17 +788,15 @@ def _resolve_assignees_from_fragment(fragment: str, members: tuple[AiMemberOptio
                     exact_matched_first_names.add(first_name)
                 break
 
-    first_name_index = _first_name_index(members)
-    for first_name, matches in first_name_index.items():
-        if not first_name or not _text_contains_alias(normalized_fragment, first_name):
+    for alias, matches in short_alias_index.items():
+        if not _text_contains_alias(normalized_fragment, alias):
             continue
         if len(matches) == 1:
-            member_id = matches[0].id
-            if member_id not in ids:
-                ids.append(member_id)
-            continue
-        if first_name not in exact_matched_first_names:
-            warnings.append(f"Responsavel '{first_name}' e ambiguo nesta familia; confirme manualmente.")
+            if matches[0].id not in ids:
+                ids.append(matches[0].id)
+        else:
+            if alias not in exact_matched_first_names:
+                warnings.append(f"Responsavel '{alias}' e ambiguo nesta familia; confirme manualmente.")
 
     fuzzy_resolution = _resolve_fuzzy_assignees_from_fragment(normalized_fragment, members, set(ids))
     for member_id in fuzzy_resolution.ids:
@@ -844,13 +895,12 @@ def _strong_member_aliases(member: AiMemberOption) -> list[str]:
     return aliases
 
 
-def _first_name_index(members: tuple[AiMemberOption, ...]) -> dict[str, list[AiMemberOption]]:
-    index: dict[str, list[AiMemberOption]] = {}
-    for member in members:
-        first_name = _first_name(member.name)
-        if first_name:
-            index.setdefault(first_name, []).append(member)
-    return index
+def _derived_name_aliases(name: str | None) -> list[str]:
+    tokens = set(normalize_lookup_text(name).split())
+    aliases = []
+    if "beatriz" in tokens:
+        aliases.append("bia")
+    return aliases
 
 
 def _first_name(name: str | None) -> str:

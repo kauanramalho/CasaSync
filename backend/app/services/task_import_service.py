@@ -146,7 +146,7 @@ def _resolve_assignee_ids(
     if assignee_ids:
         return assignee_ids
 
-    context = build_ai_suggestion_context(db, family_id)
+    context = build_ai_suggestion_context(db, family_id, current_user_id=creator_id)
     resolved, assignee_warnings = resolve_assignee_ids_for_suggestion(item, context)
     warnings.extend(assignee_warnings)
     if resolved:

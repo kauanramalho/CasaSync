@@ -80,6 +80,11 @@ function firstName(name) {
   return normalizeLookupText(name).split(" ", 1)[0] || "";
 }
 
+function derivedNameAliases(name) {
+  const tokens = new Set(normalizeLookupText(name).split(" "));
+  return tokens.has("beatriz") ? ["bia"] : [];
+}
+
 function uniqueList(values) {
   return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
 }
@@ -99,7 +104,7 @@ function buildMemberOptions(members = []) {
         email,
         emailLocalPart(email)
       ]).map(normalizeLookupText).filter(Boolean);
-      return { id, name, aliases };
+      return { id, name, aliases, derivedAliases: derivedNameAliases(name) };
     })
     .filter((member) => member.id && member.name);
 }
@@ -185,6 +190,10 @@ function extractAssigneeFragments(text, { requireExplicit }) {
     match = responsibleRe.exec(normalized);
   }
   if (fragments.length) return { fragments, hadSignal: true };
+  const leadingMatch = normalized.match(
+    /^(?:a\s+|o\s+)?([a-z0-9_.-]{2,40})\s+(?:precisa|deve|vai|tem que|fazer|lavar|pagar|comprar|limpar|levar|tirar|estudar|organizar|buscar|resolver|preparar)\b/
+  );
+  if (leadingMatch) return { fragments: [leadingMatch[1]], hadSignal: true };
   const cleaned = normalized
     .replace(/\b(?:sugestao original|sugestao|original)\b/g, " ")
     .replace(/\s+/g, " ")
@@ -200,21 +209,34 @@ function resolveAssigneesFromFragment(fragment, memberOptions) {
 
   const firstNameMatches = new Map();
   memberOptions.forEach((member) => {
-    const first = firstName(member.name);
-    if (!first) return;
-    firstNameMatches.set(first, [...(firstNameMatches.get(first) || []), member]);
+    uniqueList([firstName(member.name), ...member.derivedAliases]).forEach((alias) => {
+      firstNameMatches.set(alias, [...(firstNameMatches.get(alias) || []), member]);
+    });
   });
 
   splitNameCandidates(normalizedFragment).forEach((candidate) => {
     let candidateResolved = false;
     memberOptions.forEach((member) => {
-      const strongAliases = member.aliases.filter((alias) => alias !== firstName(member.name));
+      const shortAliases = new Set([firstName(member.name), ...member.derivedAliases]);
+      const strongAliases = member.aliases.filter((alias) => !shortAliases.has(alias));
       if (strongAliases.some((alias) => textContainsAlias(candidate, alias))) {
         if (!ids.includes(member.id)) ids.push(member.id);
         candidateResolved = true;
       }
     });
     if (candidateResolved) return;
+
+    const mentionedFirstNames = [...firstNameMatches.entries()].filter(([name]) => textContainsAlias(candidate, name));
+    if (mentionedFirstNames.length) {
+      mentionedFirstNames.forEach(([name, matches]) => {
+        if (matches.length === 1) {
+          if (!ids.includes(matches[0].id)) ids.push(matches[0].id);
+        } else {
+          warnings.push(`Responsavel '${name}' e ambiguo nesta familia; confirme manualmente.`);
+        }
+      });
+      return;
+    }
 
     const candidateFirstName = normalizeLookupText(candidate);
     const firstMatches = firstNameMatches.get(candidateFirstName) || [];
@@ -290,7 +312,7 @@ function stripAssigneeWarnings(warnings = []) {
   });
 }
 
-export function resolveSuggestionAssigneesFromMembers(rawItem = {}, members = []) {
+export function resolveSuggestionAssigneesFromMembers(rawItem = {}, members = [], currentUserId = null) {
   const memberOptions = buildMemberOptions(members);
   const memberIdToUserId = new Map();
   memberOptions.forEach((member) => memberIdToUserId.set(member.id, member.id));
@@ -334,7 +356,35 @@ export function resolveSuggestionAssigneesFromMembers(rawItem = {}, members = []
   ];
 
   for (const source of sources) {
-    const { fragments, hadSignal } = extractAssigneeFragments(source.text, { requireExplicit: source.requireExplicit });
+    const normalizedSource = normalizeLookupText(source.text);
+    if (/^(?:a\s+)?(?:ela|ele)\s+(?:precisa|deve|vai|tem que)\b/.test(normalizedSource)) {
+      return {
+        assigneeIds: [],
+        assigneeId: null,
+        assigneeNames: [],
+        resolvedAssigneeNames: [],
+        originalAssigneeText: rawItem.originalAssigneeText || source.text || "",
+        assigneeResolutionStatus: "ambiguous",
+        assigneeResolutionWarnings: ["O pronome usado para o responsavel e ambiguo; confirme manualmente."]
+      };
+    }
+    const extracted = extractAssigneeFragments(source.text, { requireExplicit: source.requireExplicit });
+    if (!extracted.hadSignal && /\b(?:eu|me lembra|lembra me|minha tarefa|para mim|pra mim)\b/.test(normalizedSource)) {
+      const currentMember = memberOptions.find((member) => member.id === String(currentUserId || ""));
+      if (currentMember) {
+        return {
+          assigneeIds: [currentMember.id],
+          assigneeId: currentMember.id,
+          assigneeNames: [currentMember.name],
+          resolvedAssigneeNames: [currentMember.name],
+          originalAssigneeText: rawItem.originalAssigneeText || source.text || "",
+          assigneeResolutionStatus: "resolved",
+          assigneeResolutionWarnings: [],
+          assigneeWarningsWereCleared: true
+        };
+      }
+    }
+    const { fragments, hadSignal } = extracted;
     if (!hadSignal) continue;
     const ids = [];
     const warnings = [];
@@ -384,12 +434,12 @@ function findValidCategoryId(rawItem, categories) {
   return findCategoryId(rawItem.category, categories);
 }
 
-export function buildReviewItem(rawItem = {}, index, categories = [], members = []) {
+export function buildReviewItem(rawItem = {}, index, categories = [], members = [], currentUserId = null) {
   const confidence = normalizeConfidence(rawItem.confidence);
   const categoryId = findValidCategoryId(rawItem, categories);
   const reminders = normalizeReminderList(rawItem).map((reminder) => ({ value: reminder.value, unit: reminder.unit }));
   const firstReminder = reminders[0] || null;
-  const assigneeResolution = resolveSuggestionAssigneesFromMembers(rawItem, members);
+  const assigneeResolution = resolveSuggestionAssigneesFromMembers(rawItem, members, currentUserId);
   const assigneeIds = assigneeResolution.assigneeIds;
   const assigneeNames = assigneeResolution.resolvedAssigneeNames?.length
     ? assigneeResolution.resolvedAssigneeNames

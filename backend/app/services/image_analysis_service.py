@@ -28,8 +28,11 @@ async def parse_image_to_task_suggestions(
     family_id: str,
     settings: Settings,
     db: Session | None = None,
+    current_user_id: str | None = None,
 ) -> ImageAnalysisResponse:
-    return await parse_images_to_task_suggestions(files=[file], family_id=family_id, settings=settings, db=db)
+    return await parse_images_to_task_suggestions(
+        files=[file], family_id=family_id, settings=settings, db=db, current_user_id=current_user_id
+    )
 
 
 async def parse_images_to_task_suggestions(
@@ -40,6 +43,7 @@ async def parse_images_to_task_suggestions(
     custom_instructions: str | None = None,
     image_context: str | None = None,
     db: Session | None = None,
+    current_user_id: str | None = None,
 ) -> ImageAnalysisResponse:
     if not files:
         return _analysis_response(warnings=["Selecione pelo menos uma imagem para interpretar."])
@@ -77,6 +81,7 @@ async def parse_images_to_task_suggestions(
         custom_instructions=custom_instructions,
         image_context=image_context,
         db=db,
+        current_user_id=current_user_id,
         initial_image_errors=image_errors,
     )
 
@@ -89,6 +94,7 @@ def parse_validated_images_to_task_suggestions(
     custom_instructions: str | None = None,
     image_context: str | None = None,
     db: Session | None = None,
+    current_user_id: str | None = None,
     initial_image_errors: list[ImageAnalysisFileError] | None = None,
 ) -> ImageAnalysisResponse:
     adapter = get_ai_vision_adapter(settings.ai_vision_provider)
@@ -99,9 +105,14 @@ def parse_validated_images_to_task_suggestions(
             custom_instructions=custom_instructions,
             image_context=image_context,
             timezone_name=settings.google_calendar_default_timezone or "America/Sao_Paulo",
+            current_user_id=current_user_id,
         )
         if db is not None
-        else AiSuggestionContext(custom_instructions=custom_instructions, image_context=image_context)
+        else AiSuggestionContext(
+            custom_instructions=custom_instructions,
+            image_context=image_context,
+            current_user_id=current_user_id,
+        )
     )
     context = VisionAnalysisContext(
         family_id=family_id,
