@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from fastapi import HTTPException
@@ -188,6 +189,24 @@ class MultiFamilyContextTest(unittest.TestCase):
         self.assertEqual(summary_a.points, 10)
         self.assertEqual((summary_b.done, summary_b.pending, summary_b.overdue, summary_b.total), (1, 0, 0, 1))
         self.assertEqual(summary_b.points, 10)
+
+    def test_dashboard_focus_sections_handle_empty_and_priority_tasks(self):
+        empty_dashboard = get_dashboard(self.db, self.family_a.id)
+        self.assertEqual(empty_dashboard.overdue_tasks, [])
+        self.assertEqual(empty_dashboard.upcoming_tasks, [])
+
+        now = datetime.now(timezone.utc)
+        create_task(self.db, self.family_a.id, self.user.id, TaskCreate(title="Atrasada primeiro", due_date=now - timedelta(days=3), status=TaskStatus.OVERDUE))
+        create_task(self.db, self.family_a.id, self.user.id, TaskCreate(title="Atrasada depois", due_date=now - timedelta(days=1), status=TaskStatus.OVERDUE))
+        create_task(self.db, self.family_a.id, self.user.id, TaskCreate(title="Proxima primeiro", due_date=now + timedelta(days=1)))
+        create_task(self.db, self.family_a.id, self.user.id, TaskCreate(title="Proxima depois", due_date=now + timedelta(days=3)))
+        create_task(self.db, self.family_a.id, self.user.id, TaskCreate(title="Sem prazo"))
+        create_task(self.db, self.family_b.id, self.user.id, TaskCreate(title="Outra familia", due_date=now + timedelta(hours=1)))
+
+        dashboard = get_dashboard(self.db, self.family_a.id)
+
+        self.assertEqual([task.title for task in dashboard.overdue_tasks], ["Atrasada primeiro", "Atrasada depois"])
+        self.assertEqual([task.title for task in dashboard.upcoming_tasks], ["Proxima primeiro", "Proxima depois"])
 
     def test_task_creation_rejects_foreign_category_and_assignee(self):
         category_b = create_category(self.db, self.family_b.id, CategoryCreate(name="Categoria B", color="rose", icon="heart"))

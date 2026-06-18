@@ -74,4 +74,6 @@ class DashboardRead(BaseModel):
     ranking: list[RankingItem]
     previous_month_winner: MonthlyWinnerRead | None = None
     weekly_productivity: list[DailyProductivityPoint]
+    overdue_tasks: list[TaskRead] = Field(default_factory=list)
+    upcoming_tasks: list[TaskRead] = Field(default_factory=list)
     recent_tasks: list[TaskRead]

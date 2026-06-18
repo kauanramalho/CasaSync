@@ -167,6 +167,11 @@ def get_dashboard(db: Session, family_id: str) -> DashboardRead:
         .all()
     )
     previous_winner = get_previous_month_winner(db, family_id)
+    overdue_tasks = sorted(overdue, key=lambda task: task.due_date or task.created_at)[:4]
+    upcoming_tasks = sorted(
+        (task for task in pending if task.due_date and task.due_date.date() >= today),
+        key=lambda task: task.due_date,
+    )[:4]
 
     return DashboardRead(
         stats=[
@@ -191,5 +196,7 @@ def get_dashboard(db: Session, family_id: str) -> DashboardRead:
             else None
         ),
         weekly_productivity=weekly_points,
+        overdue_tasks=overdue_tasks,
+        upcoming_tasks=upcoming_tasks,
         recent_tasks=recent_tasks,
     )

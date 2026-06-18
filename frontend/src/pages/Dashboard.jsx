@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertCircle, CalendarHeart, CheckCircle2, Clock3, Heart, MessageCircleHeart, Pin, Plus, Star, Target } from "lucide-react";
+import { AlertCircle, ArrowRight, CalendarClock, CalendarHeart, CheckCircle2, Clock3, Heart, MessageCircleHeart, Pin, Plus, RefreshCw, Star, Target } from "lucide-react";
 
+import AssigneeStack from "../components/AssigneeStack";
+import Avatar from "../components/Avatar";
 import { CategoryBadge } from "../components/Badges";
 import Button from "../components/Button";
 import Card from "../components/Card";
@@ -295,6 +297,13 @@ export default function Dashboard() {
     return sortTasksForDisplay((dashboard?.recent_tasks ?? []).filter((task) => isTaskOpen(task) && !hidden.has(task.id)).slice(0, 6));
   }, [dashboard, hiddenRecentIds]);
   const couplePreviewItems = useMemo(() => buildCouplePreviewItems(coupleSpace), [coupleSpace]);
+  const overdueTasks = useMemo(() => dashboard?.overdue_tasks ?? [], [dashboard]);
+  const upcomingTasks = useMemo(() => dashboard?.upcoming_tasks ?? [], [dashboard]);
+  const weeklyTotals = useMemo(() => productivity.reduce((totals, day) => ({
+    done: totals.done + (day.done ?? day.tasks?.length ?? 0),
+    pending: totals.pending + (day.pending ?? day.pending_tasks?.length ?? 0),
+    overdue: totals.overdue + (day.overdue ?? day.overdue_tasks?.length ?? 0)
+  }), { done: 0, pending: 0, overdue: 0 }), [productivity]);
 
   const greeting = useMemo(() => {
     const firstName = user?.name?.split(" ")[0] || "família";
@@ -308,37 +317,66 @@ export default function Dashboard() {
         subtitle="Vamos juntos tornar o dia incrível!"
         user={user}
         action={
-          <Button as={Link} to="/tarefas/nova" className="hidden lg:inline-flex">
+          <Button as={Link} to="/tarefas/nova" className="shrink-0 px-3 sm:px-4">
             <Plus className="h-5 w-5" />
-            Nova tarefa
+            <span className="hidden sm:inline">Nova tarefa</span>
+            <span className="sm:hidden">Criar</span>
           </Button>
         }
       />
 
-      {error && (
-        <Card className="mb-6">
-          <p className="font-semibold text-ink">{error}</p>
-          <Link to="/familia" className="mt-4 inline-flex text-sm font-bold text-blush">
-            Criar ou entrar em uma família
-          </Link>
+      {loading && !dashboard ? <DashboardSkeleton /> : error && !dashboard ? (
+        <Card className="border-rose-200 bg-rose-50/70 text-center" role="alert">
+          <AlertCircle className="mx-auto h-9 w-9 text-rose-500" />
+          <h2 className="mt-3 text-lg font-bold text-ink">Não foi possível carregar sua visão geral</h2>
+          <p className="mx-auto mt-2 max-w-xl text-sm text-muted">{error}</p>
+          <div className="mt-5 flex flex-wrap justify-center gap-3">
+            <Button onClick={load}><RefreshCw className="h-4 w-4" />Tentar novamente</Button>
+            <Button as={Link} to="/familia" variant="secondary">Ver família</Button>
+          </div>
         </Card>
-      )}
+      ) : (
+        <>
+          {error && (
+            <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 sm:flex-row sm:items-center sm:justify-between" role="alert">
+              <p className="text-sm font-semibold text-amber-900">Alguns dados podem estar desatualizados. {error}</p>
+              <button type="button" onClick={load} className="inline-flex shrink-0 items-center gap-2 text-sm font-bold text-amber-900"><RefreshCw className="h-4 w-4" />Atualizar</button>
+            </div>
+          )}
 
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-        {(loading ? ["done", "pending", "overdue", "points"] : stats.map((item) => item.key)).map((key, index) => {
-          const item = stats.find((stat) => stat.key === key) ?? { label: "Carregando", value: index === 3 ? 0 : 0, hint: "..." };
-          const meta = statMeta[key] ?? statMeta.pending;
-          return <StatCard key={key} icon={meta.icon} tone={meta.tone} label={item.label} value={item.value} hint={item.hint} />;
-        })}
-      </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {stats.map((item) => {
+              const meta = statMeta[item.key] ?? statMeta.pending;
+              return <StatCard key={item.key} icon={meta.icon} tone={meta.tone} label={item.label} value={item.value} hint={item.hint} emphasis={item.key === "overdue" && item.value > 0} />;
+            })}
+          </div>
+
+          <Card className="mt-6 overflow-hidden p-0 sm:p-0">
+            <div className="grid xl:grid-cols-2">
+              <section className="border-b border-border/70 p-4 sm:p-5 xl:border-b-0 xl:border-r">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div><p className="text-xs font-bold uppercase tracking-[0.16em] text-rose-600">Precisa de atenção</p><h2 className="mt-1 text-lg font-bold text-ink">Tarefas atrasadas</h2></div>
+                  <span className="grid h-11 w-11 place-items-center rounded-2xl bg-rose-50 text-rose-500"><AlertCircle className="h-5 w-5" /></span>
+                </div>
+                <FocusTaskList tasks={overdueTasks} tone="danger" emptyTitle="Tudo em dia por aqui" emptyDescription="Quando uma tarefa passar do prazo, ela aparecerá nesta área." onComplete={handleComplete} onOpenDetails={setDetailsTask} />
+                {overdueTasks.length > 0 && <Link to="/tarefas" className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-rose-600">Ver todas as tarefas <ArrowRight className="h-4 w-4" /></Link>}
+              </section>
+              <section className="p-4 sm:p-5">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div><p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-600">Próximos passos</p><h2 className="mt-1 text-lg font-bold text-ink">Tarefas com prazo</h2></div>
+                  <span className="grid h-11 w-11 place-items-center rounded-2xl bg-blue-50 text-blue-500"><CalendarClock className="h-5 w-5" /></span>
+                </div>
+                <FocusTaskList tasks={upcomingTasks} tone="upcoming" emptyTitle="Nenhum prazo chegando" emptyDescription="Adicione uma data às tarefas para acompanhar os próximos compromissos." onComplete={handleComplete} onOpenDetails={setDetailsTask} />
+                {upcomingTasks.length > 0 && <Link to="/calendario" className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-blue-600">Abrir calendário <ArrowRight className="h-4 w-4" /></Link>}
+              </section>
+            </div>
+          </Card>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.15fr_1fr]">
         <Card>
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="section-title">Tarefas recentes</h2>
-            <Link to="/tarefas/nova" className="inline-flex items-center justify-center rounded-2xl bg-gradient-to-r from-peach to-blush px-4 py-2 text-sm font-semibold text-white">
-              Nova tarefa
-            </Link>
+            <div><h2 className="section-title">Tarefas recentes</h2><p className="mt-1 text-sm text-muted">Continue de onde a família parou.</p></div>
+            <Link to="/tarefas" className="inline-flex items-center gap-2 text-sm font-bold text-blush">Ver todas <ArrowRight className="h-4 w-4" /></Link>
           </div>
           <TaskList
             tasks={recentTasks}
@@ -348,17 +386,17 @@ export default function Dashboard() {
             onDelete={requestTaskDelete}
             onOpenDetails={setDetailsTask}
             compact
-            emptyMessage="Nenhuma tarefa pendente por aqui."
+            emptyMessage="Nenhuma tarefa pendente. Crie a primeira para organizar a rotina."
           />
         </Card>
 
         <Card>
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="section-title">Produtividade da semana</h2>
+            <div><h2 className="section-title">Produtividade da semana</h2><p className="mt-1 text-sm text-muted">O ritmo da família nos últimos sete dias.</p></div>
             <div className="flex flex-wrap items-center justify-end gap-2 text-[11px] font-bold">
-              <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">Concluidas</span>
-              <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">Pendentes</span>
-              <span className="rounded-full bg-rose-50 px-2.5 py-1 text-rose-700">Atrasadas</span>
+              <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">{weeklyTotals.done} concluídas</span>
+              <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">{weeklyTotals.pending} pendentes</span>
+              <span className="rounded-full bg-rose-50 px-2.5 py-1 text-rose-700">{weeklyTotals.overdue} atrasadas</span>
             </div>
           </div>
           <WeeklyProductivityChart productivity={productivity} />
@@ -380,6 +418,7 @@ export default function Dashboard() {
                 <p className="mt-1 text-sm opacity-80">{item.total} tarefas</p>
               </div>
             ))}
+            {!categories.length && <p className="empty-state col-span-2">Crie categorias para enxergar melhor a rotina da família.</p>}
           </div>
         </Card>
 
@@ -411,28 +450,28 @@ export default function Dashboard() {
 
         <Card>
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="section-title">Ranking do mes</h2>
+            <div><h2 className="section-title">Resumo por membro</h2><p className="mt-1 text-xs text-muted">Contribuição neste mês</p></div>
             <Link to="/ranking" className="text-sm font-semibold text-muted">
-              Histórico
+              Ver ranking
             </Link>
           </div>
           <div className="space-y-4">
-            {ranking.slice(0, 3).map((item) => (
-              <div key={item.user.id} className="flex min-w-0 items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="truncate font-semibold text-ink">
-                    {item.position}. {item.user.name}
-                  </p>
-                  <div className="mt-2 h-2 w-full max-w-40 rounded-full bg-slate-100">
-                    <div className="h-2 rounded-full bg-gradient-to-r from-blue-400 to-blush" style={{ width: `${Math.min(100, item.points / 2)}%` }} />
-                  </div>
+            {ranking.slice(0, 4).map((item) => (
+              <div key={item.user.id} className="flex min-w-0 items-center gap-3 rounded-2xl border border-border/60 bg-surface/70 p-3">
+                <Avatar user={item.user} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-bold text-ink">{item.user.name}</p>
+                  <p className="text-xs text-muted">{item.completed_tasks} {item.completed_tasks === 1 ? "tarefa concluída" : "tarefas concluídas"}</p>
                 </div>
-                <p className="shrink-0 font-bold text-ink">{item.points} pts</p>
+                <p className="shrink-0 rounded-xl bg-violet-50 px-2.5 py-1.5 text-xs font-bold text-violet-700">{item.points} pts</p>
               </div>
             ))}
+            {!ranking.length && <p className="empty-state">Convide membros para acompanhar a contribuição da família.</p>}
           </div>
         </Card>
       </div>
+        </>
+      )}
 
       <TaskDetailsModal
         task={detailsTask}
@@ -456,5 +495,68 @@ export default function Dashboard() {
         onConfirm={confirmTaskDelete}
       />
     </>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="animate-pulse" aria-label="Carregando visão geral" aria-busy="true">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => (
+          <div key={index} className="glass-panel h-32 rounded-[24px] bg-surface/70" />
+        ))}
+      </div>
+      <div className="mt-6 grid gap-6 xl:grid-cols-2">
+        <div className="glass-panel h-72 rounded-[28px] bg-surface/70" />
+        <div className="glass-panel h-72 rounded-[28px] bg-surface/70" />
+      </div>
+      <span className="sr-only">Carregando dados do dashboard...</span>
+    </div>
+  );
+}
+
+function FocusTaskList({ tasks, emptyTitle, emptyDescription, tone, onComplete, onOpenDetails }) {
+  const emptyIconClasses = tone === "danger" ? "bg-rose-50 text-rose-500" : "bg-blue-50 text-blue-500";
+
+  if (!tasks.length) {
+    return (
+      <div className="empty-state flex min-h-44 flex-col items-center justify-center">
+        <span className={`mb-3 grid h-11 w-11 place-items-center rounded-2xl ${emptyIconClasses}`}>
+          <CheckCircle2 className="h-5 w-5" />
+        </span>
+        <p className="font-bold text-ink">{emptyTitle}</p>
+        <p className="mt-1 max-w-sm text-xs leading-relaxed text-muted">{emptyDescription}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {tasks.map((task) => (
+        <article key={task.id} className="rounded-2xl border border-border/70 bg-surface/75 p-3 transition hover:border-blush/30 hover:bg-surface">
+          <div className="flex min-w-0 items-start gap-3">
+            <button
+              type="button"
+              onClick={() => onComplete(task)}
+              className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-border bg-surface text-muted transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-600"
+              aria-label={`Concluir ${task.title}`}
+              title="Concluir tarefa"
+            >
+              <CheckCircle2 className="h-5 w-5" />
+            </button>
+            <button type="button" onClick={() => onOpenDetails(task)} className="min-w-0 flex-1 text-left">
+              <span className="block truncate font-bold text-ink">{task.title}</span>
+              <span className={`mt-1 block text-xs font-bold ${tone === "danger" ? "text-rose-600" : "text-blue-600"}`}>
+                {formatDate(task.due_date, "Sem prazo")}
+              </span>
+            </button>
+          </div>
+          <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 pl-[52px]">
+            {task.category && <CategoryBadge category={task.category} compact className="max-w-full" />}
+            <AssigneeStack task={task} />
+          </div>
+        </article>
+      ))}
+    </div>
   );
 }
