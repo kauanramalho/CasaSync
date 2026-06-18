@@ -190,7 +190,7 @@ export default function TaskDetailsModal({ task, onClose, onEdit }) {
 
   return (
     <div
-      className="fixed inset-0 z-[130] grid place-items-center bg-slate-900/30 px-3 py-4 backdrop-blur-sm sm:px-4 sm:py-8"
+      className="fixed inset-0 z-[130] flex items-end justify-center bg-slate-900/30 px-2 py-2 backdrop-blur-sm sm:items-center sm:px-4 sm:py-8"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose?.();
       }}
@@ -198,7 +198,7 @@ export default function TaskDetailsModal({ task, onClose, onEdit }) {
       aria-modal="true"
       aria-labelledby="task-details-title"
     >
-      <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-[26px] border border-white/80 bg-white shadow-soft animate-in sm:rounded-[30px]" onMouseDown={(event) => event.stopPropagation()}>
+      <div className="flex max-h-[calc(100dvh-1rem)] w-full max-w-4xl flex-col overflow-hidden rounded-t-[26px] border border-white/80 bg-white shadow-soft animate-in sm:max-h-[92vh] sm:rounded-[30px]" onMouseDown={(event) => event.stopPropagation()}>
         <div className="border-b border-slate-100 bg-gradient-to-br from-white via-white to-lavender/10 px-4 py-4 sm:px-6 sm:py-5">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -330,7 +330,7 @@ export default function TaskDetailsModal({ task, onClose, onEdit }) {
           </div>
         </div>
 
-        <div className="flex flex-col-reverse gap-3 border-t border-slate-100 bg-white/90 px-4 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-6">
+        <div className="flex flex-col-reverse gap-3 border-t border-slate-100 bg-white/90 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:flex-row sm:items-center sm:justify-end sm:px-6">
           <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={onClose}>
             Fechar
           </Button>

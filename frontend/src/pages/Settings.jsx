@@ -348,7 +348,7 @@ export default function Settings() {
       <PageHeader title="Configuracoes" user={user} />
       {error && <p className="mb-5 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</p>}
 
-      <div className="mb-8 flex gap-3 overflow-x-auto border-b border-slate-200 pb-1">
+      <div className="-mx-3 mb-8 flex scroll-px-3 gap-3 overflow-x-auto border-b border-slate-200 px-3 pb-1">
         {tabs.map((tab) => {
           const active = tab.key === activeTab;
           return (
@@ -356,7 +356,7 @@ export default function Settings() {
               key={tab.key}
               type="button"
               onClick={() => setActiveTab(tab.key)}
-              className={`flex shrink-0 items-center gap-2 rounded-t-2xl px-5 py-4 text-sm font-semibold transition ${
+              className={`flex min-h-12 shrink-0 items-center gap-2 rounded-t-2xl px-5 py-4 text-sm font-semibold transition ${
                 active ? "border-b-2 border-blush bg-white text-blush shadow-card" : "text-muted hover:bg-white/70 hover:text-ink"
               }`}
             >

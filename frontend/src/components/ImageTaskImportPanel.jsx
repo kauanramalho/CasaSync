@@ -62,7 +62,7 @@ function ToneBadge({ children, tone = "neutral" }) {
     info: "border-blue-100 bg-blue-50 text-blue-700"
   };
   return (
-    <span className={`inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-black ${tones[tone] || tones.neutral}`}>
+    <span className={`inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-black ${tones[tone] || tones.neutral}`}>
       {children}
     </span>
   );
@@ -837,8 +837,8 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
               </div>
               <div className="grid max-h-[32rem] gap-3 overflow-y-auto pr-1">
                 {selectedImages.map((image, index) => (
-                  <div key={image.id} className="grid grid-cols-[72px_minmax(0,1fr)_auto] items-center gap-3 rounded-[22px] border border-white/80 bg-white/85 p-2 shadow-sm">
-                    <div className="h-16 w-[72px] overflow-hidden rounded-2xl border border-slate-100 bg-slate-100">
+                  <div key={image.id} className="grid grid-cols-[64px_minmax(0,1fr)] items-center gap-3 rounded-[22px] border border-white/80 bg-white/85 p-2 shadow-sm sm:grid-cols-[72px_minmax(0,1fr)_auto]">
+                    <div className="h-16 w-16 overflow-hidden rounded-2xl border border-slate-100 bg-slate-100 sm:w-[72px]">
                       <img src={image.previewUrl} alt={`Preview da imagem ${index + 1}`} className="h-full w-full object-cover" />
                     </div>
                     <div className="min-w-0">
@@ -853,7 +853,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
                       type="button"
                       onClick={() => removeSelectedImage(image.id)}
                       disabled={analyzing || importing}
-                      className="grid h-9 w-9 place-items-center rounded-full border border-rose-100 bg-rose-50 text-rose-600 transition hover:bg-rose-100 disabled:opacity-60"
+                      className="col-span-2 grid min-h-11 w-full place-items-center rounded-2xl border border-rose-100 bg-rose-50 text-rose-600 transition hover:bg-rose-100 disabled:opacity-60 sm:col-span-1 sm:h-11 sm:w-11 sm:rounded-full"
                       aria-label={`Remover ${image.file.name}`}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -981,7 +981,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs font-bold text-muted">{imageContext.length}/{imageContextMaxLength} caracteres</span>
                 {imageContext.trim() && (
-                  <button type="button" className="rounded-xl px-3 py-1.5 text-xs font-bold text-muted transition hover:bg-white hover:text-ink" onClick={() => setImageContext("")}>
+                  <button type="button" className="min-h-10 rounded-xl px-3 py-1.5 text-xs font-bold text-muted transition hover:bg-white hover:text-ink" onClick={() => setImageContext("")}>
                     Limpar contexto
                   </button>
                 )}
@@ -1012,7 +1012,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
                   {customInstructionsDraft.length}/{instructionsMaxLength} caracteres
                   {customInstructions ? " - instrucoes salvas ativas" : " - usando padrao"}
                 </span>
-                <div className="flex gap-2">
+                <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
                   <Button
                     type="button"
                     variant="secondary"
@@ -1037,7 +1037,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
             <label className="mt-4 flex items-start gap-3 rounded-2xl border border-amber-100 bg-amber-50/75 px-3 py-3 text-xs font-bold text-amber-700">
               <input
                 type="checkbox"
-                className="mt-0.5 accent-amber-600"
+                className="mt-1 h-4 w-4 shrink-0 accent-amber-600"
                 checked={autoCreateEnabled}
                 onChange={(event) => setAutoCreateEnabled(event.target.checked)}
                 disabled={analyzing || importing}
@@ -1055,7 +1055,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
               >
                 <input
                   type="checkbox"
-                  className="mt-0.5 accent-blue-600"
+                  className="mt-1 h-4 w-4 shrink-0 accent-blue-600"
                   checked={syncGoogleCalendar}
                   onChange={(event) => {
                     setCalendarPreferenceTouched(true);
@@ -1077,7 +1077,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
           </div>
 
           {analysis && (
-            <div className="rounded-[26px] border border-white/80 bg-white/80 p-4 shadow-sm">
+            <div className="rounded-[24px] border border-white/80 bg-white/80 p-3 shadow-sm sm:rounded-[26px] sm:p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h3 className="text-base font-black text-ink">Sugestoes geradas</h3>
@@ -1085,7 +1085,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
                     {selectedItems.length} de {reviewItems.length} sugestao(oes) selecionada(s) para criacao.
                   </p>
                 </div>
-                <span className="inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">
+                <span className="inline-flex min-h-10 items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">
                   <CheckCircle2 className="h-4 w-4" />
                   {analysis.totalImagesProcessed > 1 ? "Imagens interpretadas" : "Imagem interpretada"} com IA real - {formatPercent(analysis.overallConfidence)}
                 </span>
@@ -1126,7 +1126,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
                   return (
                     <article
                       key={item.suggestionId}
-                      className={`overflow-visible rounded-[26px] border bg-gradient-to-br from-white via-white to-lavender/10 p-4 shadow-card transition ${
+                      className={`overflow-visible rounded-[24px] border bg-gradient-to-br from-white via-white to-lavender/10 p-3 shadow-card transition sm:rounded-[26px] sm:p-4 ${
                         itemErrors[item.suggestionId] ? "border-rose-200 ring-4 ring-rose-100" : "border-white/80 hover:shadow-soft"
                       }`}
                     >
@@ -1134,7 +1134,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
                         <button
                           type="button"
                           onClick={() => updateReviewItem(item.suggestionId, { selected: !item.selected })}
-                          className={`inline-flex min-h-8 items-center rounded-full border px-3 py-1 text-xs font-black transition ${
+                          className={`inline-flex min-h-10 items-center rounded-full border px-3 py-1 text-xs font-black transition ${
                             item.selected
                               ? "border-blush/20 bg-blush/10 text-blush shadow-sm"
                               : "border-slate-200 bg-slate-100 text-muted hover:bg-white"
@@ -1150,7 +1150,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
                         <Button
                           type="button"
                           variant="ghost"
-                          className="ml-auto px-3 py-1.5 text-xs"
+                          className="w-full px-3 py-2 text-xs sm:ml-auto sm:w-auto"
                           onClick={() => removeReviewItem(item.suggestionId)}
                           disabled={importing}
                         >
@@ -1268,7 +1268,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
                                         key={option.value}
                                         type="button"
                                         onClick={() => updateReviewReminders(item.suggestionId, nextReminders)}
-                                        className={`rounded-full border px-3 py-1.5 text-[11px] font-black transition ${
+                                        className={`min-h-10 rounded-full border px-3 py-1.5 text-[11px] font-black transition ${
                                           selected
                                             ? "border-blue-200 bg-white text-blue-700 shadow-sm"
                                             : "border-white/80 bg-white/60 text-muted hover:border-blue-100 hover:text-blue-700"
@@ -1288,7 +1288,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
                           <label className="flex items-start gap-3 rounded-2xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">
                             <input
                               type="checkbox"
-                              className="mt-0.5 accent-amber-600"
+                              className="mt-1 h-4 w-4 shrink-0 accent-amber-600"
                               checked={item.acceptedLowConfidence}
                               onChange={(event) => updateReviewItem(item.suggestionId, { acceptedLowConfidence: event.target.checked })}
                             />
@@ -1296,7 +1296,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
                           </label>
                         )}
 
-                        <p className="inline-flex items-center gap-2 rounded-full bg-white/75 px-3 py-1.5 text-xs font-bold text-muted shadow-sm">
+                        <p className="inline-flex w-full items-center gap-2 rounded-full bg-white/75 px-3 py-1.5 text-xs font-bold text-muted shadow-sm sm:w-fit">
                           <CalendarDays className="h-4 w-4 text-blush" />
                           {formatSchedule(item)}
                         </p>
@@ -1347,7 +1347,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], on
                 >
                   <input
                     type="checkbox"
-                    className="mt-0.5 accent-blue-600"
+                    className="mt-1 h-4 w-4 shrink-0 accent-blue-600"
                     checked={syncGoogleCalendar}
                     onChange={(event) => {
                       setCalendarPreferenceTouched(true);

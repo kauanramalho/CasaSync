@@ -198,7 +198,7 @@ export default function NewTask() {
             >
               <input
                 type="checkbox"
-                className="mt-0.5 accent-blue-600"
+                className="mt-1 h-4 w-4 shrink-0 accent-blue-600"
                 checked={syncGoogleCalendar}
                 onChange={(event) => setSyncGoogleCalendar(event.target.checked)}
                 disabled={!calendarStatus?.can_sync || !hasGoogleCalendarDateTime(form.due_date) || saving}

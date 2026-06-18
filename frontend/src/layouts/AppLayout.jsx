@@ -157,8 +157,8 @@ export default function AppLayout() {
   const showNoFamilyState = !familyLoading && !families.length && location.pathname !== "/familia";
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[280px_minmax(0,1fr)]">
-      <aside className="sticky top-0 z-20 hidden h-screen flex-col border-r border-white/80 bg-white/70 p-6 shadow-soft backdrop-blur-xl lg:flex">
+    <div className="min-h-screen min-h-dvh lg:grid lg:grid-cols-[280px_minmax(0,1fr)]">
+      <aside className="sticky top-0 z-20 hidden h-screen h-dvh flex-col border-r border-white/80 bg-white/70 p-6 shadow-soft backdrop-blur-xl lg:flex">
         <LogoMark subtitle={activeFamily?.name || "Minha familia"} />
         <FamilySwitcher />
 
@@ -196,17 +196,17 @@ export default function AppLayout() {
         </button>
       </aside>
 
-      <div className="flex min-h-screen min-w-0 flex-col">
-        <div className="sticky top-0 z-10 border-b border-white/70 bg-white/75 px-4 py-3 backdrop-blur-xl lg:hidden">
+      <div className="flex min-h-screen min-h-dvh min-w-0 flex-col">
+        <div className="sticky top-0 z-10 border-b border-white/70 bg-white/75 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-xl lg:hidden">
           <LogoMark subtitle={activeFamily?.name || "Minha familia"} />
           <FamilySwitcher compact />
-          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+          <div className="-mx-4 mt-3 flex snap-x gap-2 overflow-x-auto px-4 pb-1">
             {navItems.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
-                  `flex shrink-0 items-center gap-2 rounded-2xl px-3 py-2 text-xs font-semibold ${
+                  `flex min-h-11 shrink-0 snap-start items-center gap-2 whitespace-nowrap rounded-2xl px-3 py-2 text-xs font-semibold ${
                     isActive ? "bg-blush/10 text-blush" : "bg-white text-muted"
                   }`
                 }
@@ -217,7 +217,7 @@ export default function AppLayout() {
             ))}
           </div>
         </div>
-        <main className="min-w-0 flex-1 overflow-x-hidden px-4 py-6 md:px-8 lg:px-10 lg:py-8">
+        <main className="min-w-0 flex-1 overflow-x-hidden px-3 py-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:px-4 md:px-8 lg:px-10 lg:py-8">
           {showNoFamilyState ? (
             <div className="mx-auto grid min-h-[60vh] max-w-2xl place-items-center text-center">
               <div className="rounded-[28px] bg-white/85 p-8 shadow-soft">
@@ -239,7 +239,7 @@ export default function AppLayout() {
             <Outlet key={activeFamily?.id || "sem-familia"} />
           )}
         </main>
-        <footer className="pb-8 text-center text-sm text-muted">CasaSync © 2026 · Feito com amor para nós</footer>
+        <footer className="px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] text-center text-sm text-muted">CasaSync © 2026 · Feito com amor para nós</footer>
       </div>
     </div>
   );

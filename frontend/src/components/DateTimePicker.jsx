@@ -55,11 +55,11 @@ function TimeSpinner({ label, value, onIncrement }) {
   return (
     <div className="rounded-[20px] border border-slate-100 bg-white/80 p-2 shadow-sm">
       <span className="mb-1 block text-center text-[11px] font-bold uppercase tracking-wide text-muted">{label}</span>
-      <div className="grid grid-cols-[32px_1fr_32px] items-center gap-1">
+      <div className="grid grid-cols-[40px_1fr_40px] items-center gap-1">
         <button
           type="button"
           onClick={() => onIncrement(-1)}
-          className="grid h-8 w-8 place-items-center rounded-xl text-muted transition hover:bg-blush/10 hover:text-blush"
+          className="grid h-10 w-10 place-items-center rounded-xl text-muted transition hover:bg-blush/10 hover:text-blush"
           aria-label={`Diminuir ${label.toLowerCase()}`}
         >
           <Minus className="h-4 w-4" />
@@ -68,7 +68,7 @@ function TimeSpinner({ label, value, onIncrement }) {
         <button
           type="button"
           onClick={() => onIncrement(1)}
-          className="grid h-8 w-8 place-items-center rounded-xl text-muted transition hover:bg-blush/10 hover:text-blush"
+          className="grid h-10 w-10 place-items-center rounded-xl text-muted transition hover:bg-blush/10 hover:text-blush"
           aria-label={`Aumentar ${label.toLowerCase()}`}
         >
           <Plus className="h-4 w-4" />
@@ -222,7 +222,7 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
               setTimeError("");
               onChange?.("");
             }}
-            className="mr-2 grid h-8 w-8 shrink-0 place-items-center rounded-xl text-muted transition hover:bg-blush/10 hover:text-blush"
+            className="mr-2 grid h-10 w-10 shrink-0 place-items-center rounded-xl text-muted transition hover:bg-blush/10 hover:text-blush"
             aria-label="Limpar prazo"
           >
             <X className="h-4 w-4" />
@@ -332,15 +332,15 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
                   setTimeError("");
                   onChange?.("");
                 }}
-                className="rounded-2xl px-3 py-2 text-sm font-bold text-muted hover:bg-slate-50 hover:text-ink"
+                className="min-h-10 rounded-2xl px-3 py-2 text-sm font-bold text-muted hover:bg-slate-50 hover:text-ink"
               >
                 Limpar
               </button>
               <div className="flex gap-2">
-                <button type="button" onClick={chooseToday} className="rounded-2xl px-3 py-2 text-sm font-bold text-blush hover:bg-blush/10">
+                <button type="button" onClick={chooseToday} className="min-h-10 rounded-2xl px-3 py-2 text-sm font-bold text-blush hover:bg-blush/10">
                   Hoje
                 </button>
-                <button type="button" onClick={() => setOpen(false)} className="rounded-2xl bg-blush px-4 py-2 text-sm font-bold text-white shadow-card">
+                <button type="button" onClick={() => setOpen(false)} className="min-h-10 rounded-2xl bg-blush px-4 py-2 text-sm font-bold text-white shadow-card">
                   Aplicar
                 </button>
               </div>

@@ -28,7 +28,7 @@ export default function TaskDeleteConfirmModal({ task, deleting = false, onCance
 
   return (
     <div
-      className="fixed inset-0 z-[150] grid place-items-center bg-slate-900/30 px-3 py-4 backdrop-blur-sm sm:px-4 sm:py-8"
+      className="fixed inset-0 z-[150] flex items-end justify-center bg-slate-900/30 px-2 py-2 backdrop-blur-sm sm:items-center sm:px-4 sm:py-8"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !deleting) onCancel?.();
       }}
@@ -36,7 +36,7 @@ export default function TaskDeleteConfirmModal({ task, deleting = false, onCance
       aria-modal="true"
       aria-labelledby="task-delete-title"
     >
-      <div className="w-full max-w-lg overflow-hidden rounded-[26px] border border-white/80 bg-white shadow-soft animate-in" onMouseDown={(event) => event.stopPropagation()}>
+      <div className="w-full max-w-lg overflow-hidden rounded-t-[26px] border border-white/80 bg-white shadow-soft animate-in sm:rounded-[26px]" onMouseDown={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-5">
           <div className="min-w-0">
             <span className="inline-flex items-center gap-2 rounded-full bg-rose-50 px-3 py-1 text-xs font-black uppercase text-rose-600">
@@ -60,7 +60,7 @@ export default function TaskDeleteConfirmModal({ task, deleting = false, onCance
             <label className="flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50/70 px-4 py-4 text-sm font-bold text-blue-700">
               <input
                 type="checkbox"
-                className="mt-1 accent-blue-600"
+                className="mt-1 h-4 w-4 shrink-0 accent-blue-600"
                 checked={deleteGoogleEvent}
                 disabled={deleting}
                 onChange={(event) => setDeleteGoogleEvent(event.target.checked)}
@@ -82,7 +82,7 @@ export default function TaskDeleteConfirmModal({ task, deleting = false, onCance
           )}
         </div>
 
-        <div className="flex flex-col-reverse gap-3 border-t border-slate-100 bg-white/90 px-5 py-4 sm:flex-row sm:justify-end">
+        <div className="flex flex-col-reverse gap-3 border-t border-slate-100 bg-white/90 px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:flex-row sm:justify-end">
           <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={onCancel} disabled={deleting}>
             Cancelar
           </Button>

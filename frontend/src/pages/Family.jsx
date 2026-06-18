@@ -341,8 +341,8 @@ export default function Family() {
       {currentFamily && (
         <Card className="mb-6 overflow-hidden bg-gradient-to-br from-white via-rose-50/40 to-blue-50/50">
           <div className="grid gap-5 lg:grid-cols-[1fr_360px] lg:items-center">
-            <div className="flex min-w-0 items-center gap-4">
-              <div className="h-24 w-24 shrink-0 overflow-hidden rounded-[26px] bg-gradient-to-br from-rose-100 to-violet-100 shadow-card">
+            <div className="flex min-w-0 flex-col items-start gap-4 sm:flex-row sm:items-center">
+              <div className="h-20 w-20 shrink-0 overflow-hidden rounded-[24px] bg-gradient-to-br from-rose-100 to-violet-100 shadow-card sm:h-24 sm:w-24 sm:rounded-[26px]">
                 {currentFamily.image_url ? <img src={currentFamily.image_url} alt={currentFamily.name} className="h-full w-full object-cover" /> : <div className="grid h-full w-full place-items-center text-3xl font-bold text-blush">{currentFamily.name?.[0]}</div>}
               </div>
               <div className="min-w-0">
@@ -570,7 +570,7 @@ export default function Family() {
                       ) : (
                         <span className="rounded-2xl bg-slate-50 px-3 py-2 text-xs font-bold text-muted">Membro comum</span>
                       )}
-                      <button type="button" onClick={() => removeMember(member)} className="inline-flex items-center justify-center rounded-2xl bg-rose-50 px-3 text-rose-600 hover:bg-rose-100">
+                      <button type="button" onClick={() => removeMember(member)} className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-rose-50 px-3 text-rose-600 hover:bg-rose-100" aria-label={`Remover ${member.user.name}`}>
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>

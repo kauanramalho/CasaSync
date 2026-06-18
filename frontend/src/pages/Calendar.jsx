@@ -105,7 +105,7 @@ function CalendarTaskPill({ task, onPreview, onPreviewLeave, onOpen, compact = f
         onOpen?.(task, event);
       }}
       className={`flex w-full min-w-0 items-center gap-1.5 rounded-xl border px-2 py-1 text-left text-xs font-bold transition hover:-translate-y-0.5 hover:shadow-card focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-rose-100 ${
-        compact ? "min-h-[28px]" : "min-h-[32px]"
+        compact ? "min-h-9 md:min-h-[28px]" : "min-h-10 md:min-h-[32px]"
       }`}
       style={{ backgroundColor: `${color}14`, borderColor: `${color}2e`, color }}
       aria-label={`Ver detalhes de ${task.title}`}
@@ -174,7 +174,7 @@ function DayPanel({ date, tasks, onClose, onComplete, onCompleteAll, onEdit, onO
       }}
     >
       <div className="flex h-full w-full flex-col overflow-hidden bg-white shadow-soft animate-in md:max-w-xl md:rounded-[30px]">
-        <div className="border-b border-slate-100 px-5 py-5 md:px-6">
+        <div className="border-b border-slate-100 px-4 py-5 pt-[max(1.25rem,env(safe-area-inset-top))] md:px-6 md:pt-5">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="grid h-11 w-11 place-items-center rounded-2xl bg-rose-50 text-blush">
@@ -211,11 +211,11 @@ function DayPanel({ date, tasks, onClose, onComplete, onCompleteAll, onEdit, onO
         <div className="flex-1 overflow-y-auto px-5 py-4 md:px-6">
           <div className="space-y-3">
             {orderedTasks.map((task) => (
-              <div key={task.id} className="grid grid-cols-[32px_52px_1fr] gap-3 rounded-2xl border border-slate-100 bg-white/80 p-3 shadow-sm">
+              <div key={task.id} className="grid grid-cols-[44px_52px_1fr] gap-3 rounded-2xl border border-slate-100 bg-white/80 p-3 shadow-sm">
                 <button
                   type="button"
                   onClick={() => onComplete?.(task)}
-                  className={`mt-1 grid h-6 w-6 place-items-center rounded-full border transition ${
+                  className={`grid h-10 w-10 place-items-center rounded-full border transition ${
                     task.status === "concluida" ? "border-emerald-400 bg-emerald-400 text-white" : "border-slate-300 text-transparent hover:border-emerald-300"
                   }`}
                   title={task.status === "concluida" ? "Reabrir tarefa" : "Concluir tarefa"}
@@ -234,7 +234,7 @@ function DayPanel({ date, tasks, onClose, onComplete, onCompleteAll, onEdit, onO
                   </div>
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <AssigneeStack task={task} className="min-w-0" />
-                    <button type="button" onClick={() => onEdit?.(task)} className="inline-flex w-fit items-center gap-1.5 rounded-xl bg-blue-50 px-3 py-2 text-xs font-bold text-blue-600 transition hover:bg-blue-100">
+                    <button type="button" onClick={() => onEdit?.(task)} className="inline-flex min-h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-blue-50 px-3 py-2 text-xs font-bold text-blue-600 transition hover:bg-blue-100 sm:w-fit">
                       <Edit3 className="h-3.5 w-3.5" />
                       Editar
                     </button>
@@ -495,9 +495,66 @@ export default function Calendar() {
     }
   }, [calendarStatus?.can_sync, calendarStatus?.message, showToast]);
 
-  function renderMonthView() {
+  function renderMobileAgendaDays(dayList, emptyMessage, { showEmptyDays = false } = {}) {
+    const rows = dayList.map((day) => {
+      const key = dateKey(day);
+      return { day, key, dayTasks: tasksByDay[key] || [] };
+    });
+    const hasTasks = rows.some((row) => row.dayTasks.length > 0);
+    const visibleRows = showEmptyDays ? rows : rows.filter((row) => row.dayTasks.length > 0);
+
     return (
-      <Card className="p-0">
+      <Card className="p-3 md:hidden">
+        {hasTasks || showEmptyDays ? (
+          <div className="max-h-[70dvh] space-y-3 overflow-y-auto pr-1">
+            {visibleRows.map(({ day, key, dayTasks }) => {
+              const visibleTasks = dayTasks.slice(0, 3);
+              const hiddenCount = Math.max(0, dayTasks.length - visibleTasks.length);
+              const isToday = key === dateKey(new Date());
+
+              return (
+                <div key={key} className="rounded-[22px] border border-slate-100 bg-white/80 p-3 shadow-sm">
+                  <button type="button" onClick={() => openDay(day)} className="flex min-h-12 w-full items-center justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-2 text-left hover:bg-rose-50">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black capitalize text-ink">{fullDateLabel(day)}</p>
+                      <p className="mt-0.5 text-xs font-semibold text-muted">
+                        {dayTasks.length ? `${dayTasks.length} ${dayTasks.length === 1 ? "tarefa" : "tarefas"}` : "Livre por aqui"}
+                      </p>
+                    </div>
+                    <span className={clsx("grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-black", isToday ? "bg-blush text-white" : "bg-white text-muted")}>
+                      {day.getDate()}
+                    </span>
+                  </button>
+                  {visibleTasks.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {visibleTasks.map((task) => (
+                        <CalendarTaskPill key={task.id} task={task} compact onOpen={openTaskDetails} />
+                      ))}
+                      {hiddenCount > 0 && (
+                        <button type="button" onClick={() => openDay(day)} className="min-h-10 rounded-xl px-2 text-xs font-bold text-blush hover:bg-rose-50">
+                          +{hiddenCount} {hiddenCount === 1 ? "tarefa" : "tarefas"}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="empty-state">{emptyMessage}</div>
+        )}
+      </Card>
+    );
+  }
+
+  function renderMonthView() {
+    const monthDays = days.filter((day) => day.getMonth() === baseDate.getMonth());
+
+    return (
+      <>
+      {renderMobileAgendaDays(monthDays, "Nenhuma tarefa com prazo neste mes.")}
+      <Card className="hidden p-0 md:block">
         <div className="overflow-x-auto">
           <div className="min-w-[760px]">
             <div className="calendar-weekday-row grid grid-cols-7">
@@ -557,12 +614,15 @@ export default function Calendar() {
           </div>
         </div>
       </Card>
+      </>
     );
   }
 
   function renderWeekView() {
     return (
-      <Card className="p-0">
+      <>
+      {renderMobileAgendaDays(week, "Nenhuma tarefa nesta semana.", { showEmptyDays: true })}
+      <Card className="hidden p-0 md:block">
         <div className="overflow-x-auto">
           <div className="grid min-w-[860px] grid-cols-7 divide-x divide-slate-100">
             {week.map((day, index) => {
@@ -597,6 +657,7 @@ export default function Calendar() {
           </div>
         </div>
       </Card>
+      </>
     );
   }
 
@@ -652,7 +713,7 @@ export default function Calendar() {
       {error && <p className="mb-5 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</p>}
 
       <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-3 sm:flex sm:flex-wrap">
           <button onClick={() => movePeriod(-1)} className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-muted shadow-card">
             <ChevronLeft className="h-5 w-5" />
           </button>
@@ -660,17 +721,17 @@ export default function Calendar() {
           <button onClick={() => movePeriod(1)} className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-muted shadow-card">
             <ChevronRight className="h-5 w-5" />
           </button>
-          <Button variant="secondary" onClick={() => setBaseDate(new Date())}>
+          <Button variant="secondary" className="col-span-3 w-full sm:col-span-1 sm:w-auto" onClick={() => setBaseDate(new Date())}>
             Hoje
           </Button>
         </div>
-        <div className="inline-flex self-start rounded-2xl bg-white p-1 shadow-card xl:self-auto">
+        <div className="inline-flex w-full self-start rounded-2xl bg-white p-1 shadow-card sm:w-auto xl:self-auto">
           {viewModes.map((item) => (
             <button
               key={item.key}
               type="button"
               onClick={() => setViewMode(item.key)}
-              className={`rounded-xl px-5 py-2 text-sm font-semibold transition ${viewMode === item.key ? "bg-rose-50 text-blush shadow-sm" : "text-muted hover:text-ink"}`}
+              className={`min-h-10 flex-1 rounded-xl px-3 py-2 text-sm font-semibold transition sm:flex-none sm:px-5 ${viewMode === item.key ? "bg-rose-50 text-blush shadow-sm" : "text-muted hover:text-ink"}`}
             >
               {item.label}
             </button>

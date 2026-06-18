@@ -120,22 +120,22 @@ export default function PageHeader({ title, subtitle, action, user }) {
             )}
           </button>
           {openNotifications && (
-            <div className="fixed left-4 right-4 top-24 z-50 overflow-hidden rounded-[26px] border border-white/80 bg-white/95 shadow-soft backdrop-blur-xl animate-in sm:absolute sm:left-auto sm:right-0 sm:top-14 sm:w-[min(380px,calc(100vw-2rem))]">
+            <div className="fixed left-3 right-3 top-[calc(5rem+env(safe-area-inset-top))] z-50 overflow-hidden rounded-[26px] border border-white/80 bg-white/95 shadow-soft backdrop-blur-xl animate-in sm:absolute sm:left-auto sm:right-0 sm:top-14 sm:w-[min(380px,calc(100vw-2rem))]">
               <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
                 <div>
                   <p className="font-bold text-ink">Notificacoes</p>
                   <p className="text-xs text-muted">{totalUnread} pendente(s)</p>
                 </div>
                 <div className="flex gap-1">
-                  <button onClick={markAllAsRead} className="grid h-9 w-9 place-items-center rounded-xl text-muted hover:bg-emerald-50 hover:text-emerald-600" title="Marcar como lidas">
+                  <button onClick={markAllAsRead} className="grid h-10 w-10 place-items-center rounded-xl text-muted hover:bg-emerald-50 hover:text-emerald-600" title="Marcar como lidas">
                     <CheckCheck className="h-4 w-4" />
                   </button>
-                  <button onClick={clearAll} className="grid h-9 w-9 place-items-center rounded-xl text-muted hover:bg-rose-50 hover:text-rose-600" title="Limpar todas">
+                  <button onClick={clearAll} className="grid h-10 w-10 place-items-center rounded-xl text-muted hover:bg-rose-50 hover:text-rose-600" title="Limpar todas">
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               </div>
-              <div className="max-h-96 overflow-y-auto p-2">
+              <div className="max-h-[min(24rem,calc(100dvh-9rem))] overflow-y-auto p-2">
                 {joinRequests.map((request) => (
                   <div key={request.id} className="mb-2 rounded-2xl bg-blush/10 px-3 py-3 text-left">
                     <div className="flex items-start gap-3">
@@ -157,14 +157,14 @@ export default function PageHeader({ title, subtitle, action, user }) {
                           <button
                             type="button"
                             onClick={() => decideJoinRequest(request.id, true)}
-                            className="rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-600"
+                            className="min-h-10 rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-600"
                           >
                             Aceitar
                           </button>
                           <button
                             type="button"
                             onClick={() => decideJoinRequest(request.id, false)}
-                            className="rounded-xl bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-100"
+                            className="min-h-10 rounded-xl bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-100"
                           >
                             Recusar
                           </button>
@@ -228,7 +228,7 @@ export default function PageHeader({ title, subtitle, action, user }) {
           </button>
 
           {openUserMenu && (
-            <div className="fixed left-4 right-4 top-24 z-50 overflow-hidden rounded-[24px] border border-white/80 bg-white/95 p-2 shadow-soft backdrop-blur-xl animate-in sm:absolute sm:left-auto sm:right-0 sm:top-14 sm:w-64">
+            <div className="fixed left-3 right-3 top-[calc(5rem+env(safe-area-inset-top))] z-50 overflow-hidden rounded-[24px] border border-white/80 bg-white/95 p-2 shadow-soft backdrop-blur-xl animate-in sm:absolute sm:left-auto sm:right-0 sm:top-14 sm:w-64">
               <button
                 type="button"
                 onClick={() => {
