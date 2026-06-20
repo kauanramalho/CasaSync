@@ -28,6 +28,7 @@ from app.services.calendar_provider_adapter import (
     CalendarProviderAuthError,
     CalendarProviderConfigurationError,
     CalendarProviderError,
+    CalendarProviderNotFoundError,
     CalendarTokenResult,
     GoogleCalendarOAuthConfig,
     get_calendar_provider_adapter,
@@ -59,6 +60,28 @@ def _token_encryption_ready(settings: Settings) -> bool:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _clear_connection_tokens(connection: GoogleCalendarUserConnection | GoogleCalendarConnection) -> None:
+    connection.is_connected = False
+    connection.access_token_encrypted = None
+    connection.refresh_token_encrypted = None
+    connection.access_token_expires_at = None
+    connection.token_scope = None
+    connection.token_type = None
+    connection.disconnected_at = _now()
+
+
+def _connection_refresh_token_is_readable(
+    connection: GoogleCalendarUserConnection | GoogleCalendarConnection | None,
+    settings: Settings,
+) -> bool:
+    if not connection or not connection.is_connected or not connection.refresh_token_encrypted:
+        return False
+    try:
+        return bool(decrypt_secret(connection.refresh_token_encrypted, settings))
+    except SecretDecryptionError:
+        return False
 
 
 def _get_connection(db: Session, family_id: str, user_id: str) -> GoogleCalendarConnection | None:
@@ -177,12 +200,15 @@ def get_google_calendar_status(db: Session, family_id: str, user_id: str, settin
     family_settings = _get_family_settings(db, family_id, user_id)
     mode = _calendar_mode(family_settings)
     effective_calendar_id = _effective_calendar_id(family_settings)
-    is_connected = bool(connection and connection.is_connected and connection.refresh_token_encrypted)
+    stored_as_connected = bool(connection and connection.is_connected and connection.refresh_token_encrypted)
+    is_connected = stored_as_connected and _connection_refresh_token_is_readable(connection, settings)
     encryption_ready = _token_encryption_ready(settings)
     if not configured:
         message = "Google Agenda habilitado, mas OAuth ainda nao configurado."
     elif not encryption_ready:
         message = "Google Agenda habilitado, mas a chave de criptografia de tokens nao foi configurada."
+    elif stored_as_connected and not is_connected:
+        message = "A conexao salva nao pode ser lida. Reconecte sua conta Google."
     elif mode == GOOGLE_CALENDAR_MODE_DISABLED:
         message = "Google Agenda esta desativado para esta familia."
     elif mode == GOOGLE_CALENDAR_MODE_FAMILY and not effective_calendar_id:
@@ -196,7 +222,7 @@ def get_google_calendar_status(db: Session, family_id: str, user_id: str, settin
         is_enabled=True,
         is_connected=is_connected,
         can_connect=configured and encryption_ready,
-        can_sync=is_connected and encryption_ready and mode != GOOGLE_CALENDAR_MODE_DISABLED and not (mode == GOOGLE_CALENDAR_MODE_FAMILY and not effective_calendar_id),
+        can_sync=configured and is_connected and encryption_ready and mode != GOOGLE_CALENDAR_MODE_DISABLED and not (mode == GOOGLE_CALENDAR_MODE_FAMILY and not effective_calendar_id),
         family_id=family_id,
         mode=mode,
         calendar_id=(family_settings.google_calendar_id if family_settings else None) or DEFAULT_GOOGLE_CALENDAR_ID,
@@ -556,30 +582,77 @@ def _without_calendar_reminders(event_payload: dict) -> dict:
     return fallback_payload
 
 
+def _update_calendar_event(
+    adapter,
+    *,
+    calendar_id: str,
+    access_token: str,
+    event_id: str,
+    event_payload: dict,
+    timeout_seconds: float,
+) -> tuple[str, bool]:
+    try:
+        return (
+            adapter.update_event(
+                calendar_id=calendar_id,
+                access_token=access_token,
+                event_id=event_id,
+                event_payload=event_payload,
+                timeout_seconds=timeout_seconds,
+            ),
+            False,
+        )
+    except (CalendarProviderAuthError, CalendarProviderNotFoundError):
+        raise
+    except CalendarProviderError:
+        if "reminders" not in event_payload:
+            raise
+        return (
+            adapter.update_event(
+                calendar_id=calendar_id,
+                access_token=access_token,
+                event_id=event_id,
+                event_payload=_without_calendar_reminders(event_payload),
+                timeout_seconds=timeout_seconds,
+            ),
+            True,
+        )
+
+
 def _connection_access_token(
     db: Session,
-    connection: GoogleCalendarConnection,
+    connection: GoogleCalendarUserConnection | GoogleCalendarConnection,
     settings: Settings,
 ) -> str:
     try:
         access_token = decrypt_secret(connection.access_token_encrypted, settings)
         refresh_token = decrypt_secret(connection.refresh_token_encrypted, settings)
     except SecretDecryptionError as exc:
-        connection.is_connected = False
-        connection.disconnected_at = _now()
+        _clear_connection_tokens(connection)
         db.commit()
         raise CalendarProviderAuthError("Conexao do Google Agenda precisa ser refeita.") from exc
 
     if not refresh_token:
+        _clear_connection_tokens(connection)
+        db.commit()
         raise CalendarProviderAuthError("Conexao do Google Agenda precisa ser refeita.")
 
     expires_at = connection.access_token_expires_at
+    if expires_at and not expires_at.tzinfo:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
     needs_refresh = not access_token or not expires_at or expires_at <= (_now() + timedelta(minutes=2))
     if not needs_refresh:
         return access_token
 
     adapter = get_calendar_provider_adapter("google")
-    token_result = adapter.refresh_access_token(_oauth_config(settings), refresh_token)
+    try:
+        token_result = adapter.refresh_access_token(_oauth_config(settings), refresh_token)
+    except CalendarProviderAuthError as exc:
+        _clear_connection_tokens(connection)
+        db.commit()
+        raise CalendarProviderAuthError("Conexao do Google Agenda expirou. Reconecte sua conta.") from exc
+    except CalendarProviderConfigurationError as exc:
+        raise CalendarProviderError("Google Agenda nao esta configurado corretamente neste ambiente.") from exc
     _apply_token_result(connection, token_result, settings)
     db.commit()
     refreshed_token = decrypt_secret(connection.access_token_encrypted, settings)
@@ -643,10 +716,27 @@ def sync_task_to_calendar(
             message=GOOGLE_CALENDAR_DISABLED_MESSAGE,
         )
 
+    if not settings.google_calendar_configured or not _token_encryption_ready(settings):
+        return GoogleCalendarTaskSyncResponse(
+            status="not_configured",
+            synced=False,
+            task_id=task_id,
+            message="Google Agenda ainda nao esta configurado com seguranca no backend.",
+        )
+
     try:
         task = get_task(db, family_id, task_id)
     except ValueError as exc:
         return GoogleCalendarTaskSyncResponse(status="invalid_task", synced=False, task_id=task_id, message=str(exc))
+
+    if task.google_calendar_event_id and task.google_calendar_synced_by_id and task.google_calendar_synced_by_id != user_id:
+        return GoogleCalendarTaskSyncResponse(
+            status="account_mismatch",
+            synced=False,
+            task_id=task.id,
+            event_id=task.google_calendar_event_id,
+            message="Este evento foi sincronizado por outro membro. Edite a tarefa sem sincronizar ou peca ao membro conectado para atualizar o Google Agenda.",
+        )
 
     connection, configured_calendar_id, blocked_status, blocked_message = _sync_connection_and_calendar_id(
         db,
@@ -675,35 +765,33 @@ def sync_task_to_calendar(
         access_token = _connection_access_token(db, connection, settings)
         if task.google_calendar_event_id:
             try:
-                updated_event_id = adapter.update_event(
+                updated_event_id, reminders_removed = _update_calendar_event(
+                    adapter,
                     calendar_id=calendar_id,
                     access_token=access_token,
                     event_id=task.google_calendar_event_id,
                     event_payload=event_payload,
                     timeout_seconds=settings.google_calendar_request_timeout_seconds,
                 )
-                sync_message = "Evento existente atualizado no Google Agenda."
-            except CalendarProviderAuthError:
-                raise
-            except CalendarProviderError:
-                if "reminders" not in event_payload:
-                    raise
-                updated_event_id = adapter.update_event(
-                    calendar_id=calendar_id,
-                    access_token=access_token,
-                    event_id=task.google_calendar_event_id,
-                    event_payload=_without_calendar_reminders(event_payload),
-                    timeout_seconds=settings.google_calendar_request_timeout_seconds,
+                sync_message = (
+                    "Evento existente atualizado no Google Agenda sem lembretes porque o Google recusou os avisos."
+                    if reminders_removed
+                    else "Evento existente atualizado no Google Agenda."
                 )
-                sync_message = "Evento existente atualizado no Google Agenda sem lembretes porque o Google recusou os avisos."
-            _mark_task_synced(db, task, updated_event_id, user_id, calendar_id)
-            return GoogleCalendarTaskSyncResponse(
-                status="updated",
-                synced=True,
-                task_id=task.id,
-                event_id=updated_event_id,
-                message=sync_message,
-            )
+                _mark_task_synced(db, task, updated_event_id, user_id, calendar_id)
+                return GoogleCalendarTaskSyncResponse(
+                    status="updated",
+                    synced=True,
+                    task_id=task.id,
+                    event_id=updated_event_id,
+                    message=sync_message,
+                )
+            except CalendarProviderNotFoundError:
+                task.google_calendar_event_id = None
+                task.google_calendar_id = None
+                task.google_calendar_synced_at = None
+                task.google_calendar_synced_by_id = None
+                db.commit()
 
         existing_event_id = adapter.find_event_by_task_id(
             calendar_id=calendar_id,
@@ -712,13 +800,21 @@ def sync_task_to_calendar(
             timeout_seconds=settings.google_calendar_request_timeout_seconds,
         )
         if existing_event_id:
+            _update_calendar_event(
+                adapter,
+                calendar_id=calendar_id,
+                access_token=access_token,
+                event_id=existing_event_id,
+                event_payload=event_payload,
+                timeout_seconds=settings.google_calendar_request_timeout_seconds,
+            )
             _mark_task_synced(db, task, existing_event_id, user_id, calendar_id)
             return GoogleCalendarTaskSyncResponse(
                 status="already_synced",
                 synced=True,
                 task_id=task.id,
                 event_id=existing_event_id,
-                message="Evento existente encontrado e vinculado a tarefa.",
+                message="Evento existente encontrado, atualizado e vinculado a tarefa.",
             )
         try:
             event_id = adapter.create_event(
@@ -776,8 +872,19 @@ def delete_task_calendar_event(
             message="A tarefa nao possui evento vinculado ao Google Agenda.",
         )
 
+    if task.google_calendar_synced_by_id and task.google_calendar_synced_by_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="O evento do Google Agenda pertence a conexao de outro membro. Exclua apenas do CasaSync ou peca ao membro conectado para remove-lo.",
+        )
+
     if not is_google_calendar_enabled(settings):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=GOOGLE_CALENDAR_DISABLED_MESSAGE)
+    if not settings.google_calendar_configured or not _token_encryption_ready(settings):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Google Agenda ainda nao esta configurado com seguranca no backend.",
+        )
 
     connection_user_id = task.google_calendar_synced_by_id or user_id
     connection = _get_user_connection(db, connection_user_id, preferred_family_id=family_id)
@@ -856,13 +963,7 @@ def disconnect_google_calendar(
             connections_to_clear.append(legacy_connection)
 
     for item in connections_to_clear:
-        item.is_connected = False
-        item.access_token_encrypted = None
-        item.refresh_token_encrypted = None
-        item.access_token_expires_at = None
-        item.token_scope = None
-        item.token_type = None
-        item.disconnected_at = _now()
+        _clear_connection_tokens(item)
     db.commit()
 
     return GoogleCalendarDisconnectResponse(

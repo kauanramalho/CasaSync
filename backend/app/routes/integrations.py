@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -8,6 +8,7 @@ from app.database.session import get_db
 from app.models.user import User
 from app.schemas.integration import (
     GoogleCalendarConnectUrl,
+    GoogleCalendarCallbackResponse,
     GoogleCalendarDisconnectResponse,
     GoogleCalendarFamilyCalendarResponse,
     GoogleCalendarFamilySettingsRead,
@@ -87,7 +88,13 @@ def google_calendar_callback(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    result = handle_google_callback(db, code=code, state=state, error=error, settings=settings)
+    try:
+        result = handle_google_callback(db, code=code, state=state, error=error, settings=settings)
+    except HTTPException:
+        result = GoogleCalendarCallbackResponse(
+            status="error",
+            message="Nao foi possivel concluir a conexao com o Google Agenda. Inicie a conexao novamente.",
+        )
     return RedirectResponse(build_google_callback_redirect(settings, result), status_code=302)
 
 

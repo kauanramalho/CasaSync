@@ -87,6 +87,15 @@ class TaskDeletionTest(unittest.TestCase):
         self.db.commit()
         return connection
 
+    def google_settings(self):
+        return Settings(
+            google_calendar_enabled=True,
+            google_client_id="test-client-id",
+            google_client_secret="test-client-secret",
+            google_redirect_uri="https://example.test/google-callback",
+            integration_token_encryption_key="test-only-encryption-key",
+        )
+
     def test_delete_task_removes_from_normal_listings(self):
         task = self.create_task()
         self.assertEqual([item.id for item in list_tasks(self.db, self.family.id)], [task.id])
@@ -100,7 +109,7 @@ class TaskDeletionTest(unittest.TestCase):
         task = self.create_task(google_calendar_event_id="event-1", google_calendar_id="calendar-task", google_calendar_synced_by_id=self.user.id)
         self.create_google_connection()
         adapter = FakeCalendarAdapter(deleted=True)
-        settings = Settings(google_calendar_enabled=True)
+        settings = self.google_settings()
 
         with (
             patch("app.services.calendar_service.get_calendar_provider_adapter", return_value=adapter),
@@ -124,7 +133,7 @@ class TaskDeletionTest(unittest.TestCase):
         task = self.create_task(google_calendar_event_id="event-missing", google_calendar_synced_by_id=self.user.id)
         self.create_google_connection()
         adapter = FakeCalendarAdapter(deleted=False)
-        settings = Settings(google_calendar_enabled=True)
+        settings = self.google_settings()
 
         with (
             patch("app.services.calendar_service.get_calendar_provider_adapter", return_value=adapter),
@@ -147,7 +156,7 @@ class TaskDeletionTest(unittest.TestCase):
         task = self.create_task(google_calendar_event_id="event-locked", google_calendar_synced_by_id=self.user.id)
         self.create_google_connection()
         adapter = FakeCalendarAdapter(error=CalendarProviderAuthError("token invalido"))
-        settings = Settings(google_calendar_enabled=True)
+        settings = self.google_settings()
 
         with (
             patch("app.services.calendar_service.get_calendar_provider_adapter", return_value=adapter),
@@ -174,7 +183,7 @@ class TaskDeletionTest(unittest.TestCase):
                 current_user=self.user,
                 family_id=self.family.id,
                 db=self.db,
-                settings=Settings(google_calendar_enabled=True),
+                settings=self.google_settings(),
             )
 
         delete_event.assert_not_called()
@@ -193,7 +202,7 @@ class TaskDeletionTest(unittest.TestCase):
                     current_user=self.user,
                     family_id=self.family.id,
                     db=self.db,
-                    settings=Settings(google_calendar_enabled=True),
+                    settings=self.google_settings(),
                 )
 
         self.assertIsNotNone(self.db.get(Task, task.id))

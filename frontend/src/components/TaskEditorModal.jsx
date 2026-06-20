@@ -51,8 +51,10 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
   useEffect(() => {
     if (!calendarStatus?.can_sync || !hasGoogleCalendarDateTime(form.due_date)) {
       setSyncGoogleCalendar(false);
+    } else if (task?.google_calendar_event_id) {
+      setSyncGoogleCalendar(true);
     }
-  }, [calendarStatus?.can_sync, form.due_date]);
+  }, [calendarStatus?.can_sync, form.due_date, task?.google_calendar_event_id]);
 
   useEffect(() => {
     if (!task) return undefined;

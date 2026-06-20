@@ -12,6 +12,19 @@ Esta integracao permite que cada usuario conecte a propria conta Google e envie 
 - Nenhum evento e criado sem clique explicito do usuario.
 - Uma tarefa ja vinculada por `google_calendar_event_id` nao cria evento duplicado.
 - Antes de criar, o service tambem procura evento com `extendedProperties.private.casasyncTaskId`.
+- Se o evento vinculado tiver sido apagado diretamente no Google, a proxima sincronizacao limpa o vinculo invalido, procura outro evento da mesma tarefa e so entao recria se necessario.
+- Um refresh token invalido ou revogado encerra a conexao local e orienta o usuario a reconectar, evitando status conectado falso.
+- O callback sempre redireciona de volta para `/configuracoes` com uma mensagem segura, inclusive quando o `state` esta invalido ou expirado.
+
+## Escopo funcional atual
+
+- O CasaSync nao importa nem lista eventos gerais da conta Google no calendario interno.
+- A integracao procura apenas eventos criados a partir de tarefas CasaSync, usando `extendedProperties.private.casasyncTaskId`.
+- O scope `calendar.events` permite gerenciar eventos. O scope `calendar` permanece necessario porque o modo `family_calendar` cria uma agenda separada para a familia.
+- Editar uma tarefa ja vinculada deixa marcada por padrao a atualizacao do mesmo evento. O usuario ainda pode desmarcar essa opcao antes de salvar.
+- Um evento vinculado por outro membro nao e atualizado nem excluido usando a conexao Google desse membro. A UI orienta salvar sem sincronizar ou pedir ao proprietario da conexao para realizar a operacao, evitando copias entre contas.
+- Concluir ou reabrir uma tarefa nao altera o evento externo porque o payload atual nao representa status. A tarefa e o evento continuam vinculados para futuras edicoes.
+- A exclusao do evento Google e opcional no fluxo de exclusao da tarefa; desconectar a conta nunca apaga tarefas internas.
 
 ## Variaveis
 
@@ -63,6 +76,8 @@ Todos exigem usuario autenticado, exceto o callback do Google, que valida `state
 7. Confirme no modal do navegador.
 8. Confira que a tarefa recebe `google_calendar_event_id` e que uma nova tentativa retorna que ela ja esta vinculada.
 9. Clique em Desconectar e confirme que os tokens locais sao removidos.
+
+Em producao, `FRONTEND_URL` deve apontar para a origem publica do frontend e `GOOGLE_REDIRECT_URI` deve ser exatamente o callback HTTPS cadastrado no Google Cloud. O backend nao tenta montar essas URLs a partir da requisicao recebida.
 
 ## Fallback seguro
 

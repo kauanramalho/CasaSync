@@ -69,6 +69,7 @@ export default function Settings() {
   const [calendarStatus, setCalendarStatus] = useState(null);
   const [calendarMessage, setCalendarMessage] = useState("");
   const [calendarBusy, setCalendarBusy] = useState(false);
+  const [calendarStatusLoading, setCalendarStatusLoading] = useState(true);
   const [calendarMode, setCalendarMode] = useState("primary");
   const [notificationSettings, setNotificationSettings] = useState(null);
   const [notificationBusy, setNotificationBusy] = useState("");
@@ -114,6 +115,7 @@ export default function Settings() {
         setError(message);
         showToast({ type: "error", message });
       }
+      setCalendarStatusLoading(false);
     }
 
     loadSettings();
@@ -142,10 +144,15 @@ export default function Settings() {
   const canAdminFamily = isAdminRole(currentMember?.role);
 
   async function refreshCalendarStatus() {
-    const nextStatus = await integrationsApi.googleCalendarStatus();
-    setCalendarStatus(nextStatus);
-    setCalendarMode(nextStatus?.mode || "primary");
-    return nextStatus;
+    setCalendarStatusLoading(true);
+    try {
+      const nextStatus = await integrationsApi.googleCalendarStatus();
+      setCalendarStatus(nextStatus);
+      setCalendarMode(nextStatus?.mode || "primary");
+      return nextStatus;
+    } finally {
+      setCalendarStatusLoading(false);
+    }
   }
 
   async function refreshNotificationSettings() {
@@ -477,11 +484,13 @@ export default function Settings() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-semibold text-muted">Conta Google</span>
                 <span className={`rounded-full px-3 py-1 text-xs font-bold ${calendarStatus?.is_connected ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-muted"}`}>
-                  {calendarStatus?.is_connected ? "Conectada" : "Desconectada"}
+                  {calendarStatusLoading ? "Verificando..." : calendarStatus?.is_connected ? "Conectada" : "Desconectada"}
                 </span>
               </div>
             </div>
-            <p className="mt-4 text-sm text-muted">{calendarStatus?.message || "Verificando conexao..."}</p>
+            <p className="mt-4 text-sm text-muted">
+              {calendarStatusLoading ? "Verificando conexao..." : calendarStatus?.message || "Nao foi possivel consultar a conexao agora."}
+            </p>
             {calendarStatus?.is_connected && (
               <p className="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
                 Sua conta esta conectada. O envio de tarefas continua exigindo confirmacao manual.
@@ -525,9 +534,9 @@ export default function Settings() {
             {calendarMessage && <p className="mt-4 rounded-2xl bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-600">{calendarMessage}</p>}
             <div className="mt-6 flex flex-wrap gap-3">
               {!calendarStatus?.is_connected && (
-                <Button onClick={connectCalendar} disabled={calendarBusy || !calendarStatus?.is_enabled || !calendarStatus?.can_connect}>
+                <Button onClick={connectCalendar} disabled={calendarBusy || calendarStatusLoading || !calendarStatus?.is_enabled || !calendarStatus?.can_connect}>
                   <CalendarDays className="h-4 w-4" />
-                  {calendarBusy ? "Abrindo Google..." : calendarStatus?.is_enabled ? "Conectar Google Agenda" : "Google Agenda desativado"}
+                  {calendarBusy ? "Abrindo Google..." : calendarStatusLoading ? "Verificando..." : calendarStatus?.is_enabled ? "Conectar Google Agenda" : "Google Agenda desativado"}
                 </Button>
               )}
               {calendarStatus?.is_connected && (

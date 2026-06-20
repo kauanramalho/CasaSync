@@ -16,25 +16,34 @@ from app.models import (
     User,
 )
 from app.services.calendar_service import (
+    delete_task_calendar_event,
     get_google_calendar_status,
     sync_task_to_calendar,
 )
+from fastapi import HTTPException
+from app.services.calendar_provider_adapter import CalendarProviderNotFoundError
 
 
 class FakeCalendarAdapter:
-    def __init__(self):
+    def __init__(self, *, found_event_id=None, update_error=None):
         self.created_events = []
         self.updated_events = []
         self.created_calendars = []
+        self.found_event_id = found_event_id
+        self.update_error = update_error
 
     def find_event_by_task_id(self, *, calendar_id, access_token, task_id, timeout_seconds):
-        return None
+        return self.found_event_id
 
     def create_event(self, *, calendar_id, access_token, event_payload, timeout_seconds):
         self.created_events.append({"calendar_id": calendar_id, "payload": event_payload})
         return f"event-{len(self.created_events)}"
 
     def update_event(self, *, calendar_id, access_token, event_id, event_payload, timeout_seconds):
+        if self.update_error:
+            error = self.update_error
+            self.update_error = None
+            raise error
         self.updated_events.append({"calendar_id": calendar_id, "event_id": event_id, "payload": event_payload})
         return event_id
 
@@ -57,14 +66,23 @@ class GoogleCalendarMultiFamilyTest(unittest.TestCase):
             hashed_password="hash",
             is_active=True,
         )
+        self.other_user = User(
+            id="user-2",
+            name="Bia",
+            username="bia",
+            email="bia@example.com",
+            hashed_password="hash",
+            is_active=True,
+        )
         self.family_a = Family(id="family-a", name="Kauan e Bia", invite_code="AAA111")
         self.family_b = Family(id="family-b", name="Familia Ramalho", invite_code="BBB222")
-        self.db.add_all([self.user, self.family_a, self.family_b])
+        self.db.add_all([self.user, self.other_user, self.family_a, self.family_b])
         self.db.flush()
         self.db.add_all(
             [
                 FamilyMember(id="member-a", family_id=self.family_a.id, user_id=self.user.id, role="admin"),
                 FamilyMember(id="member-b", family_id=self.family_b.id, user_id=self.user.id, role="admin"),
+                FamilyMember(id="member-a-bia", family_id=self.family_a.id, user_id=self.other_user.id, role="member"),
                 GoogleCalendarUserConnection(
                     id="google-user-connection",
                     user_id=self.user.id,
@@ -109,7 +127,13 @@ class GoogleCalendarMultiFamilyTest(unittest.TestCase):
                 family_id=family.id,
                 user_id=self.user.id,
                 task_id=task.id,
-                settings=Settings(google_calendar_enabled=True),
+                settings=Settings(
+                    google_calendar_enabled=True,
+                    google_client_id="test-client-id",
+                    google_client_secret="test-client-secret",
+                    google_redirect_uri="https://example.test/google-callback",
+                    integration_token_encryption_key="test-only-encryption-key",
+                ),
             )
 
     def test_primary_mode_uses_same_google_account_with_family_metadata(self):
@@ -238,6 +262,77 @@ class GoogleCalendarMultiFamilyTest(unittest.TestCase):
         self.assertTrue(result.synced)
         self.assertEqual(adapter.updated_events[0]["calendar_id"], "primary")
         self.assertEqual(self.db.get(Task, task.id).google_calendar_id, "primary")
+
+    def test_stale_event_id_is_recovered_without_leaving_task_broken(self):
+        task = self.create_task(
+            self.family_a,
+            id="task-stale-event",
+            google_calendar_event_id="deleted-google-event",
+            google_calendar_id="primary",
+            google_calendar_synced_by_id=self.user.id,
+        )
+        adapter = FakeCalendarAdapter(update_error=CalendarProviderNotFoundError("missing"))
+
+        result = self.sync_with_fake_adapter(task, self.family_a, adapter)
+
+        self.assertTrue(result.synced)
+        self.assertEqual(result.status, "synced")
+        self.assertEqual(len(adapter.created_events), 1)
+        self.assertEqual(self.db.get(Task, task.id).google_calendar_event_id, "event-1")
+
+    def test_orphan_provider_event_is_updated_and_linked_instead_of_duplicated(self):
+        task = self.create_task(self.family_a, id="task-orphan-provider-event")
+        adapter = FakeCalendarAdapter(found_event_id="provider-event-existing")
+
+        result = self.sync_with_fake_adapter(task, self.family_a, adapter)
+
+        self.assertEqual(result.status, "already_synced")
+        self.assertEqual(adapter.created_events, [])
+        self.assertEqual(adapter.updated_events[0]["event_id"], "provider-event-existing")
+        self.assertEqual(self.db.get(Task, task.id).google_calendar_event_id, "provider-event-existing")
+
+    def test_event_owned_by_another_member_is_not_copied_to_current_users_calendar(self):
+        task = self.create_task(
+            self.family_a,
+            id="task-other-google-account",
+            google_calendar_event_id="bia-google-event",
+            google_calendar_id="primary",
+            google_calendar_synced_by_id=self.other_user.id,
+        )
+        adapter = FakeCalendarAdapter()
+
+        result = self.sync_with_fake_adapter(task, self.family_a, adapter)
+
+        self.assertEqual(result.status, "account_mismatch")
+        self.assertFalse(result.synced)
+        self.assertEqual(adapter.created_events, [])
+        self.assertEqual(adapter.updated_events, [])
+
+    def test_event_owned_by_another_member_cannot_use_their_connection_for_delete(self):
+        task = self.create_task(
+            self.family_a,
+            id="task-other-google-delete",
+            google_calendar_event_id="bia-google-event",
+            google_calendar_id="primary",
+            google_calendar_synced_by_id=self.other_user.id,
+        )
+
+        with self.assertRaises(HTTPException) as error:
+            delete_task_calendar_event(
+                self.db,
+                family_id=self.family_a.id,
+                user_id=self.user.id,
+                task_id=task.id,
+                settings=Settings(
+                    google_calendar_enabled=True,
+                    google_client_id="test-client-id",
+                    google_client_secret="test-client-secret",
+                    google_redirect_uri="https://example.test/google-callback",
+                    integration_token_encryption_key="test-only-encryption-key",
+                ),
+            )
+
+        self.assertEqual(error.exception.status_code, 409)
 
     def test_status_is_family_scoped(self):
         self.db.add(

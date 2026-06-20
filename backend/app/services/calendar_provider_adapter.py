@@ -31,6 +31,10 @@ class CalendarProviderAuthError(CalendarProviderError):
     pass
 
 
+class CalendarProviderNotFoundError(CalendarProviderError):
+    pass
+
+
 @dataclass(frozen=True)
 class GoogleCalendarOAuthConfig:
     client_id: str | None
@@ -94,12 +98,19 @@ def _expires_at(expires_in) -> datetime | None:
     return datetime.now(timezone.utc) + timedelta(seconds=max(60, seconds - 60))
 
 
-def _json_request(request: Request, timeout_seconds: float) -> dict:
+def _json_request(
+    request: Request,
+    timeout_seconds: float,
+    *,
+    auth_error_codes: frozenset[int] = frozenset({401, 403}),
+) -> dict:
     try:
         with urlopen(request, timeout=_timeout(timeout_seconds)) as response:
             return json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
-        if exc.code in {401, 403}:
+        if exc.code == 404:
+            raise CalendarProviderNotFoundError("Evento do Google Agenda nao foi encontrado.") from exc
+        if exc.code in auth_error_codes:
             raise CalendarProviderAuthError("Autorizacao do Google Agenda expirou ou foi revogada.") from exc
         raise CalendarProviderError("Google Agenda recusou a operacao. Tente novamente mais tarde.") from exc
     except (URLError, TimeoutError, socket.timeout) as exc:
@@ -127,7 +138,7 @@ def _token_request(config: GoogleCalendarOAuthConfig, payload: dict) -> Calendar
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         method="POST",
     )
-    response = _json_request(request, config.timeout_seconds)
+    response = _json_request(request, config.timeout_seconds, auth_error_codes=frozenset({400, 401, 403}))
     access_token = response.get("access_token")
     if not access_token:
         raise CalendarProviderAuthError("O Google nao retornou um token de acesso valido.")

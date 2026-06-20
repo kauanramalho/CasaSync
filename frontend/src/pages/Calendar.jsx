@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import clsx from "clsx";
-import { CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, Edit3, Plus, Send, X } from "lucide-react";
+import { CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, Edit3, Filter, Plus, RotateCcw, Send, X } from "lucide-react";
 
 import AssigneeStack from "../components/AssigneeStack";
 import { CategoryBadge, CategoryGlyph, PriorityBadge, StatusBadge } from "../components/Badges";
 import Button from "../components/Button";
 import Card from "../components/Card";
 import PageHeader from "../components/PageHeader";
+import SelectMenu from "../components/SelectMenu";
 import TaskDetailsModal from "../components/TaskDetailsModal";
 import TaskEditorModal from "../components/TaskEditorModal";
 import { useAppPreferences } from "../hooks/useAppPreferences";
@@ -16,12 +17,21 @@ import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
 import { useToast } from "../hooks/useToast";
 import { categoriesApi, familiesApi, integrationsApi, tasksApi } from "../services/api";
+import {
+  calendarMonthTasks,
+  calendarTimeLabel,
+  filterCalendarTasks,
+  groupCalendarTasksByDay,
+  localCalendarDateKey,
+  UNASSIGNED_FILTER,
+  UNCATEGORIZED_FILTER
+} from "../utils/calendar";
 import { APP_RESUMED_EVENT, emitAppDataChanged } from "../utils/events";
 import { formatDate, normalizeApiError } from "../utils/formatters";
 import { syncTaskToGoogleCalendarSafely } from "../utils/googleCalendarTasks";
 import { buildMonthDays, getStoredPreferences, getWeekdayLabels, startOfWeek as getPreferenceStartOfWeek } from "../utils/preferences";
 import { applyTaskAttachmentChanges, hasTaskAttachmentChanges } from "../utils/taskAttachments";
-import { getCategoryHex, getTaskPointLabel, sortTasksForDisplay } from "../utils/tasks";
+import { getAssigneeNames, getCategoryHex, getTaskPointLabel, sortTasksForDisplay } from "../utils/tasks";
 
 const weekdays = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const viewModes = [
@@ -45,38 +55,27 @@ function weekDays(baseDate, weekStart) {
 }
 
 function dateKey(value) {
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function taskDateKey(task) {
-  return task?.due_date ? dateKey(task.due_date) : "";
+  return localCalendarDateKey(value);
 }
 
 function timeLabel(value) {
-  if (!value) return "Sem horário";
-  return new Intl.DateTimeFormat("pt-BR", {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: getStoredPreferences().timezone
-  }).format(new Date(value));
+  return calendarTimeLabel(value, getStoredPreferences().timezone);
 }
 
 function fullDateLabel(date) {
-  const timezone = getStoredPreferences().timezone;
-  const datePart = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long", timeZone: timezone }).format(date);
-  const weekday = new Intl.DateTimeFormat("pt-BR", { weekday: "long", timeZone: timezone }).format(date);
+  const datePart = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long" }).format(date);
+  const weekday = new Intl.DateTimeFormat("pt-BR", { weekday: "long" }).format(date);
   return `${datePart}, ${weekday}`;
+}
+
+function shortDateLabel(date) {
+  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(date);
 }
 
 function periodLabel(baseDate, viewMode, weekStart) {
   if (viewMode === "week") {
     const days = weekDays(baseDate, weekStart);
-    return `${formatDate(days[0])} a ${formatDate(days[6])}`;
+    return `${shortDateLabel(days[0])} a ${shortDateLabel(days[6])}`;
   }
   return new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(baseDate);
 }
@@ -91,6 +90,10 @@ function clamp(value, min, max) {
 
 function CalendarTaskPill({ task, onPreview, onPreviewLeave, onOpen, compact = false }) {
   const color = getCategoryHex(task.category, "#7aa5ff");
+  const completed = task.status === "concluida";
+  const overdue = task.status === "atrasada";
+  const dueTime = timeLabel(task.due_date);
+  const assignees = getAssigneeNames(task);
 
   return (
     <button
@@ -104,15 +107,25 @@ function CalendarTaskPill({ task, onPreview, onPreviewLeave, onOpen, compact = f
         event.stopPropagation();
         onOpen?.(task, event);
       }}
-      className={`flex w-full min-w-0 items-center gap-1.5 rounded-xl border px-2 py-1 text-left text-xs font-bold transition hover:-translate-y-0.5 hover:shadow-card focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-rose-100 ${
-        compact ? "min-h-9 md:min-h-[28px]" : "min-h-10 md:min-h-[32px]"
-      }`}
+      className={clsx(
+        "block w-full min-w-0 rounded-xl border px-2 py-1.5 text-left text-xs font-bold transition hover:-translate-y-0.5 hover:shadow-card focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-rose-100",
+        compact ? "min-h-9" : "min-h-11",
+        completed && "opacity-70",
+        overdue && "ring-1 ring-rose-300/70"
+      )}
       style={{ backgroundColor: `${color}14`, borderColor: `${color}2e`, color }}
-      aria-label={`Ver detalhes de ${task.title}`}
+      aria-label={`Ver detalhes de ${task.title}, ${dueTime}, status ${task.status}`}
     >
-      <span className={`h-2 w-2 shrink-0 rounded-full ${priorityDot[task.priority] || priorityDot.media}`} />
-      {!compact && <CategoryGlyph category={task.category} className="h-5 w-5 bg-white/80" iconClassName="h-3 w-3" />}
-      <span className="truncate">{task.title}</span>
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${priorityDot[task.priority] || priorityDot.media}`} />
+        {!compact && <CategoryGlyph category={task.category} className="h-5 w-5 bg-white/80" iconClassName="h-3 w-3" />}
+        <span className={clsx("min-w-0 flex-1 truncate", completed && "line-through")}>{task.title}</span>
+        {(completed || overdue) && <span className="shrink-0" title={completed ? "Concluída" : "Atrasada"}>{completed ? "✓" : "!"}</span>}
+      </span>
+      <span className="mt-0.5 flex min-w-0 items-center gap-1 text-[10px] font-semibold opacity-80">
+        <span className="shrink-0">{dueTime}</span>
+        {!compact && assignees && <><span aria-hidden="true">·</span><span className="truncate">{assignees}</span></>}
+      </span>
     </button>
   );
 }
@@ -185,7 +198,7 @@ function DayPanel({ date, tasks, onClose, onComplete, onCompleteAll, onEdit, onO
                 {orderedTasks.length} {orderedTasks.length === 1 ? "tarefa" : "tarefas"}
               </p>
             </div>
-            <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-2xl bg-slate-50 text-muted hover:text-ink">
+            <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-2xl bg-slate-50 text-muted hover:text-ink" aria-label="Fechar tarefas do dia">
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -268,11 +281,15 @@ export default function Calendar() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [calendarStatus, setCalendarStatus] = useState(null);
   const [syncingTaskId, setSyncingTaskId] = useState("");
+  const [memberFilter, setMemberFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [editError, setEditError] = useState("");
   const previewTimer = useRef(null);
 
   const load = useCallback(async function load() {
+    setLoading(true);
     setError("");
     try {
       const [taskResult, categoryResult, memberResult, calendarResult] = await Promise.allSettled([
@@ -297,6 +314,8 @@ export default function Calendar() {
       const message = normalizeApiError(err);
       setError(message);
       showToast({ type: "error", message });
+    } finally {
+      setLoading(false);
     }
   }, [showToast]);
 
@@ -312,38 +331,52 @@ export default function Calendar() {
   const weekdayLabels = useMemo(() => getWeekdayLabels(preferences.weekStart) || weekdays, [preferences.weekStart]);
   const days = useMemo(() => buildMonthDays(baseDate, preferences.weekStart), [baseDate, preferences.weekStart]);
   const week = useMemo(() => weekDays(baseDate, preferences.weekStart), [baseDate, preferences.weekStart]);
-  const tasksByDay = useMemo(() => {
-    const buckets = tasks.reduce((acc, task) => {
-      const key = taskDateKey(task);
-      if (!key) return acc;
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(task);
-      return acc;
-    }, {});
-    Object.keys(buckets).forEach((key) => {
-      buckets[key] = sortCalendarTasks(buckets[key]);
-    });
-    return buckets;
-  }, [tasks]);
+  const filteredTasks = useMemo(
+    () => filterCalendarTasks(tasks, { memberId: memberFilter, categoryId: categoryFilter }),
+    [categoryFilter, memberFilter, tasks]
+  );
+  const tasksByDay = useMemo(
+    () => groupCalendarTasksByDay(filteredTasks, preferences.timezone),
+    [filteredTasks, preferences.timezone]
+  );
+  const memberOptions = useMemo(() => [
+    { value: "", label: "Todos os membros" },
+    ...members.map((member) => ({
+      value: member.user_id || member.user?.id || member.id,
+      label: member.user?.name || member.name || "Membro da família"
+    })),
+    { value: UNASSIGNED_FILTER, label: "Sem responsável" }
+  ], [members]);
+  const categoryOptions = useMemo(() => [
+    { value: "", label: "Todas as categorias" },
+    ...categories.map((category) => ({ value: category.id, label: category.name, category })),
+    { value: UNCATEGORIZED_FILTER, label: "Sem categoria" }
+  ], [categories]);
+  const hasActiveFilters = Boolean(memberFilter || categoryFilter);
+  const datedTaskCount = useMemo(() => filteredTasks.filter((task) => task.due_date).length, [filteredTasks]);
+
+  useEffect(() => {
+    if (!loading && memberFilter && memberFilter !== UNASSIGNED_FILTER && !memberOptions.some((option) => option.value === memberFilter)) {
+      setMemberFilter("");
+    }
+    if (!loading && categoryFilter && categoryFilter !== UNCATEGORIZED_FILTER && !categoryOptions.some((option) => option.value === categoryFilter)) {
+      setCategoryFilter("");
+    }
+  }, [categoryFilter, categoryOptions, loading, memberFilter, memberOptions]);
 
   const upcoming = useMemo(
     () =>
-      tasks
+      filteredTasks
         .filter((task) => task.due_date && task.status !== "concluida")
         .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))
         .slice(0, 6),
-    [tasks]
+    [filteredTasks]
   );
 
-  const periodTasks = useMemo(() => {
-    const month = baseDate.getMonth();
-    const year = baseDate.getFullYear();
-    return sortCalendarTasks(tasks.filter((task) => {
-      if (!task.due_date) return false;
-      const date = new Date(task.due_date);
-      return date.getMonth() === month && date.getFullYear() === year;
-    }));
-  }, [baseDate, tasks]);
+  const periodTasks = useMemo(
+    () => calendarMonthTasks(filteredTasks, baseDate, preferences.timezone),
+    [baseDate, filteredTasks, preferences.timezone]
+  );
 
   const listGroups = useMemo(() => {
     return periodTasks.reduce((acc, task) => {
@@ -354,6 +387,12 @@ export default function Calendar() {
   }, [periodTasks]);
 
   const selectedTasks = selectedDate ? tasksByDay[dateKey(selectedDate)] || [] : [];
+
+  const emptyMessage = useCallback(function emptyMessage(defaultMessage) {
+    if (hasActiveFilters) return "Nenhuma tarefa encontrada para esses filtros.";
+    if (!tasks.some((task) => task.due_date)) return "Crie uma tarefa com data para ela aparecer no calendário.";
+    return defaultMessage;
+  }, [hasActiveFilters, tasks]);
 
   const movePeriod = useCallback(function movePeriod(amount) {
     setBaseDate((current) => {
@@ -557,7 +596,7 @@ export default function Calendar() {
 
     return (
       <>
-      {renderMobileAgendaDays(monthDays, "Nenhuma tarefa com prazo neste mes.")}
+      {renderMobileAgendaDays(monthDays, emptyMessage("Nenhuma tarefa com data neste mês."))}
       <Card className="hidden p-0 md:block">
         <div className="overflow-x-auto">
           <div className="min-w-[760px]">
@@ -625,7 +664,7 @@ export default function Calendar() {
   function renderWeekView() {
     return (
       <>
-      {renderMobileAgendaDays(week, "Nenhuma tarefa nesta semana.", { showEmptyDays: true })}
+      {renderMobileAgendaDays(week, emptyMessage("Nenhuma tarefa nesta semana."), { showEmptyDays: !hasActiveFilters })}
       <Card className="hidden p-0 md:block">
         <div className="overflow-x-auto">
           <div className="grid min-w-[860px] grid-cols-7 divide-x divide-slate-100">
@@ -704,7 +743,7 @@ export default function Calendar() {
                 </div>
               </div>
             ))}
-            {!keys.length && <div className="empty-state">Nenhuma tarefa com prazo neste período.</div>}
+            {!keys.length && <div className="empty-state">{emptyMessage("Nenhuma tarefa com data neste período.")}</div>}
           </div>
         </div>
       </Card>
@@ -713,16 +752,25 @@ export default function Calendar() {
 
   return (
     <>
-      <PageHeader title="Calendário" user={user} />
-      {error && <p className="mb-5 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</p>}
+      <PageHeader
+        title="Calendário"
+        user={user}
+        action={<Button as={Link} to="/tarefas/nova" className="px-3 sm:px-4"><Plus className="h-4 w-4" /><span className="hidden sm:inline">Nova tarefa</span><span className="sm:hidden">Criar</span></Button>}
+      />
+      {error && (
+        <div className="mb-5 flex flex-col gap-3 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 sm:flex-row sm:items-center sm:justify-between" role="alert">
+          <span>{error}</span>
+          <button type="button" onClick={load} className="inline-flex items-center gap-2 font-bold"><RotateCcw className="h-4 w-4" />Tentar novamente</button>
+        </div>
+      )}
 
       <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div className="grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-3 sm:flex sm:flex-wrap">
-          <button onClick={() => movePeriod(-1)} className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-muted shadow-card">
+          <button type="button" onClick={() => movePeriod(-1)} className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-muted shadow-card" aria-label="Período anterior">
             <ChevronLeft className="h-5 w-5" />
           </button>
           <h2 className="min-w-0 flex-1 text-xl font-bold capitalize text-ink sm:min-w-52 sm:flex-none">{periodLabel(baseDate, viewMode, preferences.weekStart)}</h2>
-          <button onClick={() => movePeriod(1)} className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-muted shadow-card">
+          <button type="button" onClick={() => movePeriod(1)} className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-muted shadow-card" aria-label="Próximo período">
             <ChevronRight className="h-5 w-5" />
           </button>
           <Button variant="secondary" className="col-span-3 w-full sm:col-span-1 sm:w-auto" onClick={() => setBaseDate(new Date())}>
@@ -735,6 +783,7 @@ export default function Calendar() {
               key={item.key}
               type="button"
               onClick={() => setViewMode(item.key)}
+              aria-pressed={viewMode === item.key}
               className={`min-h-10 flex-1 rounded-xl px-3 py-2 text-sm font-semibold transition sm:flex-none sm:px-5 ${viewMode === item.key ? "bg-rose-50 text-blush shadow-sm" : "text-muted hover:text-ink"}`}
             >
               {item.label}
@@ -743,7 +792,42 @@ export default function Calendar() {
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
+      <Card className="mb-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-blush/10 text-blush">
+              <Filter className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="font-bold text-ink">Filtrar calendário</h2>
+              <p className="mt-1 text-sm text-muted">{datedTaskCount} {datedTaskCount === 1 ? "tarefa com data" : "tarefas com data"} em exibição</p>
+            </div>
+          </div>
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:w-[min(100%,620px)]">
+            <div className="min-w-0">
+              <label className="mb-1.5 block text-xs font-bold text-muted">Membro</label>
+              <SelectMenu value={memberFilter} options={memberOptions} onChange={setMemberFilter} placeholder="Todos os membros" />
+            </div>
+            <div className="min-w-0">
+              <label className="mb-1.5 block text-xs font-bold text-muted">Categoria</label>
+              <SelectMenu value={categoryFilter} options={categoryOptions} onChange={setCategoryFilter} placeholder="Todas as categorias" />
+            </div>
+          </div>
+          {hasActiveFilters && (
+            <Button type="button" variant="secondary" className="shrink-0" onClick={() => { setMemberFilter(""); setCategoryFilter(""); }}>
+              <RotateCcw className="h-4 w-4" />
+              Limpar filtros
+            </Button>
+          )}
+        </div>
+      </Card>
+
+      {loading && !tasks.length ? (
+        <div className="grid animate-pulse gap-6 xl:grid-cols-[1fr_340px]" aria-label="Carregando calendário" aria-busy="true">
+          <div className="glass-panel h-[520px] rounded-[28px]" />
+          <div className="glass-panel h-[420px] rounded-[28px]" />
+        </div>
+      ) : <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
         <div className="min-w-0">
           {viewMode === "month" && renderMonthView()}
           {viewMode === "week" && renderWeekView()}
@@ -792,10 +876,10 @@ export default function Calendar() {
                 )}
               </div>
             ))}
-            {!upcoming.length && <p className="rounded-2xl bg-white/75 px-4 py-6 text-center text-sm text-muted">Nenhum compromisso pendente.</p>}
+            {!upcoming.length && <p className="empty-state">{emptyMessage("Nenhum compromisso pendente.")}</p>}
           </div>
         </Card>
-      </div>
+      </div>}
 
       <TaskPreview preview={preview} onMouseEnter={() => window.clearTimeout(previewTimer.current)} onMouseLeave={schedulePreviewClose} />
 
