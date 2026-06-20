@@ -24,8 +24,6 @@ export const taskSortColumns = [
   { key: "status", label: "Status" }
 ];
 
-export const memberChartColors = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"];
-
 export function isTaskCompleted(task) {
   return task?.status === "concluida";
 }
@@ -269,19 +267,4 @@ export function normalizeTaskForForm(task) {
     reminder_at: task?.reminder_at ?? task?.reminderAt ?? null,
     reminder_sent: Boolean(task?.reminder_sent ?? task?.reminderSent)
   };
-}
-
-export function buildProductivityRows(points = []) {
-  return points.map((point) => {
-    const row = { ...point };
-    (point.members || []).forEach((memberPoint) => {
-      const key = memberPoint.user?.id;
-      if (!key) return;
-      row[`member_${key}`] = memberPoint.total;
-      row[`member_${key}_points`] = memberPoint.points;
-      row[`member_${key}_tasks`] = memberPoint.tasks || [];
-      row[`member_${key}_user`] = memberPoint.user;
-    });
-    return row;
-  });
 }

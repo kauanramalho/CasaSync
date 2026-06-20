@@ -20,17 +20,6 @@ def get_task_assignee_ids(task: Task) -> list[str]:
     return unique_user_ids([task.assignee_id or task.creator_id])
 
 
-def get_task_assignees(task: Task):
-    linked_users = [link.user for link in task.assignee_links if link.user]
-    if linked_users:
-        return linked_users
-    if task.assignee:
-        return [task.assignee]
-    if task.creator:
-        return [task.creator]
-    return []
-
-
 def split_points(total_points: int, user_ids: list[str]) -> dict[str, int]:
     assignee_ids = unique_user_ids(user_ids)
     if not assignee_ids:
@@ -61,4 +50,3 @@ def get_task_points_by_user(task: Task) -> dict[str, int]:
 
 def is_task_completed_on(task: Task, day: date) -> bool:
     return bool(task.completed_at and task.completed_at.date() == day)
-

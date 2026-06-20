@@ -1,4 +1,3 @@
-import Avatar from "./Avatar";
 import { CategoryBadge } from "./Badges";
 import { statusLabels } from "../utils/formatters";
 import { getAssigneeNames, getTaskPointLabel } from "../utils/tasks";
@@ -106,40 +105,6 @@ export function CategoryTasksTooltip({ active, payload }) {
       </div>
       <p className="mt-3 text-sm font-semibold text-blush">{category.total} tarefas nesta categoria</p>
       <TaskRows tasks={category.tasks} label="Lista" tone="neutral" showStatus />
-    </TooltipShell>
-  );
-}
-
-export function MemberProductivityTooltip({ active, payload }) {
-  if (!active || !payload?.length) return null;
-  const point = payload[0].payload;
-  const members = (point.members || []).filter((member) => member.total > 0 || member.points > 0);
-
-  return (
-    <TooltipShell>
-      <p className="font-bold text-ink">Data: {point.label}</p>
-      <p className="mt-1 text-sm font-semibold text-blush">Total: {point.total} tarefas</p>
-      <div className="mt-3 space-y-3">
-        {members.length ? (
-          members.slice(0, 3).map((memberPoint) => (
-            <div key={memberPoint.user.id} className="rounded-2xl bg-slate-50/90 p-3">
-              <div className="flex items-center gap-2">
-                <Avatar user={memberPoint.user} size="sm" />
-                <div>
-                  <p className="font-semibold text-ink">{memberPoint.user.name}</p>
-                  <p className="text-xs text-muted">
-                    {memberPoint.total} concluidas - {memberPoint.points} pts
-                  </p>
-                </div>
-              </div>
-              <TaskRows tasks={memberPoint.tasks} tone="done" />
-            </div>
-          ))
-        ) : (
-          <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold text-muted">Nenhum membro pontuou nesta data.</p>
-        )}
-        {members.length > 3 && <p className="rounded-xl bg-slate-50 px-3 py-2 text-xs font-bold text-muted">+{members.length - 3} membro(s) com atividade</p>}
-      </div>
     </TooltipShell>
   );
 }

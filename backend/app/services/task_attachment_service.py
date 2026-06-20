@@ -191,10 +191,6 @@ def safe_content_disposition(filename: str) -> str:
     return f"inline; filename=\"{ascii_name[:180]}\"; filename*=UTF-8''{quote(filename)}"
 
 
-def delete_attachment_file(attachment: TaskAttachment) -> None:
-    _resolve_attachment_path(attachment).unlink(missing_ok=True)
-
-
 def collect_attachment_file_paths(attachments: list[TaskAttachment]) -> list[Path]:
     return [_resolve_attachment_path(attachment) for attachment in attachments]
 
@@ -210,7 +206,3 @@ def delete_task_attachment(db: Session, *, family_id: str, task_id: str, attachm
     db.delete(attachment)
     db.commit()
     path.unlink(missing_ok=True)
-
-
-def delete_attachment_files(attachments: list[TaskAttachment]) -> None:
-    delete_attachment_paths(collect_attachment_file_paths(attachments))

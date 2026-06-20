@@ -602,14 +602,6 @@ def _safe_date(year: int, month: int, day: int):
         return None
 
 
-def _split_name_candidates(value: str) -> list[str]:
-    return [
-        candidate.strip()
-        for candidate in re.split(r"\s+(?:e|and)\s+|[,/&]+", normalize_lookup_text(value))
-        if candidate.strip()
-    ]
-
-
 def _candidate_name_tokens(value: str) -> list[str]:
     tokens = []
     for token in re.findall(r"\b[a-z0-9_.-]{3,40}\b", normalize_lookup_text(value)):

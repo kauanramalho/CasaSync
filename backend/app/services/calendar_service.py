@@ -92,14 +92,6 @@ def _get_connection(db: Session, family_id: str, user_id: str) -> GoogleCalendar
     )
 
 
-def _get_legacy_family_connection(db: Session, family_id: str) -> GoogleCalendarConnection | None:
-    return (
-        db.query(GoogleCalendarConnection)
-        .filter(GoogleCalendarConnection.family_id == family_id, GoogleCalendarConnection.user_id.is_(None))
-        .first()
-    )
-
-
 def _get_user_connection(
     db: Session,
     user_id: str,
@@ -970,11 +962,4 @@ def disconnect_google_calendar(
         status="disconnected",
         disconnected=True,
         message=revoke_warning or "Google Agenda desconectado com seguranca.",
-    )
-
-
-def build_google_connect_url() -> tuple[str | None, str]:
-    return (
-        None,
-        "Use get_google_auth_url com usuario, familia e settings para iniciar OAuth com seguranca.",
     )

@@ -24,31 +24,9 @@ const reminderDurationsMs = {
   days: (value) => value * 24 * 60 * 60 * 1000
 };
 
-export function buildReminderValue(value, unit) {
-  return value && unit ? `${value}:${unit}` : reminderOptions[0].value;
-}
-
-export function parseReminderValue(value) {
-  const [amount, unit] = String(value || "").split(":");
-  const parsedAmount = Number(amount);
-  if (!parsedAmount || !unitLabels[unit]) return reminderOptions[0];
-  const totalMinutes = reminderTotalMinutes(parsedAmount, unit);
-  return canonicalRemindersByMinutes[totalMinutes] || reminderOptions[0];
-}
-
 export function formatReminderLead(value, unit) {
   const totalMinutes = reminderTotalMinutes(value, unit);
   return canonicalRemindersByMinutes[totalMinutes]?.label || "";
-}
-
-export function formatReminderMessageLead(value, unit) {
-  const totalMinutes = reminderTotalMinutes(value, unit);
-  const canonical = canonicalRemindersByMinutes[totalMinutes];
-  if (!canonical) return "";
-  const valueToDisplay = canonical.amount;
-  const unitToDisplay = canonical.unit;
-  const [singular, plural] = unitLabels[unitToDisplay];
-  return `${valueToDisplay} ${valueToDisplay === 1 ? singular : plural}`;
 }
 
 function reminderTotalMinutes(value, unit) {

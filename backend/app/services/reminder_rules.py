@@ -103,16 +103,3 @@ def normalize_reminder_entries(
             break
 
     return normalized, invalid_count, past_count
-
-
-def format_reminder_label_from_minutes(minutes: int) -> str:
-    labels = {
-        15: "15 minutos antes",
-        30: "30 minutos antes",
-        60: "1 hora antes",
-        180: "3 horas antes",
-        720: "12 horas antes",
-        1440: "1 dia antes",
-        4320: "3 dias antes",
-    }
-    return labels.get(int(minutes), "")
