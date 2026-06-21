@@ -21,6 +21,7 @@ class TwoFactorRequiredResponse(BaseModel):
     purpose: Literal["signup", "login"]
     masked_email: str
     expires_at: datetime
+    delivery_mode: Literal["email", "development"] = "email"
 
 
 class TwoFactorVerifyRequest(BaseModel):

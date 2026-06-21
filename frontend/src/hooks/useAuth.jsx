@@ -10,6 +10,7 @@ import {
   setToken
 } from "../services/api";
 import { AUTH_SESSION_CHANGED_EVENT, emitAuthSessionChanged } from "../utils/events";
+import { isTwoFactorRequiredResponse } from "../utils/auth";
 
 const AuthContext = createContext(null);
 
@@ -90,7 +91,7 @@ export function AuthProvider({ children }) {
 
   async function login(payload, options = {}) {
     const response = await authApi.login(payload);
-    if (response.requires_two_factor) {
+    if (isTwoFactorRequiredResponse(response)) {
       beginTwoFactor(response, options);
       return response;
     }
@@ -99,7 +100,7 @@ export function AuthProvider({ children }) {
 
   async function register(payload) {
     const response = await authApi.register(payload);
-    if (response.requires_two_factor) {
+    if (isTwoFactorRequiredResponse(response)) {
       beginTwoFactor(response);
       return response;
     }

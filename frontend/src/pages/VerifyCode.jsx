@@ -30,6 +30,7 @@ export default function VerifyCode() {
   const [remaining, setRemaining] = useState(() => (twoFactor?.expires_at ? secondsUntil(twoFactor.expires_at) : 0));
 
   const destination = twoFactor?.purpose === "signup" ? "/familia" : "/";
+  const showDevelopmentCode = import.meta.env.DEV && twoFactor?.delivery_mode === "development";
   const subtitle = useMemo(() => {
     if (!twoFactor) return "";
     return twoFactor.purpose === "signup"
@@ -90,6 +91,12 @@ export default function VerifyCode() {
         <Mail className="h-5 w-5 shrink-0 text-blush" />
         <span>Codigo enviado para {twoFactor.masked_email}</span>
       </div>
+
+      {showDevelopmentCode && (
+        <p className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+          Ambiente local: use o codigo de desenvolvimento 000000.
+        </p>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <input

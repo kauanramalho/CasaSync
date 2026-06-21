@@ -15,7 +15,8 @@ from app.core.security import create_access_token, create_pending_two_factor_tok
 from app.database.base import Base
 from app.models.two_factor import TwoFactorCode
 from app.models.user import User
-from app.routes.auth import login, register
+from app.routes.auth import login, register, verify_two_factor
+from app.schemas.token import AuthResponse, TwoFactorRequiredResponse, TwoFactorVerifyRequest
 from app.schemas.user import PasswordUpdate, UserCreate, UserLogin, UserRead, UserUpdate
 from app.services import auth_service
 from app.services.auth_service import authenticate_user, delete_user_account, register_user, update_user_profile
@@ -292,6 +293,59 @@ class AuthSecurityTest(unittest.TestCase):
             context = load_pending_two_factor_context(self.db, token, require_active_challenge=True)
             verified = verify_two_factor_code(self.db, context, "000000")
         self.assertEqual(verified.id, self.user.id)
+
+    def test_dev_login_route_returns_2fa_contract_and_fixed_code_authenticates(self):
+        settings = TEST_SETTINGS.model_copy(update={"email_dev_mode": True})
+        payload = UserLogin(identifier=self.user.email, password="CurrentPass123")
+        with (
+            patch("app.routes.auth.check_rate_limit"),
+            patch("app.routes.auth.get_settings", return_value=settings),
+            patch("app.services.two_factor_service.get_settings", return_value=settings),
+            patch("app.services.email_service.get_settings", return_value=settings),
+            patch("app.core.security.get_settings", return_value=settings),
+            patch("app.services.email_service.logger.warning"),
+        ):
+            pending = login(payload, make_request(), self.db)
+            self.assertIsInstance(pending, TwoFactorRequiredResponse)
+            self.assertTrue(pending.requires_two_factor)
+            self.assertTrue(pending.pending_token)
+            self.assertEqual(pending.delivery_mode, "development")
+
+            authenticated = verify_two_factor(
+                TwoFactorVerifyRequest(pending_token=pending.pending_token, code="000000"),
+                make_request(),
+                self.db,
+            )
+
+        self.assertIsInstance(authenticated, AuthResponse)
+        self.assertTrue(authenticated.access_token)
+        self.assertEqual(authenticated.user.id, self.user.id)
+
+    def test_wrong_expired_and_resend_cooldown_keep_clear_2fa_errors(self):
+        settings = TEST_SETTINGS.model_copy(update={"email_dev_mode": True})
+        with (
+            patch("app.services.two_factor_service.get_settings", return_value=settings),
+            patch("app.services.email_service.get_settings", return_value=settings),
+            patch("app.services.email_service.logger.warning"),
+        ):
+            challenge = create_two_factor_challenge(self.db, self.user, "login")
+            token = create_pending_two_factor_token(self.user.id, challenge.id, "login")
+            context = load_pending_two_factor_context(self.db, token, require_active_challenge=True)
+
+            with self.assertRaises(HTTPException) as wrong:
+                verify_two_factor_code(self.db, context, "111111")
+            self.assertEqual(wrong.exception.detail, "Codigo invalido.")
+
+            with self.assertRaises(HTTPException) as cooldown:
+                create_two_factor_challenge(self.db, self.user, "login")
+            self.assertEqual(cooldown.exception.status_code, 429)
+
+            challenge.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+            self.db.add(challenge)
+            self.db.commit()
+            with self.assertRaises(HTTPException) as expired:
+                verify_two_factor_code(self.db, context, "000000")
+            self.assertIn("expirado", expired.exception.detail.lower())
 
 
 class MissingTokenSecurityTest(unittest.IsolatedAsyncioTestCase):

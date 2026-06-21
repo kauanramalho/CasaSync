@@ -4,8 +4,9 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.core.rate_limit import check_rate_limit, client_identifier
+from app.core.config import get_settings
 from app.core.deps import get_current_user
+from app.core.rate_limit import check_rate_limit, client_identifier
 from app.core.security import create_access_token, create_pending_two_factor_token
 from app.database.session import get_db
 from app.models.two_factor import TwoFactorCode
@@ -45,6 +46,7 @@ def _identifier_fingerprint(identifier: str | None) -> str:
 
 def _two_factor_response(user: User, purpose: str, db: Session) -> TwoFactorRequiredResponse:
     challenge = create_two_factor_challenge(db, user, purpose)
+    settings = get_settings()
     return TwoFactorRequiredResponse(
         pending_token=create_pending_two_factor_token(
             user.id,
@@ -55,6 +57,7 @@ def _two_factor_response(user: User, purpose: str, db: Session) -> TwoFactorRequ
         purpose=purpose,
         masked_email=mask_email(user.email),
         expires_at=challenge.expires_at,
+        delivery_mode="development" if settings.email_dev_mode else "email",
     )
 
 

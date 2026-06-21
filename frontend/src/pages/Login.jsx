@@ -7,6 +7,7 @@ import PasswordInput from "../components/PasswordInput";
 import AuthLayout from "../layouts/AuthLayout";
 import { useAuth } from "../hooks/useAuth";
 import { normalizeApiError } from "../utils/formatters";
+import { isTwoFactorRequiredResponse } from "../utils/auth";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -24,7 +25,7 @@ export default function Login() {
     setError("");
     try {
       const response = await login(form, { rememberSession });
-      if (response?.requires_two_factor) {
+      if (isTwoFactorRequiredResponse(response)) {
         navigate("/verificacao", { replace: true });
         return;
       }

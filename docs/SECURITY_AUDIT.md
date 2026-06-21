@@ -31,7 +31,7 @@ Atualizada em: 2026-06-20
 - Rate limit por conta independe do IP, ignora `X-Forwarded-For` nao confiavel e limita buckets em memoria.
 - Producao falha ao iniciar com JWT fraco, modo de e-mail de desenvolvimento ou secrets criticos ausentes/compartilhados.
 - Payloads de autenticacao rejeitam campos extras e novas senhas exigem ao menos uma letra e um numero.
-- Codigos 2FA nao sao registrados em logs; o fluxo completo exige SMTP configurado.
+- Codigos 2FA nao sao registrados em logs; producao exige SMTP e desenvolvimento local pode simular entrega com `000000`.
 - Cadastro novo e desfeito quando a entrega inicial do codigo 2FA falha.
 - CORS de previews nao e habilitado por regex implicitamente.
 
