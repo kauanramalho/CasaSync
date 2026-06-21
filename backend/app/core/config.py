@@ -3,7 +3,7 @@ from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,6 +18,10 @@ DEVELOPMENT_CORS_ORIGINS = [
     "http://127.0.0.1:4173",
 ]
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
+INSECURE_JWT_SECRETS = {
+    "change-me-in-production",
+    "troque-esta-chave-em-producao",
+}
 
 
 def _normalize_origin(origin: str) -> str:
@@ -78,7 +82,7 @@ class Settings(BaseSettings):
 
     frontend_url: str | None = None
     cors_origins: list[str] = Field(default_factory=list)
-    cors_origin_regex: str | None = r"^https://casa-sync(?:-[a-z0-9-]+)*\.vercel\.app$"
+    cors_origin_regex: str | None = None
 
     google_client_id: str | None = None
     google_client_secret: str | None = None
@@ -138,6 +142,7 @@ class Settings(BaseSettings):
         "google_client_secret",
         "google_redirect_uri",
         "integration_token_encryption_key",
+        "two_factor_hmac_secret",
         "ai_api_key",
         "openai_api_key",
         "smtp_user",
@@ -152,6 +157,36 @@ class Settings(BaseSettings):
         if isinstance(value, str) and not value.strip():
             return None
         return value
+
+    @field_validator("jwt_algorithm")
+    @classmethod
+    def validate_jwt_algorithm(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized not in {"HS256", "HS384", "HS512"}:
+            raise ValueError("JWT_ALGORITHM deve usar HS256, HS384 ou HS512.")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_production_security(self):
+        if not self.is_production:
+            return self
+
+        jwt_secret = self.jwt_secret_key.strip()
+        if len(jwt_secret) < 32 or jwt_secret.lower() in INSECURE_JWT_SECRETS:
+            raise ValueError("JWT_SECRET_KEY deve ter pelo menos 32 caracteres aleatorios em producao.")
+        if self.email_dev_mode:
+            raise ValueError("EMAIL_DEV_MODE deve permanecer desativado em producao.")
+        hmac_secret = (self.two_factor_hmac_secret or "").strip()
+        if len(hmac_secret) < 32:
+            raise ValueError("TWO_FACTOR_HMAC_SECRET deve ter pelo menos 32 caracteres em producao.")
+        if hmac_secret == jwt_secret:
+            raise ValueError("TWO_FACTOR_HMAC_SECRET deve ser diferente de JWT_SECRET_KEY em producao.")
+        encryption_key = (self.integration_token_encryption_key or "").strip()
+        if self.google_calendar_enabled and len(encryption_key) < 32:
+            raise ValueError("INTEGRATION_TOKEN_ENCRYPTION_KEY deve ter pelo menos 32 caracteres quando Google Agenda esta ativo em producao.")
+        if encryption_key and encryption_key in {jwt_secret, hmac_secret}:
+            raise ValueError("INTEGRATION_TOKEN_ENCRYPTION_KEY deve usar um segredo separado em producao.")
+        return self
 
     @property
     def is_production(self) -> bool:

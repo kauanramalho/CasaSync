@@ -55,12 +55,17 @@ export default function ProfileModal({ user, onClose, onSaved }) {
         throw new Error("Username deve ter 3 a 30 caracteres e usar apenas letras, numeros, ponto, underline ou hifen.");
       }
       const avatarUrl = await avatarFieldRef.current?.getValue();
+      const emailChanged = form.email.trim().toLowerCase() !== (user?.email || "").trim().toLowerCase();
+      if (emailChanged && !passwordForm.current_password) {
+        throw new Error("Digite sua senha atual para alterar o e-mail.");
+      }
 
       const updated = await authApi.updateMe({
         name: form.name,
         email: form.email,
         username: nextUsername || null,
-        avatar_url: avatarUrl
+        avatar_url: avatarUrl,
+        ...(emailChanged ? { current_password: passwordForm.current_password } : {})
       });
 
       if (updated.requires_two_factor) {
@@ -69,7 +74,7 @@ export default function ProfileModal({ user, onClose, onSaved }) {
         return;
       }
 
-      if (passwordForm.new_password || passwordForm.current_password || passwordForm.confirm_password) {
+      if (passwordForm.new_password || passwordForm.confirm_password) {
         if (passwordForm.new_password !== passwordForm.confirm_password) {
           throw new Error("A confirmacao da nova senha nao confere.");
         }
@@ -167,6 +172,7 @@ export default function ProfileModal({ user, onClose, onSaved }) {
                   <LockKeyhole className="h-5 w-5 text-blush" />
                   <p className="font-bold text-ink">Alterar senha</p>
                 </div>
+                <p className="mb-4 text-sm text-muted">A senha atual tambem confirma alteracoes no e-mail da conta.</p>
                 <div className="grid gap-4 md:grid-cols-3">
                   <PasswordInput placeholder="Senha atual" value={passwordForm.current_password} onChange={(event) => setPasswordForm((current) => ({ ...current, current_password: event.target.value }))} autoComplete="current-password" />
                   <PasswordInput placeholder="Nova senha" value={passwordForm.new_password} onChange={(event) => setPasswordForm((current) => ({ ...current, new_password: event.target.value }))} autoComplete="new-password" />

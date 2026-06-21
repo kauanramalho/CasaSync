@@ -8,9 +8,10 @@ from app.core.rate_limit import check_rate_limit, client_identifier
 from app.core.deps import get_current_user
 from app.core.security import create_access_token, create_pending_two_factor_token
 from app.database.session import get_db
+from app.models.two_factor import TwoFactorCode
 from app.models.user import User
 from app.schemas.token import AuthResponse, TwoFactorRequiredResponse, TwoFactorResendRequest, TwoFactorVerifyRequest
-from app.schemas.user import PasswordUpdate, UserCreate, UserLogin, UserRead, UserUpdate
+from app.schemas.user import PasswordConfirmation, PasswordUpdate, UserCreate, UserLogin, UserRead, UserUpdate
 from app.services.auth_service import (
     authenticate_user,
     change_user_password,
@@ -59,11 +60,16 @@ def _two_factor_response(user: User, purpose: str, db: Session) -> TwoFactorRequ
 
 @router.post("/register", response_model=AuthResponse | TwoFactorRequiredResponse, status_code=201)
 def register(payload: UserCreate, request: Request, db: Session = Depends(get_db)):
+    user = None
     try:
         check_rate_limit(f"auth:register:{client_identifier(request)}", limit=8, window_seconds=3600)
         user = register_user(db, payload)
         return _two_factor_response(user, "signup", db)
     except HTTPException as exc:
+        if user is not None and not user.email_verified:
+            db.query(TwoFactorCode).filter(TwoFactorCode.user_id == user.id).delete(synchronize_session=False)
+            db.delete(user)
+            db.commit()
         logger.warning(
             "Register request failed status=%s email_hash=%s detail=%s",
             exc.status_code,
@@ -84,7 +90,7 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
     client_id = client_identifier(request)
     identifier_hash = _identifier_fingerprint(payload.identifier)
     check_rate_limit(f"auth:login:ip:{client_id}", limit=30, window_seconds=300)
-    check_rate_limit(f"auth:login:account:{client_id}:{identifier_hash}", limit=10, window_seconds=300)
+    check_rate_limit(f"auth:login:account:{identifier_hash}", limit=10, window_seconds=300)
     user = authenticate_user(db, payload.identifier, payload.password)
     purpose = login_two_factor_purpose(user)
     if purpose == "signup" or should_require_login_two_factor(user):
@@ -97,7 +103,7 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
 @router.post("/2fa/verify", response_model=AuthResponse)
 def verify_two_factor(payload: TwoFactorVerifyRequest, request: Request, db: Session = Depends(get_db)):
     check_rate_limit(f"auth:2fa:verify:{client_identifier(request)}", limit=20, window_seconds=300)
-    context = load_pending_two_factor_context(db, payload.pending_token)
+    context = load_pending_two_factor_context(db, payload.pending_token, require_active_challenge=True)
     user = verify_two_factor_code(db, context, payload.code)
     get_active_family(db, user)
     return AuthResponse(access_token=create_access_token(user.id, token_version=user.token_version), user=user)
@@ -106,7 +112,7 @@ def verify_two_factor(payload: TwoFactorVerifyRequest, request: Request, db: Ses
 @router.post("/2fa/resend", response_model=TwoFactorRequiredResponse)
 def resend_two_factor(payload: TwoFactorResendRequest, request: Request, db: Session = Depends(get_db)):
     check_rate_limit(f"auth:2fa:resend:{client_identifier(request)}", limit=10, window_seconds=300)
-    context = load_pending_two_factor_context(db, payload.pending_token)
+    context = load_pending_two_factor_context(db, payload.pending_token, require_active_challenge=True)
     return _two_factor_response(context.user, context.purpose, db)
 
 
@@ -139,6 +145,6 @@ def logout(current_user: User = Depends(get_current_user), db: Session = Depends
 
 
 @router.delete("/me", status_code=204)
-def delete_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    delete_user_account(db, current_user)
+def delete_me(payload: PasswordConfirmation, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    delete_user_account(db, current_user, payload.current_password)
     return None

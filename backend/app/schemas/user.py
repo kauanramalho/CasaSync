@@ -7,7 +7,27 @@ from app.schemas.image import MAX_IMAGE_URL_LENGTH, validate_image_url
 from app.services.username_service import normalize_login_identifier, normalize_username
 
 
+COMMON_PASSWORDS = {
+    "12345678",
+    "password",
+    "password123",
+    "qwerty123",
+    "senha123",
+}
+
+
+def validate_password_strength(value: str) -> str:
+    normalized = value.casefold()
+    if normalized in COMMON_PASSWORDS:
+        raise ValueError("Escolha uma senha menos comum.")
+    if not any(character.isalpha() for character in value) or not any(character.isdigit() for character in value):
+        raise ValueError("A senha deve conter pelo menos uma letra e um numero.")
+    return value
+
+
 class UserCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=2, max_length=120)
     username: str | None = Field(default=None, max_length=30)
     email: EmailStr
@@ -31,9 +51,14 @@ class UserCreate(BaseModel):
     def normalize_create_username(cls, value: str | None) -> str | None:
         return normalize_username(value, required=False)
 
+    @field_validator("password")
+    @classmethod
+    def validate_create_password(cls, value: str) -> str:
+        return validate_password_strength(value)
+
 
 class UserLogin(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     identifier: str = Field(
         min_length=3,
@@ -72,10 +97,13 @@ class UserSummary(ORMModel):
 
 
 class UserUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = Field(default=None, min_length=2, max_length=120)
     username: str | None = Field(default=None, max_length=30)
     email: EmailStr | None = None
     avatar_url: str | None = Field(default=None, max_length=MAX_IMAGE_URL_LENGTH)
+    current_password: str | None = Field(default=None, min_length=8, max_length=128)
 
     @field_validator("name")
     @classmethod
@@ -106,5 +134,18 @@ class UserUpdate(BaseModel):
 
 
 class PasswordUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     current_password: str = Field(min_length=8, max_length=128)
     new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        return validate_password_strength(value)
+
+
+class PasswordConfirmation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: str = Field(min_length=8, max_length=128)

@@ -287,8 +287,12 @@ async function uploadRequest(
 
   const data = response.status === 204 ? null : await response.json().catch(() => null);
   if (!response.ok) {
+    if (auth && response.status === 401) {
+      clearToken();
+      window.dispatchEvent(new Event(AUTH_SESSION_CHANGED_EVENT));
+    }
     const detail = extractApiErrorMessage(data);
-    throw new Error(detail || fallbackErrorMessage);
+    throw makeApiError(detail || fallbackErrorMessage, { status: response.status, data });
   }
   return data;
 }
@@ -381,7 +385,7 @@ export const authApi = {
   updateMe: (payload) => request("/auth/me", { method: "PATCH", body: payload }),
   changePassword: (payload) => request("/auth/me/password", { method: "POST", body: payload }),
   logout: () => request("/auth/logout", { method: "POST" }),
-  deleteMe: () => request("/auth/me", { method: "DELETE" })
+  deleteMe: (payload) => request("/auth/me", { method: "DELETE", body: payload })
 };
 
 export const uploadsApi = {

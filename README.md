@@ -97,13 +97,14 @@ Variáveis obrigatórias/recomendadas no backend:
 
 - `ENVIRONMENT=production`
 - `DATABASE_URL=postgresql+psycopg2://...`
-- `JWT_SECRET_KEY=<segredo forte>`
+- `JWT_SECRET_KEY=<segredo aleatorio com pelo menos 32 caracteres>`
 - `FRONTEND_URL=https://seu-frontend.vercel.app`
 - `CORS_ORIGINS=["https://seu-frontend.vercel.app"]` para origens extras, se necessário
-- `CORS_ORIGIN_REGEX=^https://casa-sync(?:-[a-z0-9-]+)*\.vercel\.app$` se usar previews da Vercel do projeto
-- `TWO_FACTOR_HMAC_SECRET=<segredo forte separado do JWT>` recomendado
+- `CORS_ORIGIN_REGEX=^https://casa-sync(?:-[a-z0-9-]+)*\.vercel\.app$` somente se previews da Vercel precisarem acessar a API
+- `TWO_FACTOR_HMAC_SECRET=<segredo forte separado do JWT>` obrigatorio
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_USE_TLS`, `EMAIL_FROM` para envio real de 2FA
-- `EMAIL_DEV_MODE=false` em produção, exceto em teste controlado e temporário
+- `EMAIL_DEV_MODE=false` em producao; codigos 2FA nunca sao gravados em logs
+- `INTEGRATION_TOKEN_ENCRYPTION_KEY=<segredo forte e separado>` quando Google Agenda estiver habilitado
 
 Frontend (Vercel/Netlify):
 

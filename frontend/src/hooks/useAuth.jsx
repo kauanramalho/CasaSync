@@ -138,8 +138,8 @@ export function AuthProvider({ children }) {
     }
   }
 
-  async function deleteAccount() {
-    await authApi.deleteMe();
+  async function deleteAccount(currentPassword) {
+    await authApi.deleteMe({ current_password: currentPassword });
     clearToken();
     clearPendingChallenge();
     setUser(null);

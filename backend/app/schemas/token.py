@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.user import UserRead
 
@@ -24,9 +24,13 @@ class TwoFactorRequiredResponse(BaseModel):
 
 
 class TwoFactorVerifyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     pending_token: str
     code: str = Field(min_length=6, max_length=6, pattern="^[0-9]{6}$")
 
 
 class TwoFactorResendRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     pending_token: str

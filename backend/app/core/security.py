@@ -42,10 +42,11 @@ def create_access_token(
     extra_claims: dict | None = None,
 ) -> str:
     settings = get_settings()
-    expires_at = datetime.now(timezone.utc) + (
+    issued_at = datetime.now(timezone.utc)
+    expires_at = issued_at + (
         expires_delta or timedelta(minutes=settings.access_token_expire_minutes)
     )
-    payload = {"sub": str(subject), "exp": expires_at, "ver": token_version, "typ": "access"}
+    payload = {"sub": str(subject), "iat": issued_at, "exp": expires_at, "ver": token_version, "typ": "access"}
     if extra_claims:
         payload.update(extra_claims)
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)

@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
+from app.core.config import get_settings
 from app.core.security import hash_password
 from app.database.init_db import create_database_tables
 from app.database.session import SessionLocal
@@ -12,6 +13,8 @@ from app.services.category_service import ensure_default_categories
 
 
 def run() -> None:
+    if get_settings().is_production:
+        raise RuntimeError("A seed de demonstracao nao pode ser executada em producao.")
     create_database_tables()
     db = SessionLocal()
     try:

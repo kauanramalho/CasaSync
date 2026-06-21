@@ -1,6 +1,6 @@
 # Auditoria de Seguranca CasaSync
 
-Data: 2026-05-10
+Atualizada em: 2026-06-20
 
 ## Fluxo de autenticacao revisado
 
@@ -25,22 +25,32 @@ Data: 2026-05-10
 - Campos textuais, codigos, listas e URLs receberam limites backend para reduzir abuso, payloads gigantes e manipulacao de entrada.
 - Credenciais de SMTP e parametros 2FA foram documentados em `.env.example`.
 - Login nao vem mais preenchido com credenciais de demo.
+- Troca de e-mail e exclusao de conta exigem confirmacao da senha atual no backend.
+- Estado OAuth do Google respeita `token_version` e deixa de funcionar apos invalidacao de sessao.
+- Login executa verificacao bcrypt equivalente para identificadores inexistentes, reduzindo enumeracao por tempo.
+- Rate limit por conta independe do IP, ignora `X-Forwarded-For` nao confiavel e limita buckets em memoria.
+- Producao falha ao iniciar com JWT fraco, modo de e-mail de desenvolvimento ou secrets criticos ausentes/compartilhados.
+- Payloads de autenticacao rejeitam campos extras e novas senhas exigem ao menos uma letra e um numero.
+- Codigos 2FA nao sao registrados em logs; o fluxo completo exige SMTP configurado.
+- Cadastro novo e desfeito quando a entrega inicial do codigo 2FA falha.
+- CORS de previews nao e habilitado por regex implicitamente.
 
 ## Variaveis de ambiente criticas
 
 - `JWT_SECRET_KEY`: obrigatoria e forte em producao.
-- `TWO_FACTOR_HMAC_SECRET`: recomendado em producao, separado do JWT.
+- `TWO_FACTOR_HMAC_SECRET`: obrigatorio em producao, forte e separado do JWT.
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_USE_TLS`, `EMAIL_FROM`: necessarias para envio real.
-- `EMAIL_DEV_MODE=true`: apenas teste controlado; registra o codigo 2FA nos logs e permite validar Render temporariamente sem SMTP.
-- `EMAIL_DEV_MODE=false` em producao para exigir SMTP real e impedir fallback local.
+- `EMAIL_DEV_MODE=false`: obrigatorio em producao. O CasaSync nunca registra codigo 2FA em logs.
+- `INTEGRATION_TOKEN_ENCRYPTION_KEY`: obrigatoria, forte e separada quando Google Agenda estiver ativo em producao.
 - `ENVIRONMENT=production` para habilitar HSTS/CSP e evitar comportamento de desenvolvimento.
 
 ## Riscos remanescentes antes do beta
 
 - Migracoes Alembic ainda devem substituir `create_all`/upgrades aditivos antes de producao.
-- O rate limit atual e em memoria; para multi-instancia, migrar para Redis ou gateway/API WAF.
+- O rate limit continua em memoria e por instancia; para escala horizontal, migrar para Redis ou gateway/API WAF.
 - Tokens continuam em `localStorage`; para maior hardening futuro, considerar cookie HttpOnly/Secure/SameSite com CSRF.
-- Recuperacao de senha nao foi encontrada no codigo atual; quando adicionada, aplicar o mesmo padrao de token curto, hash e rate limit.
+- Recuperacao de senha nao existe no codigo atual; quando adicionada, aplicar token curto, hash, uso unico e rate limit.
+- Imagens persistidas continuam acessiveis por URL opaca para suportar `<img>` sem cookies; revisar URLs assinadas ou proxy autenticado antes de armazenar midia mais sensivel.
 - Auditoria de vulnerabilidades Python ficou limitada a `pip check`; adicionar `pip-audit`/SCA no CI.
 
 ## Validacoes executadas

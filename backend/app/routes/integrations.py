@@ -77,7 +77,12 @@ def google_calendar_connect_url(
     family_id: str = Depends(get_family_id),
     settings: Settings = Depends(get_settings),
 ):
-    return get_google_auth_url(current_user_id=current_user.id, family_id=family_id, settings=settings)
+    return get_google_auth_url(
+        current_user_id=current_user.id,
+        current_user_token_version=current_user.token_version,
+        family_id=family_id,
+        settings=settings,
+    )
 
 
 @router.get("/google-calendar/callback", response_model=None)

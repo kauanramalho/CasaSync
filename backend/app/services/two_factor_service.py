@@ -161,7 +161,12 @@ def create_two_factor_challenge(db: Session, user: User, purpose: str) -> TwoFac
     return challenge
 
 
-def load_pending_two_factor_context(db: Session, pending_token: str) -> PendingTwoFactorContext:
+def load_pending_two_factor_context(
+    db: Session,
+    pending_token: str,
+    *,
+    require_active_challenge: bool = False,
+) -> PendingTwoFactorContext:
     credentials_error = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Verificacao expirada. Entre novamente.",
@@ -184,6 +189,20 @@ def load_pending_two_factor_context(db: Session, pending_token: str) -> PendingT
     user = db.query(User).filter(User.id == user_id, User.is_active.is_(True)).first()
     if not user or user.token_version != token_version:
         raise credentials_error
+
+    if require_active_challenge:
+        challenge_exists = (
+            db.query(TwoFactorCode.id)
+            .filter(
+                TwoFactorCode.id == challenge_id,
+                TwoFactorCode.user_id == user_id,
+                TwoFactorCode.purpose == purpose,
+                TwoFactorCode.consumed_at.is_(None),
+            )
+            .first()
+        )
+        if not challenge_exists:
+            raise credentials_error
 
     return PendingTwoFactorContext(user=user, challenge_id=challenge_id, purpose=purpose)
 

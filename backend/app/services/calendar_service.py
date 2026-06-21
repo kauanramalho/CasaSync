@@ -350,10 +350,11 @@ def ensure_google_family_calendar(
     )
 
 
-def _create_oauth_state(user_id: str, family_id: str) -> str:
+def _create_oauth_state(user_id: str, family_id: str, token_version: int) -> str:
     return create_access_token(
         subject=user_id,
         expires_delta=timedelta(seconds=OAUTH_STATE_TTL_SECONDS),
+        token_version=token_version,
         extra_claims={"typ": "google_calendar_oauth_state", "family_id": family_id},
     )
 
@@ -372,6 +373,7 @@ def _decode_oauth_state(state: str) -> dict:
 def get_google_auth_url(
     *,
     current_user_id: str,
+    current_user_token_version: int,
     family_id: str,
     settings: Settings,
 ) -> GoogleCalendarConnectUrl:
@@ -380,7 +382,7 @@ def get_google_auth_url(
     if not _token_encryption_ready(settings):
         return GoogleCalendarConnectUrl(url=None, message="Configure INTEGRATION_TOKEN_ENCRYPTION_KEY antes de conectar o Google Agenda.")
 
-    state = _create_oauth_state(current_user_id, family_id)
+    state = _create_oauth_state(current_user_id, family_id, current_user_token_version)
     adapter = get_calendar_provider_adapter("google")
     try:
         url = adapter.get_authorization_url(_oauth_config(settings), state)
@@ -433,7 +435,7 @@ def handle_google_callback(
     user_id = str(payload["sub"])
     family_id = str(payload["family_id"])
     user = db.query(User).filter(User.id == user_id, User.is_active.is_(True)).first()
-    if not user:
+    if not user or user.token_version != payload.get("ver", 0) or not user.email_verified:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuario nao autorizado.")
     require_family_member(db, family_id, user_id)
 

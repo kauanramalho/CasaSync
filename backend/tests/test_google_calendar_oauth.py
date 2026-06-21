@@ -4,6 +4,7 @@ from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlparse
 from unittest.mock import patch
 
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -123,7 +124,12 @@ class GoogleCalendarOAuthTest(unittest.TestCase):
         return task
 
     def test_authorization_url_uses_offline_consent_and_current_scopes(self):
-        response = get_google_auth_url(current_user_id=self.user.id, family_id=self.family.id, settings=self.settings())
+        response = get_google_auth_url(
+            current_user_id=self.user.id,
+            current_user_token_version=self.user.token_version,
+            family_id=self.family.id,
+            settings=self.settings(),
+        )
         query = parse_qs(urlparse(response.url).query)
 
         self.assertEqual(query["access_type"], ["offline"])
@@ -135,7 +141,12 @@ class GoogleCalendarOAuthTest(unittest.TestCase):
 
     def test_callback_saves_encrypted_tokens_and_status_is_connected(self):
         settings = self.settings()
-        auth = get_google_auth_url(current_user_id=self.user.id, family_id=self.family.id, settings=settings)
+        auth = get_google_auth_url(
+            current_user_id=self.user.id,
+            current_user_token_version=self.user.token_version,
+            family_id=self.family.id,
+            settings=settings,
+        )
         state = parse_qs(urlparse(auth.url).query)["state"][0]
 
         with patch("app.services.calendar_service.get_calendar_provider_adapter", return_value=FakeOAuthAdapter()):
@@ -148,6 +159,25 @@ class GoogleCalendarOAuthTest(unittest.TestCase):
         status = get_google_calendar_status(self.db, self.family.id, self.user.id, settings)
         self.assertTrue(status.is_connected)
         self.assertTrue(status.can_sync)
+
+    def test_oauth_state_is_rejected_after_session_invalidation(self):
+        settings = self.settings()
+        auth = get_google_auth_url(
+            current_user_id=self.user.id,
+            current_user_token_version=self.user.token_version,
+            family_id=self.family.id,
+            settings=settings,
+        )
+        state = parse_qs(urlparse(auth.url).query)["state"][0]
+        self.user.token_version += 1
+        self.db.add(self.user)
+        self.db.commit()
+
+        with (
+            patch("app.services.calendar_service.get_calendar_provider_adapter", return_value=FakeOAuthAdapter()),
+            self.assertRaises(HTTPException),
+        ):
+            handle_google_callback(self.db, code="test-code", state=state, error=None, settings=settings)
 
     def test_callback_errors_redirect_back_to_settings_instead_of_leaving_json_error(self):
         response = google_calendar_callback(

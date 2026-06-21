@@ -22,6 +22,7 @@ import Button from "../components/Button";
 import Card from "../components/Card";
 import PageHeader from "../components/PageHeader";
 import ProfileModal from "../components/ProfileModal";
+import PasswordInput from "../components/PasswordInput";
 import SelectMenu from "../components/SelectMenu";
 import { useAppPreferences } from "../hooks/useAppPreferences";
 import { useAuth } from "../hooks/useAuth";
@@ -81,6 +82,7 @@ export default function Settings() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [error, setError] = useState("");
   const [savingFamily, setSavingFamily] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -349,10 +351,15 @@ export default function Settings() {
   }
 
   async function handleDeleteAccount() {
+    if (!deletePassword) {
+      setError("Digite sua senha atual para excluir a conta.");
+      return;
+    }
     if (!window.confirm("Excluir sua conta? Esta acao desativa seu acesso e remove voce das familias em que participa.")) return;
     setError("");
     try {
-      await deleteAccount();
+      await deleteAccount(deletePassword);
+      setDeletePassword("");
       navigate("/login", { replace: true });
     } catch (err) {
       const message = normalizeApiError(err);
@@ -774,7 +781,14 @@ export default function Settings() {
               <div className="rounded-2xl bg-rose-50 px-4 py-4">
                 <p className="font-semibold text-rose-600">Excluir conta</p>
                 <p className="mt-1 text-sm text-muted">Acao permanente e irreversivel.</p>
-                <Button type="button" variant="danger" className="mt-4" onClick={handleDeleteAccount}>
+                <PasswordInput
+                  className="mt-4"
+                  placeholder="Confirme sua senha atual"
+                  value={deletePassword}
+                  onChange={(event) => setDeletePassword(event.target.value)}
+                  autoComplete="current-password"
+                />
+                <Button type="button" variant="danger" className="mt-4" onClick={handleDeleteAccount} disabled={!deletePassword}>
                   Excluir conta
                 </Button>
               </div>

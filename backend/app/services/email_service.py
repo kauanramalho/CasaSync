@@ -26,15 +26,11 @@ def send_two_factor_email(recipient: str, code: str, purpose: str, expires_minut
     )
 
     if settings.email_dev_mode:
-        logger.warning(
-            "[CasaSync DEV EMAIL] EMAIL_DEV_MODE=true; codigo 2FA para %s (%s): %s "
-            "(expira em %s minutos)",
-            recipient,
-            _purpose_label(purpose),
-            code,
-            expires_minutes,
+        logger.warning("EMAIL_DEV_MODE=true; entrega 2FA bloqueada porque codigos nao podem ser gravados em logs.")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Envio de e-mail 2FA indisponivel. Configure SMTP para continuar.",
         )
-        return
 
     if settings.smtp_configured:
         message = EmailMessage()

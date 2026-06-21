@@ -15,12 +15,12 @@ from app.routes.auth import me as me_route
 from app.routes.families import active_family as active_family_route, list_my_families
 from app.routes.tasks import import_suggestions as import_suggestions_route
 from app.schemas.category import CategoryCreate
-from app.schemas.task import TaskCreate
+from app.schemas.task import TaskCreate, TaskUpdate
 from app.schemas.task_import import TaskSuggestionImportItem, TaskSuggestionsImportRequest, TaskSuggestionsImportResponse
 from app.services.category_service import create_category, list_categories
 from app.services.dashboard_service import get_dashboard, get_dashboard_summary
 from app.services.family_service import decide_join_request, list_members, refresh_user_active_family, request_join_family, set_active_family
-from app.services.task_service import create_task, get_task, list_tasks
+from app.services.task_service import create_task, get_task, list_tasks, update_task
 from app.services.task_import_service import import_task_suggestions
 
 
@@ -157,6 +157,9 @@ class MultiFamilyContextTest(unittest.TestCase):
 
         with self.assertRaises(HTTPException):
             get_task(self.db, self.family_b.id, task_a.id)
+
+        with self.assertRaises(HTTPException):
+            update_task(self.db, self.family_b.id, task_a.id, TaskUpdate(title="Tentativa cruzada"))
 
     def test_categories_stay_isolated_by_family(self):
         category_a = create_category(self.db, self.family_a.id, CategoryCreate(name="Mercado", color="blue", icon="shopping-bag"))
