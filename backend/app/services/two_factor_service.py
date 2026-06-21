@@ -62,6 +62,8 @@ def login_two_factor_purpose(user: User) -> str:
 
 def _generate_code() -> str:
     settings = get_settings()
+    if settings.email_dev_mode:
+        return "0" * settings.two_factor_code_length
     upper_bound = 10 ** settings.two_factor_code_length
     return str(secrets.randbelow(upper_bound)).zfill(settings.two_factor_code_length)
 

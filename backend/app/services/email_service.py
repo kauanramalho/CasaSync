@@ -26,11 +26,8 @@ def send_two_factor_email(recipient: str, code: str, purpose: str, expires_minut
     )
 
     if settings.email_dev_mode:
-        logger.warning("EMAIL_DEV_MODE=true; entrega 2FA bloqueada porque codigos nao podem ser gravados em logs.")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Envio de e-mail 2FA indisponivel. Configure SMTP para continuar.",
-        )
+        logger.warning("EMAIL_DEV_MODE=true; entrega 2FA simulada apenas em ambiente local.")
+        return
 
     if settings.smtp_configured:
         message = EmailMessage()

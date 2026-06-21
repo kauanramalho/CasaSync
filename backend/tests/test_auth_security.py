@@ -20,7 +20,11 @@ from app.schemas.user import PasswordUpdate, UserCreate, UserLogin, UserRead, Us
 from app.services import auth_service
 from app.services.auth_service import authenticate_user, delete_user_account, register_user, update_user_profile
 from app.services.email_service import send_two_factor_email
-from app.services.two_factor_service import load_pending_two_factor_context
+from app.services.two_factor_service import (
+    create_two_factor_challenge,
+    load_pending_two_factor_context,
+    verify_two_factor_code,
+)
 
 
 TEST_SETTINGS = Settings(
@@ -265,17 +269,29 @@ class AuthSecurityTest(unittest.TestCase):
         self.assertIsNone(self.db.query(User).filter(User.email == payload.email).first())
         self.assertEqual(self.db.query(TwoFactorCode).count(), 0)
 
-    def test_dev_email_mode_never_logs_code_or_recipient(self):
+    def test_dev_email_mode_simulates_delivery_without_logging_code_or_recipient(self):
         settings = Settings(_env_file=None, email_dev_mode=True)
         with (
             patch("app.services.email_service.get_settings", return_value=settings),
             patch("app.services.email_service.logger.warning") as warning,
         ):
-            with self.assertRaises(HTTPException):
-                send_two_factor_email("private@example.com", "654321", "login", 10)
+            send_two_factor_email("private@example.com", "654321", "login", 10)
         rendered_log = " ".join(str(item) for call in warning.call_args_list for item in call.args)
         self.assertNotIn("654321", rendered_log)
         self.assertNotIn("private@example.com", rendered_log)
+
+    def test_dev_email_mode_uses_local_fixed_code_without_smtp(self):
+        settings = Settings(_env_file=None, email_dev_mode=True)
+        with (
+            patch("app.services.two_factor_service.get_settings", return_value=settings),
+            patch("app.services.email_service.get_settings", return_value=settings),
+            patch("app.services.email_service.logger.warning"),
+        ):
+            challenge = create_two_factor_challenge(self.db, self.user, "login")
+            token = create_pending_two_factor_token(self.user.id, challenge.id, "login")
+            context = load_pending_two_factor_context(self.db, token, require_active_challenge=True)
+            verified = verify_two_factor_code(self.db, context, "000000")
+        self.assertEqual(verified.id, self.user.id)
 
 
 class MissingTokenSecurityTest(unittest.IsolatedAsyncioTestCase):

@@ -84,6 +84,12 @@ npm run dev
 
 Para rodar localmente, ajuste `DATABASE_URL` em um `.env` apontando para seu PostgreSQL.
 
+Para testes locais controlados de cadastro, login e 2FA sem SMTP real, coloque
+`EMAIL_DEV_MODE=true` no `.env` local da raiz do projeto. Nesse modo, a entrega
+de e-mail e simulada e o codigo 2FA de desenvolvimento e `000000`. Nao use esse
+modo em producao; o backend rejeita `EMAIL_DEV_MODE=true` quando
+`ENVIRONMENT=production`.
+
 ## Deploy em Produção
 
 Backend (Render, Docker ou serviço equivalente):
