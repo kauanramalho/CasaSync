@@ -26,6 +26,8 @@ services:
       - .env
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://casasync:casasync@db:5432/casasync}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      EMAIL_DEV_MODE: ${EMAIL_DEV_MODE:-false}
     ports:
       - "8000:8000"
     volumes:
