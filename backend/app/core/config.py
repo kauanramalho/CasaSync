@@ -1,7 +1,7 @@
 import json
 from functools import lru_cache
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -49,6 +49,22 @@ def _is_local_origin(origin: str) -> bool:
     return (parsed.hostname or "").lower() in LOCAL_HOSTS
 
 
+def _normalize_database_url(database_url: str) -> str:
+    normalized = database_url.strip()
+    if normalized.startswith("postgres://"):
+        normalized = normalized.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif normalized.startswith("postgresql://"):
+        normalized = normalized.replace("postgresql://", "postgresql+psycopg2://", 1)
+
+    parsed = urlsplit(normalized)
+    hostname = (parsed.hostname or "").lower()
+    if hostname.endswith(".neon.tech"):
+        query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+        query.setdefault("sslmode", "require")
+        normalized = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment))
+    return normalized
+
+
 class Settings(BaseSettings):
     app_name: str = "CasaSync"
     api_v1_prefix: str = "/api"
@@ -77,6 +93,9 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
     email_from: str = "CasaSync <no-reply@casasync.app>"
     smtp_from: str | None = None
+    email_delivery_http_url: str | None = None
+    email_delivery_http_token: str | None = None
+    email_delivery_http_timeout_seconds: float = 20.0
     email_dev_mode: bool = False
     email_notifications_enabled: bool = False
 
@@ -135,6 +154,11 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in cleaned.split(",") if origin.strip()]
         return value
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def normalize_database_url(cls, value: str) -> str:
+        return _normalize_database_url(value)
+
     @field_validator(
         "frontend_url",
         "cors_origin_regex",
@@ -147,6 +171,8 @@ class Settings(BaseSettings):
         "openai_api_key",
         "smtp_user",
         "smtp_from",
+        "email_delivery_http_url",
+        "email_delivery_http_token",
         "vapid_public_key",
         "vapid_private_key",
         "vapid_subject",
@@ -176,6 +202,15 @@ class Settings(BaseSettings):
             raise ValueError("JWT_SECRET_KEY deve ter pelo menos 32 caracteres aleatorios em producao.")
         if self.email_dev_mode:
             raise ValueError("EMAIL_DEV_MODE deve permanecer desativado em producao.")
+        http_delivery_values = (self.email_delivery_http_url, self.email_delivery_http_token)
+        if any(http_delivery_values) and not all(http_delivery_values):
+            raise ValueError("EMAIL_DELIVERY_HTTP_URL e EMAIL_DELIVERY_HTTP_TOKEN devem ser configurados juntos.")
+        if self.email_delivery_http_url:
+            delivery_url = urlsplit(self.email_delivery_http_url)
+            if delivery_url.scheme != "https" or not delivery_url.netloc:
+                raise ValueError("EMAIL_DELIVERY_HTTP_URL deve usar HTTPS em producao.")
+            if len(self.email_delivery_http_token or "") < 32:
+                raise ValueError("EMAIL_DELIVERY_HTTP_TOKEN deve ter pelo menos 32 caracteres em producao.")
         hmac_secret = (self.two_factor_hmac_secret or "").strip()
         if len(hmac_secret) < 32:
             raise ValueError("TWO_FACTOR_HMAC_SECRET deve ter pelo menos 32 caracteres em producao.")
@@ -213,6 +248,10 @@ class Settings(BaseSettings):
     @property
     def smtp_configured(self) -> bool:
         return bool(self.smtp_host)
+
+    @property
+    def email_delivery_http_configured(self) -> bool:
+        return bool(self.email_delivery_http_url and self.email_delivery_http_token)
 
     @property
     def smtp_auth_username(self) -> str | None:

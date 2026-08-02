@@ -25,7 +25,11 @@ class Family(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
 class FamilyMember(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "family_members"
-    __table_args__ = (UniqueConstraint("family_id", "user_id", name="uq_family_member"),)
+    __table_args__ = (
+        UniqueConstraint("family_id", "user_id", name="uq_family_member"),
+        Index("ix_family_members_family_id", "family_id"),
+        Index("ix_family_members_user_id", "user_id"),
+    )
 
     family_id = Column(String(36), ForeignKey("families.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)

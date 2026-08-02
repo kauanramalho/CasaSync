@@ -1,8 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import get_settings
-from app.database.init_db import create_database_tables
+from app.database.migrations import run_database_migrations
+from app.database.session import SessionLocal
 from app.routes import automation, auth, categories, couple, dashboard, families, image_analysis, integrations, notifications, planner, tasks, uploads
 
 
@@ -39,13 +42,27 @@ async def add_security_headers(request, call_next):
 
 @app.on_event("startup")
 def on_startup() -> None:
-    # MVP-friendly. In production, prefer Alembic migrations before boot.
-    create_database_tables()
+    run_database_migrations()
 
 
 @app.get("/health", tags=["health"])
 def health_check():
     return {"status": "ok", "service": settings.app_name}
+
+
+@app.get("/health/ready", tags=["health"])
+def readiness_check():
+    db = SessionLocal()
+    try:
+        db.execute(text("SELECT 1"))
+    except SQLAlchemyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Banco de dados indisponivel.",
+        ) from exc
+    finally:
+        db.close()
+    return {"status": "ready", "service": settings.app_name, "database": "ok"}
 
 
 app.include_router(auth.router, prefix=settings.api_v1_prefix)

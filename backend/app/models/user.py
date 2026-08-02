@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, func, text
 from sqlalchemy.orm import relationship
 
 from app.database.base import Base
@@ -28,6 +28,22 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         ForeignKey("families.id", ondelete="SET NULL", use_alter=True, name="fk_users_active_family_id"),
         nullable=True,
         index=True,
+    )
+    __table_args__ = (
+        Index(
+            "ix_users_username_unique",
+            "username",
+            unique=True,
+            sqlite_where=text("username IS NOT NULL"),
+            postgresql_where=text("username IS NOT NULL"),
+        ),
+        Index(
+            "ix_users_username_lower_unique",
+            func.lower(username),
+            unique=True,
+            sqlite_where=text("username IS NOT NULL"),
+            postgresql_where=text("username IS NOT NULL"),
+        ),
     )
 
     memberships = relationship("FamilyMember", back_populates="user", cascade="all, delete-orphan")

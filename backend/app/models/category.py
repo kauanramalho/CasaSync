@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.database.base import Base
@@ -7,7 +7,10 @@ from app.models.base import TimestampMixin, UUIDPrimaryKeyMixin
 
 class Category(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "categories"
-    __table_args__ = (UniqueConstraint("family_id", "name", name="uq_category_family_name"),)
+    __table_args__ = (
+        UniqueConstraint("family_id", "name", name="uq_category_family_name"),
+        Index("ix_categories_family_id", "family_id"),
+    )
 
     family_id = Column(String(36), ForeignKey("families.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(80), nullable=False)

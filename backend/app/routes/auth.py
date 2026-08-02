@@ -9,7 +9,6 @@ from app.core.deps import get_current_user
 from app.core.rate_limit import check_rate_limit, client_identifier
 from app.core.security import create_access_token, create_pending_two_factor_token
 from app.database.session import get_db
-from app.models.two_factor import TwoFactorCode
 from app.models.user import User
 from app.schemas.token import AuthResponse, TwoFactorRequiredResponse, TwoFactorResendRequest, TwoFactorVerifyRequest
 from app.schemas.user import PasswordConfirmation, PasswordUpdate, UserCreate, UserLogin, UserRead, UserUpdate
@@ -44,8 +43,14 @@ def _identifier_fingerprint(identifier: str | None) -> str:
     return hashlib.sha256(normalized_identifier.encode("utf-8")).hexdigest()[:12]
 
 
-def _two_factor_response(user: User, purpose: str, db: Session) -> TwoFactorRequiredResponse:
-    challenge = create_two_factor_challenge(db, user, purpose)
+def _two_factor_response(
+    user: User,
+    purpose: str,
+    db: Session,
+    *,
+    commit: bool = True,
+) -> TwoFactorRequiredResponse:
+    challenge = create_two_factor_challenge(db, user, purpose, commit=commit)
     settings = get_settings()
     return TwoFactorRequiredResponse(
         pending_token=create_pending_two_factor_token(
@@ -63,16 +68,14 @@ def _two_factor_response(user: User, purpose: str, db: Session) -> TwoFactorRequ
 
 @router.post("/register", response_model=AuthResponse | TwoFactorRequiredResponse, status_code=201)
 def register(payload: UserCreate, request: Request, db: Session = Depends(get_db)):
-    user = None
     try:
         check_rate_limit(f"auth:register:{client_identifier(request)}", limit=8, window_seconds=3600)
-        user = register_user(db, payload)
-        return _two_factor_response(user, "signup", db)
+        user = register_user(db, payload, commit=False)
+        response = _two_factor_response(user, "signup", db, commit=False)
+        db.commit()
+        return response
     except HTTPException as exc:
-        if user is not None and not user.email_verified:
-            db.query(TwoFactorCode).filter(TwoFactorCode.user_id == user.id).delete(synchronize_session=False)
-            db.delete(user)
-            db.commit()
+        db.rollback()
         logger.warning(
             "Register request failed status=%s email_hash=%s detail=%s",
             exc.status_code,
@@ -81,6 +84,7 @@ def register(payload: UserCreate, request: Request, db: Session = Depends(get_db
         )
         raise
     except Exception as exc:
+        db.rollback()
         logger.exception("Unexpected register error email_hash=%s", _identifier_fingerprint(payload.email))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -129,10 +133,16 @@ def me(current_user: User = Depends(get_current_user), db: Session = Depends(get
 def update_me(payload: UserUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     next_email = payload.email.strip().lower() if payload.email else None
     email_changed = bool(next_email and next_email != current_user.email)
-    user = update_user_profile(db, current_user, payload)
     if email_changed:
-        return _two_factor_response(user, "signup", db)
-    return user
+        try:
+            user = update_user_profile(db, current_user, payload, commit=False)
+            response = _two_factor_response(user, "signup", db, commit=False)
+            db.commit()
+            return response
+        except Exception:
+            db.rollback()
+            raise
+    return update_user_profile(db, current_user, payload)
 
 
 @router.post("/me/password", status_code=204)

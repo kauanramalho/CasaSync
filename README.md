@@ -99,6 +99,8 @@ Backend (Render, Docker ou serviço equivalente):
 - Build command: `pip install -r requirements.txt`
 - Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 - Docker: o `backend/Dockerfile` já usa `${PORT:-8000}` e bind em `0.0.0.0`.
+- O startup executa `alembic upgrade head` antes de aceitar tráfego. Para uma migração manual controlada: `cd backend` e `alembic upgrade head`.
+- Readiness com banco: `GET /health/ready`. O endpoint retorna `503` sem expor a string de conexão quando o PostgreSQL estiver indisponível.
 
 Variáveis obrigatórias/recomendadas no backend:
 
@@ -157,11 +159,12 @@ docs/
 - O frontend usa um cliente HTTP centralizado em `services/api.js`.
 - O layout do app é compartilhado por todas as páginas autenticadas.
 - O Planejador IA e o Google Agenda foram isolados em services próprios para trocar mocks por APIs reais depois.
-- O backend cria tabelas automaticamente no startup para facilitar o MVP. Antes de produção, substitua por migrations com Alembic.
+- O schema é versionado pelo Alembic. O startup aplica somente migrations pendentes; `create_all` não é usado em produção.
+- O cadastro é uma única transação: usuário e desafio 2FA só são confirmados depois da entrega SMTP; falhas fazem rollback.
 
 ## Próximos Passos Recomendados
 
-- Adicionar Alembic com migrações versionadas.
+- Criar uma migration Alembic para cada mudança futura de modelo antes do deploy.
 - Implementar seleção de família ativa quando o usuário pertencer a mais de uma família.
 - Criar permissões por papel (`owner`, `member`).
 - Completar edição/exclusão de tarefas e categorias.

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 
 from fastapi import HTTPException, status
-from jose import JWTError
+from jwt import InvalidTokenError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -128,7 +128,13 @@ def _enforce_send_limits(db: Session, user_id: str, purpose: str) -> None:
         )
 
 
-def create_two_factor_challenge(db: Session, user: User, purpose: str) -> TwoFactorCode:
+def create_two_factor_challenge(
+    db: Session,
+    user: User,
+    purpose: str,
+    *,
+    commit: bool = True,
+) -> TwoFactorCode:
     if purpose not in VALID_PURPOSES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tipo de verificacao invalido.")
 
@@ -149,17 +155,18 @@ def create_two_factor_challenge(db: Session, user: User, purpose: str) -> TwoFac
         last_sent_at=now,
     )
     db.add(challenge)
-    db.commit()
-    db.refresh(challenge)
 
     try:
+        db.flush()
         send_two_factor_email(user.email, code, purpose, settings.two_factor_code_ttl_minutes)
+        if commit:
+            db.commit()
     except Exception:
-        challenge.consumed_at = utc_now()
-        db.add(challenge)
-        db.commit()
+        db.rollback()
         raise
 
+    if commit:
+        db.refresh(challenge)
     return challenge
 
 
@@ -175,7 +182,7 @@ def load_pending_two_factor_context(
     )
     try:
         payload = decode_token(pending_token)
-    except JWTError as exc:
+    except InvalidTokenError as exc:
         raise credentials_error from exc
 
     if payload.get("typ") != "2fa":

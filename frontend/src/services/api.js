@@ -102,6 +102,18 @@ function makeApiError(message, metadata = {}) {
   return error;
 }
 
+function fallbackApiErrorMessage(status) {
+  if (status === 409) return "E-mail ou username ja esta em uso.";
+  if (status === 422) return "Confira os dados informados e tente novamente.";
+  if (status >= 500) return "Nao foi possivel concluir a acao agora. Tente novamente em alguns minutos.";
+  return "Nao foi possivel concluir a acao.";
+}
+
+export function createApiResponseError(status, data, fallbackMessage) {
+  const detail = extractApiErrorMessage(data);
+  return makeApiError(detail || fallbackMessage || fallbackApiErrorMessage(status), { status, data });
+}
+
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(SESSION_TOKEN_KEY);
 }
@@ -247,8 +259,7 @@ async function performRequest(path, { method = "GET", body, auth = true } = {}) 
       clearToken();
       window.dispatchEvent(new Event(AUTH_SESSION_CHANGED_EVENT));
     }
-    const detail = extractApiErrorMessage(data);
-    throw makeApiError(detail || "Nao foi possivel concluir a acao.", { status: response.status, data });
+    throw createApiResponseError(response.status, data);
   }
 
   return data;
@@ -291,8 +302,7 @@ async function uploadRequest(
       clearToken();
       window.dispatchEvent(new Event(AUTH_SESSION_CHANGED_EVENT));
     }
-    const detail = extractApiErrorMessage(data);
-    throw makeApiError(detail || fallbackErrorMessage, { status: response.status, data });
+    throw createApiResponseError(response.status, data, fallbackErrorMessage);
   }
   return data;
 }
@@ -357,7 +367,7 @@ function assertPayloadHasNoInlineImages(value, path = "") {
   }
 }
 
-function extractApiErrorMessage(data) {
+export function extractApiErrorMessage(data) {
   const detail = data?.detail ?? data?.message ?? data?.error;
   if (Array.isArray(detail)) {
     return detail

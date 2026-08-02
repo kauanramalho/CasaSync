@@ -1,8 +1,11 @@
 import logging
+import json
 import smtplib
 from email.message import EmailMessage
 from datetime import datetime
 from html import escape
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from fastapi import HTTPException, status
 
@@ -14,6 +17,43 @@ logger = logging.getLogger(__name__)
 
 def _purpose_label(purpose: str) -> str:
     return "cadastro" if purpose == "signup" else "login"
+
+
+def _delivery_unavailable() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Nao foi possivel enviar o codigo de verificacao agora. Tente novamente em alguns minutos.",
+    )
+
+
+def _send_two_factor_via_http(recipient: str, code: str, purpose: str, expires_minutes: int) -> None:
+    settings = get_settings()
+    payload = json.dumps(
+        {
+            "recipient": recipient,
+            "code": code,
+            "purpose": purpose,
+            "expires_minutes": expires_minutes,
+        }
+    ).encode("utf-8")
+    request = Request(
+        settings.email_delivery_http_url,
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {settings.email_delivery_http_token}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with urlopen(request, timeout=settings.email_delivery_http_timeout_seconds) as response:
+            if response.status not in {200, 204}:
+                raise _delivery_unavailable()
+    except HTTPException:
+        raise
+    except (HTTPError, URLError, OSError, TimeoutError, ValueError) as exc:
+        raise _delivery_unavailable() from exc
 
 
 def send_two_factor_email(recipient: str, code: str, purpose: str, expires_minutes: int) -> None:
@@ -29,6 +69,10 @@ def send_two_factor_email(recipient: str, code: str, purpose: str, expires_minut
         logger.warning("EMAIL_DEV_MODE=true; entrega 2FA simulada apenas em ambiente local.")
         return
 
+    if settings.email_delivery_http_configured:
+        _send_two_factor_via_http(recipient, code, purpose, expires_minutes)
+        return
+
     if settings.smtp_configured:
         message = EmailMessage()
         message["Subject"] = subject
@@ -36,21 +80,18 @@ def send_two_factor_email(recipient: str, code: str, purpose: str, expires_minut
         message["To"] = recipient
         message.set_content(body)
 
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as smtp:
-            if settings.smtp_use_tls:
-                smtp.starttls()
-            if settings.smtp_auth_username and settings.smtp_password:
-                smtp.login(settings.smtp_auth_username, settings.smtp_password)
-            smtp.send_message(message)
+        try:
+            with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as smtp:
+                if settings.smtp_use_tls:
+                    smtp.starttls()
+                if settings.smtp_auth_username and settings.smtp_password:
+                    smtp.login(settings.smtp_auth_username, settings.smtp_password)
+                smtp.send_message(message)
+        except (OSError, smtplib.SMTPException) as exc:
+            raise _delivery_unavailable() from exc
         return
 
-    raise HTTPException(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail=(
-            "Envio de e-mail 2FA nao configurado. Configure SMTP_HOST ou ative "
-            "EMAIL_DEV_MODE=true apenas para teste controlado."
-        ),
-    )
+    raise _delivery_unavailable()
 
 
 def _format_due_date(value: datetime | None) -> str:

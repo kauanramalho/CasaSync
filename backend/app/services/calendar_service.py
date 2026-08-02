@@ -3,7 +3,7 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import HTTPException, status
-from jose import JWTError
+from jwt import InvalidTokenError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -362,7 +362,7 @@ def _create_oauth_state(user_id: str, family_id: str, token_version: int) -> str
 def _decode_oauth_state(state: str) -> dict:
     try:
         payload = decode_token(state)
-    except JWTError as exc:
+    except InvalidTokenError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Estado OAuth invalido ou expirado.") from exc
 
     if payload.get("typ") != "google_calendar_oauth_state" or not payload.get("sub") or not payload.get("family_id"):

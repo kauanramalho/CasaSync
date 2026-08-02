@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import relationship
 
 from app.database.base import Base
@@ -49,6 +49,20 @@ class TaskReminder(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
 class Task(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "tasks"
+    __table_args__ = (
+        Index("ix_tasks_family_id", "family_id"),
+        Index("ix_tasks_google_calendar_event_id", "google_calendar_event_id"),
+        Index("ix_tasks_google_calendar_id", "google_calendar_id"),
+        Index(
+            "ix_tasks_automation_external_unique",
+            "family_id",
+            "automation_source",
+            "automation_external_id",
+            unique=True,
+            sqlite_where=text("automation_external_id IS NOT NULL"),
+            postgresql_where=text("automation_external_id IS NOT NULL"),
+        ),
+    )
 
     family_id = Column(String(36), ForeignKey("families.id", ondelete="CASCADE"), nullable=False)
     title = Column(String(180), nullable=False)

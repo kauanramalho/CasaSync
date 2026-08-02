@@ -1,4 +1,5 @@
 import secrets
+from typing import NoReturn
 
 from fastapi import HTTPException, status
 from sqlalchemy import func
@@ -13,6 +14,12 @@ from app.services.username_service import looks_like_email, normalize_username, 
 
 
 DUMMY_PASSWORD_HASH = hash_password("CasaSyncDummyPassword1")
+USER_UNIQUE_CONSTRAINTS = {
+    "ix_users_email",
+    "ix_users_username",
+    "ix_users_username_lower_unique",
+    "ix_users_username_unique",
+}
 
 
 def get_user_by_email(db: Session, email: str) -> User | None:
@@ -31,44 +38,84 @@ def _existing_usernames(db: Session) -> set[str]:
     }
 
 
-def register_user(db: Session, payload: UserCreate) -> User:
-    existing_user = get_user_by_email(db, payload.email)
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="E-mail ou username ja esta em uso.",
-        )
+def is_user_unique_violation(exc: IntegrityError) -> bool:
+    original = exc.orig
+    sqlstate = getattr(original, "sqlstate", None) or getattr(original, "pgcode", None)
+    diagnostic = getattr(original, "diag", None)
+    constraint_name = getattr(diagnostic, "constraint_name", None)
+    if sqlstate == "23505":
+        return constraint_name in USER_UNIQUE_CONSTRAINTS
 
-    username = payload.username or unique_username_from_email(payload.email, _existing_usernames(db))
-    existing_username = get_user_by_username(db, username)
-    if existing_username:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="E-mail ou username ja esta em uso.",
-        )
-
-    user = User(
-        name=payload.name.strip(),
-        username=username,
-        email=payload.email.strip().lower(),
-        hashed_password=hash_password(payload.password),
-        email_verified=False,
-        two_factor_enabled=True,
+    message = str(original).lower()
+    return "unique constraint failed" in message and (
+        "users.email" in message or "users.username" in message
     )
-    db.add(user)
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
+
+
+def _raise_user_integrity_error(db: Session, exc: IntegrityError) -> NoReturn:
+    db.rollback()
+    if is_user_unique_violation(exc):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="E-mail ou username ja esta em uso.",
         ) from exc
-    db.refresh(user)
+    raise exc
+
+
+def register_user(db: Session, payload: UserCreate, *, commit: bool = True) -> User:
+    existing_user = get_user_by_email(db, payload.email)
+    if existing_user:
+        requested_username = payload.username or existing_user.username
+        can_resume = (
+            existing_user.is_active
+            and not existing_user.email_verified
+            and bool(existing_user.username)
+            and bool(requested_username)
+            and existing_user.username.casefold() == requested_username.casefold()
+            and verify_password(payload.password, existing_user.hashed_password)
+        )
+        if not can_resume:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="E-mail ou username ja esta em uso.",
+            )
+        user = existing_user
+        user.name = payload.name.strip()
+        if password_needs_rehash(user.hashed_password):
+            user.hashed_password = hash_password(payload.password)
+    else:
+        username = payload.username or unique_username_from_email(payload.email, _existing_usernames(db))
+        existing_username = get_user_by_username(db, username)
+        if existing_username:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="E-mail ou username ja esta em uso.",
+            )
+
+        user = User(
+            name=payload.name.strip(),
+            username=username,
+            email=payload.email.strip().lower(),
+            hashed_password=hash_password(payload.password),
+            email_verified=False,
+            two_factor_enabled=True,
+        )
+    db.add(user)
+    try:
+        db.flush()
+        if commit:
+            db.commit()
+    except IntegrityError as exc:
+        _raise_user_integrity_error(db, exc)
+    except Exception:
+        db.rollback()
+        raise
+    if commit:
+        db.refresh(user)
     return user
 
 
-def update_user_profile(db: Session, user: User, payload: UserUpdate) -> User:
+def update_user_profile(db: Session, user: User, payload: UserUpdate, *, commit: bool = True) -> User:
     data = payload.model_dump(exclude_unset=True)
     current_password = data.pop("current_password", None)
 
@@ -104,11 +151,16 @@ def update_user_profile(db: Session, user: User, payload: UserUpdate) -> User:
 
     db.add(user)
     try:
-        db.commit()
+        db.flush()
+        if commit:
+            db.commit()
     except IntegrityError as exc:
+        _raise_user_integrity_error(db, exc)
+    except Exception:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="E-mail ou username ja esta em uso.") from exc
-    db.refresh(user)
+        raise
+    if commit:
+        db.refresh(user)
     return user
 
 

@@ -1,10 +1,12 @@
 import unittest
+import json
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
 from pydantic import ValidationError
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from starlette.requests import Request
 
@@ -15,7 +17,7 @@ from app.core.security import create_access_token, create_pending_two_factor_tok
 from app.database.base import Base
 from app.models.two_factor import TwoFactorCode
 from app.models.user import User
-from app.routes.auth import login, register, verify_two_factor
+from app.routes.auth import login, register, update_me, verify_two_factor
 from app.schemas.token import AuthResponse, TwoFactorRequiredResponse, TwoFactorVerifyRequest
 from app.schemas.user import PasswordUpdate, UserCreate, UserLogin, UserRead, UserUpdate
 from app.services import auth_service
@@ -95,6 +97,21 @@ class ProductionSettingsSecurityTest(unittest.TestCase):
         )
         self.assertTrue(settings.is_production)
 
+    def test_neon_database_url_uses_psycopg2_and_requires_ssl(self):
+        settings = self.production_settings(
+            database_url="postgresql://masked-user:masked-password@example.neon.tech/neondb?channel_binding=require",
+        )
+        self.assertTrue(settings.database_url.startswith("postgresql+psycopg2://"))
+        self.assertIn("sslmode=require", settings.database_url)
+        self.assertIn("channel_binding=require", settings.database_url)
+
+    def test_non_neon_postgres_url_is_normalized_without_forcing_ssl(self):
+        settings = self.production_settings(
+            database_url="postgres://masked-user:masked-password@postgres.example.com/casasync",
+        )
+        self.assertTrue(settings.database_url.startswith("postgresql+psycopg2://"))
+        self.assertNotIn("sslmode=", settings.database_url)
+
 
 class AuthSecurityTest(unittest.TestCase):
     def setUp(self):
@@ -150,9 +167,31 @@ class AuthSecurityTest(unittest.TestCase):
         created = register_user(self.db, payload)
         self.assertNotEqual(created.hashed_password, payload.password)
         self.assertNotIn(payload.password, created.hashed_password)
+        created.email_verified = True
+        self.db.add(created)
+        self.db.commit()
         with self.assertRaises(HTTPException) as raised:
             register_user(self.db, payload)
         self.assertEqual(raised.exception.status_code, 409)
+
+    def test_non_unique_integrity_error_is_not_reported_as_duplicate_user(self):
+        payload = UserCreate(
+            name="Falha de Banco",
+            username="falha.banco",
+            email="database-failure@example.com",
+            password="StrongPass123",  # gitleaks:allow - synthetic test credential
+        )
+        integrity_error = IntegrityError(
+            "INSERT INTO users",
+            {},
+            Exception("not-null or connection failure"),
+        )
+        with patch.object(self.db, "flush", side_effect=integrity_error):
+            with self.assertRaises(IntegrityError):
+                register_user(self.db, payload, commit=False)
+
+        self.assertEqual(self.db.query(User).filter(User.email == payload.email).count(), 0)
+        self.assertEqual(self.db.query(User).filter(User.id == self.user.id).count(), 1)
 
     def test_missing_user_executes_dummy_password_verification(self):
         original_verify = auth_service.verify_password
@@ -181,6 +220,31 @@ class AuthSecurityTest(unittest.TestCase):
         self.assertEqual(updated.email, "next@example.com")
         self.assertFalse(updated.email_verified)
         self.assertEqual(updated.token_version, previous_version + 1)
+
+    def test_email_change_rolls_back_when_two_factor_delivery_fails(self):
+        previous_email = self.user.email
+        previous_version = self.user.token_version
+        settings = TEST_SETTINGS.model_copy(update={"email_dev_mode": False, "smtp_host": "smtp.invalid"})
+
+        with (
+            patch("app.routes.auth.get_settings", return_value=settings),
+            patch("app.services.two_factor_service.get_settings", return_value=settings),
+            patch("app.services.email_service.get_settings", return_value=settings),
+            patch("app.services.email_service.smtplib.SMTP", side_effect=OSError("smtp offline")),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                update_me(
+                    UserUpdate(email="next@example.com", current_password="CurrentPass123"),
+                    current_user=self.user,
+                    db=self.db,
+                )
+
+        self.assertEqual(raised.exception.status_code, 503)
+        self.db.expire_all()
+        restored = self.db.query(User).filter(User.id == self.user.id).one()
+        self.assertEqual(restored.email, previous_email)
+        self.assertTrue(restored.email_verified)
+        self.assertEqual(restored.token_version, previous_version)
 
     def test_account_deletion_requires_current_password(self):
         with self.assertRaises(HTTPException):
@@ -280,6 +344,48 @@ class AuthSecurityTest(unittest.TestCase):
         rendered_log = " ".join(str(item) for call in warning.call_args_list for item in call.args)
         self.assertNotIn("654321", rendered_log)
         self.assertNotIn("private@example.com", rendered_log)
+
+    def test_http_email_delivery_uses_authenticated_strict_payload(self):
+        settings = Settings(
+            _env_file=None,
+            email_delivery_http_url="https://example.test/api/internal/email-delivery",
+            email_delivery_http_token="test-token-" + ("x" * 40),  # gitleaks:allow - synthetic test credential
+        )
+        response = MagicMock()
+        response.status = 204
+        response.__enter__.return_value = response
+        with (
+            patch("app.services.email_service.get_settings", return_value=settings),
+            patch("app.services.email_service.urlopen", return_value=response) as open_url,
+        ):
+            send_two_factor_email("private@example.com", "654321", "login", 10)
+
+        request = open_url.call_args.args[0]
+        payload = json.loads(request.data)
+        self.assertEqual(request.full_url, settings.email_delivery_http_url)
+        self.assertEqual(request.headers["Authorization"], f"Bearer {settings.email_delivery_http_token}")
+        self.assertEqual(payload, {
+            "recipient": "private@example.com",
+            "code": "654321",
+            "purpose": "login",
+            "expires_minutes": 10,
+        })
+
+    def test_production_http_email_delivery_requires_https_and_strong_paired_token(self):
+        secure_values = {
+            "_env_file": None,
+            "environment": "production",
+            "jwt_secret_key": "test-jwt-secret-with-more-than-thirty-two-characters",
+            "two_factor_hmac_secret": "test-hmac-secret-with-more-than-thirty-two-characters",
+        }
+        with self.assertRaises(ValidationError):
+            Settings(**secure_values, email_delivery_http_url="http://example.test/deliver")
+        with self.assertRaises(ValidationError):
+            Settings(
+                **secure_values,
+                email_delivery_http_url="https://example.test/deliver",
+                email_delivery_http_token="short",
+            )
 
     def test_dev_email_mode_uses_local_fixed_code_without_smtp(self):
         settings = Settings(_env_file=None, email_dev_mode=True)

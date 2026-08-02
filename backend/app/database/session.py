@@ -8,7 +8,15 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
-engine = create_engine(settings.database_url, pool_pre_ping=True)
+engine_options = {"pool_pre_ping": True}
+if settings.database_url.startswith("postgresql"):
+    engine_options.update(
+        pool_recycle=300,
+        pool_timeout=10,
+        connect_args={"connect_timeout": 10},
+    )
+
+engine = create_engine(settings.database_url, **engine_options)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
