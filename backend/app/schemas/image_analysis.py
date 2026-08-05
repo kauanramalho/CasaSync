@@ -33,6 +33,22 @@ class ImageAnalysisReminder(BaseModel):
     unit: ImageSuggestionReminderUnit
 
 
+class ImageAnalysisSourceEvidence(BaseModel):
+    dateText: str | None = Field(default=None, max_length=180)
+    personText: str | None = Field(default=None, max_length=180)
+    roleText: str | None = Field(default=None, max_length=180)
+    descriptionTexts: list[str] = Field(default_factory=list, max_length=8)
+    blockText: str | None = Field(default=None, max_length=600)
+    locationText: str | None = Field(default=None, max_length=180)
+
+
+class ImageAnalysisUsage(BaseModel):
+    inputTokens: int | None = Field(default=None, ge=0)
+    outputTokens: int | None = Field(default=None, ge=0)
+    reasoningTokens: int | None = Field(default=None, ge=0)
+    totalTokens: int | None = Field(default=None, ge=0)
+
+
 class ImageAnalysisItem(BaseModel):
     type: ImageSuggestionType
     title: str = Field(min_length=2, max_length=180)
@@ -46,6 +62,9 @@ class ImageAnalysisItem(BaseModel):
     categoryId: str | None = Field(default=None, max_length=36)
     priority: ImageSuggestionPriority | None = None
     responsible: str | None = Field(default=None, max_length=120)
+    responsibleAliasMatched: str | None = Field(default=None, max_length=80)
+    roleDetected: str | None = Field(default=None, max_length=120)
+    location: str | None = Field(default=None, max_length=180)
     assigneeId: str | None = Field(default=None, max_length=36)
     assigneeIds: list[str] = Field(default_factory=list, max_length=20)
     assigneeNames: list[str] = Field(default_factory=list, max_length=20)
@@ -61,6 +80,8 @@ class ImageAnalysisItem(BaseModel):
     sourceImageName: str | None = Field(default=None, max_length=255)
     originalText: str | None = Field(default=None, max_length=1200)
     needsReview: bool = True
+    needsConfirmation: bool = True
+    sourceEvidence: ImageAnalysisSourceEvidence = Field(default_factory=ImageAnalysisSourceEvidence)
     googleCalendarSuggestion: bool = False
     reminders: list[ImageAnalysisReminder] = Field(default_factory=list, max_length=5)
 
@@ -81,6 +102,9 @@ class ImageAnalysisResponse(BaseModel):
     imageErrors: list[ImageAnalysisFileError] = Field(default_factory=list, max_length=10)
     totalImagesProcessed: int = 0
     totalSuggestionsGenerated: int = 0
+    attemptCount: int = Field(default=0, ge=0, le=2)
+    retryReasons: list[str] = Field(default_factory=list, max_length=10)
+    usage: ImageAnalysisUsage | None = None
 
 
 class ImageAnalysisJobCreated(BaseModel):

@@ -118,9 +118,15 @@ class Settings(BaseSettings):
     ai_vision_enabled: bool = False
     ai_vision_provider: str = "openai"
     openai_api_key: str | None = None
-    openai_vision_model: str = "gpt-4.1-mini"
+    openai_vision_model: str = "gpt-5.6-luna"
+    openai_vision_reasoning_effort: str = "medium"
+    openai_vision_retry_reasoning_effort: str = "high"
+    openai_vision_max_attempts: int = 2
+    openai_vision_auto_confirm_threshold: float = 0.90
+    openai_vision_image_detail: str = "high"
     openai_vision_timeout_seconds: float = 45.0
     openai_vision_max_output_tokens: int = 2200
+    app_timezone: str = "America/Sao_Paulo"
     ai_image_job_retention_hours: int = 24
 
     task_attachment_storage_dir: Path = BACKEND_DIR / "storage" / "task_attachments"
@@ -190,6 +196,36 @@ class Settings(BaseSettings):
         normalized = value.strip().upper()
         if normalized not in {"HS256", "HS384", "HS512"}:
             raise ValueError("JWT_ALGORITHM deve usar HS256, HS384 ou HS512.")
+        return normalized
+
+    @field_validator("openai_vision_reasoning_effort", "openai_vision_retry_reasoning_effort")
+    @classmethod
+    def validate_vision_reasoning_effort(cls, value: str) -> str:
+        normalized = str(value or "").strip().lower()
+        if normalized not in {"none", "low", "medium", "high", "xhigh", "max"}:
+            raise ValueError("OPENAI_VISION_REASONING_EFFORT deve ser none, low, medium, high, xhigh ou max.")
+        return normalized
+
+    @field_validator("openai_vision_max_attempts")
+    @classmethod
+    def validate_vision_max_attempts(cls, value: int) -> int:
+        if value not in {1, 2}:
+            raise ValueError("OPENAI_VISION_MAX_ATTEMPTS deve ser 1 ou 2.")
+        return value
+
+    @field_validator("openai_vision_auto_confirm_threshold")
+    @classmethod
+    def validate_vision_threshold(cls, value: float) -> float:
+        if not 0.0 <= value <= 1.0:
+            raise ValueError("OPENAI_VISION_AUTO_CONFIRM_THRESHOLD deve ficar entre 0 e 1.")
+        return value
+
+    @field_validator("openai_vision_image_detail")
+    @classmethod
+    def validate_vision_image_detail(cls, value: str) -> str:
+        normalized = str(value or "").strip().lower()
+        if normalized not in {"low", "high", "auto", "original"}:
+            raise ValueError("OPENAI_VISION_IMAGE_DETAIL deve ser low, high, auto ou original.")
         return normalized
 
     @model_validator(mode="after")

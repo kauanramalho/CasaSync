@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import relationship
 
 from app.database.base import Base
@@ -35,6 +35,11 @@ class FamilyMember(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     role = Column(String(24), default=FamilyRole.MEMBER.value, nullable=False)
     points = Column(Integer, default=0, nullable=False)
+    ai_aliases = Column(JSON, nullable=True)
+
+    @property
+    def aliases(self) -> list[str]:
+        return self.ai_aliases if isinstance(self.ai_aliases, list) else []
 
     family = relationship("Family", back_populates="members")
     user = relationship("User", back_populates="memberships")

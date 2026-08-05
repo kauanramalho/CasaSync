@@ -163,7 +163,7 @@ def update_current_member_role(
     family_id: str = Depends(get_family_id),
     db: Session = Depends(get_db),
 ):
-    return update_member_role(db, family_id, current_user.id, member_id, payload.role)
+    return update_member_role(db, family_id, current_user.id, member_id, payload.role, payload.aliases)
 
 
 @router.delete("/current/members/{member_id}", status_code=204)

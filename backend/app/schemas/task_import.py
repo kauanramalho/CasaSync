@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.image_analysis import ImageAnalysisSourceEvidence
+
 
 class TaskSuggestionReminder(BaseModel):
     value: int = Field(gt=0, le=4320)
@@ -23,6 +25,9 @@ class TaskSuggestionImportItem(BaseModel):
     categoryId: str | None = Field(default=None, max_length=36)
     priority: str | None = Field(default=None, max_length=24)
     responsible: str | None = Field(default=None, max_length=120)
+    responsibleAliasMatched: str | None = Field(default=None, max_length=80)
+    roleDetected: str | None = Field(default=None, max_length=120)
+    location: str | None = Field(default=None, max_length=180)
     assigneeId: str | None = Field(default=None, max_length=36)
     assigneeIds: list[str] | None = Field(default=None, max_length=20)
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -34,6 +39,8 @@ class TaskSuggestionImportItem(BaseModel):
     reminders: list[TaskSuggestionReminder] | None = Field(default=None, max_length=5)
     sourceImageName: str | None = Field(default=None, max_length=255)
     originalText: str | None = Field(default=None, max_length=1200)
+    needsConfirmation: bool = True
+    sourceEvidence: ImageAnalysisSourceEvidence | None = None
 
 
 class TaskSuggestionsImportRequest(BaseModel):

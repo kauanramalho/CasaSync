@@ -1,0 +1,20 @@
+[
+  {
+    "id": "church_roster_alias_same_block",
+    "description": "Escala com duas datas, alias autorizado Cauã, funcao Bateria e louvores no mesmo bloco.",
+    "fixture": "private/church_roster_alias_same_block.png",
+    "expected": {"member": "user-kauan", "role": "Bateria", "date": "2026-08-15", "needs_confirmation": false}
+  },
+  {
+    "id": "multiple_dates_external_people",
+    "description": "Tabela com membros externos e ocorrencias em datas diferentes; somente a ocorrencia da familia deve ser extraida.",
+    "fixture": "private/multiple_dates_external_people.png",
+    "expected": {"member": "user-kauan", "date": "2026-08-22", "needs_confirmation": false}
+  },
+  {
+    "id": "cropped_low_resolution",
+    "description": "Imagem cortada e de baixa resolucao deve preservar a previa e pedir confirmacao.",
+    "fixture": "private/cropped_low_resolution.png",
+    "expected": {"member": null, "date": null, "needs_confirmation": true}
+  }
+]

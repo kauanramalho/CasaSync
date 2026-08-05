@@ -104,14 +104,17 @@ def parse_validated_images_to_task_suggestions(
             family_id,
             custom_instructions=custom_instructions,
             image_context=image_context,
-            timezone_name=settings.google_calendar_default_timezone or "America/Sao_Paulo",
+            timezone_name=settings.app_timezone or settings.google_calendar_default_timezone or "America/Sao_Paulo",
             current_user_id=current_user_id,
+            auto_confirm_threshold=settings.openai_vision_auto_confirm_threshold,
         )
         if db is not None
         else AiSuggestionContext(
             custom_instructions=custom_instructions,
             image_context=image_context,
             current_user_id=current_user_id,
+            timezone_name=settings.app_timezone,
+            auto_confirm_threshold=settings.openai_vision_auto_confirm_threshold,
         )
     )
     context = VisionAnalysisContext(
@@ -120,13 +123,18 @@ def parse_validated_images_to_task_suggestions(
         enabled=settings.ai_vision_enabled,
         openai_api_key=settings.openai_api_key,
         openai_vision_model=settings.openai_vision_model,
+        openai_vision_reasoning_effort=settings.openai_vision_reasoning_effort,
+        openai_vision_retry_reasoning_effort=settings.openai_vision_retry_reasoning_effort,
+        openai_vision_max_attempts=settings.openai_vision_max_attempts,
+        openai_vision_auto_confirm_threshold=settings.openai_vision_auto_confirm_threshold,
+        openai_vision_image_detail=settings.openai_vision_image_detail,
         openai_vision_timeout_seconds=settings.openai_vision_timeout_seconds,
         openai_vision_max_output_tokens=settings.openai_vision_max_output_tokens,
         custom_instructions=custom_instructions,
         image_context=image_context,
         members=members_for_prompt(suggestion_context),
         categories=categories_for_prompt(suggestion_context),
-        timezone_name=suggestion_context.timezone_name,
+        timezone_name=settings.app_timezone or suggestion_context.timezone_name,
         current_datetime=current_backend_datetime_for_prompt(suggestion_context),
     )
     combined_instruction_context = _combined_instruction_context(custom_instructions, image_context)

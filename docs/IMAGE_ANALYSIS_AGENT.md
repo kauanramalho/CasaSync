@@ -21,22 +21,32 @@ Variaveis:
 - `AI_VISION_PROVIDER=openai`
 - `AI_VISION_ENABLED=true`
 - `OPENAI_API_KEY=<definida apenas no ambiente seguro>`
-- `OPENAI_VISION_MODEL=gpt-4.1-mini`
+- `OPENAI_VISION_MODEL=gpt-5.6-luna`
+- `OPENAI_VISION_REASONING_EFFORT=medium`
+- `OPENAI_VISION_RETRY_REASONING_EFFORT=high`
+- `OPENAI_VISION_MAX_ATTEMPTS=2`
+- `OPENAI_VISION_AUTO_CONFIRM_THRESHOLD=0.90`
+- `OPENAI_VISION_IMAGE_DETAIL=high`
 - `OPENAI_VISION_TIMEOUT_SECONDS=20`
 - `OPENAI_VISION_MAX_OUTPUT_TOKENS=1200`
+- `APP_TIMEZONE=America/Sao_Paulo`
 
 Se `AI_VISION_ENABLED=false`, `AI_VISION_PROVIDER` for diferente de `openai` ou `OPENAI_API_KEY` estiver ausente, o endpoint retorna erro seguro. Nao existe mais resposta simulada para importacao por imagem. A chave nunca deve ir para o frontend.
 
-O adapter real:
+O adapter real usa a Responses API por HTTP (este checkout nao possui o SDK OpenAI instalado):
 
 - chama a OpenAI somente no backend;
 - envia a imagem validada como data URL temporaria;
-- usa JSON Schema para pedir retorno estruturado;
+- usa Structured Outputs/JSON Schema para pedir retorno estruturado;
+- faz no maximo uma segunda tentativa, somente por schema, ambiguidade, evidencia insuficiente ou baixa confianca; a primeira usa reasoning medium e a segunda high;
+- preserva evidencias curtas, funcao, local, alias autorizado e `needsConfirmation`;
 - valida o retorno com `ImageAnalysisResponse`, incluindo confianca e lembrete sugerido quando houver;
 - retorna warnings seguros se a imagem estiver ruim ou ilegivel;
 - retorna erro seguro se a API falhar, expirar ou estiver mal configurada;
 - mantem `needsUserReview=true`;
 - nao cria tarefas automaticamente.
+
+O caminho de testes usa mocks locais do transporte HTTP; ele nao consome creditos e nao representa uma chamada real.
 
 ## Feature flag
 

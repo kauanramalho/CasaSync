@@ -345,7 +345,14 @@ def regenerate_invite_code(db: Session, family_id: str, user_id: str) -> Family:
     return family
 
 
-def update_member_role(db: Session, family_id: str, user_id: str, member_id: str, role: str) -> FamilyMember:
+def update_member_role(
+    db: Session,
+    family_id: str,
+    user_id: str,
+    member_id: str,
+    role: str | None,
+    aliases: list[str] | None = None,
+) -> FamilyMember:
     actor = require_family_admin(db, family_id, user_id)
     member = (
         db.query(FamilyMember)
@@ -355,16 +362,18 @@ def update_member_role(db: Session, family_id: str, user_id: str, member_id: str
     )
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membro nao encontrado.")
-    if member.role == FamilyRole.OWNER.value:
+    if role is None and aliases is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Informe permissao ou aliases para atualizar o membro.")
+    if role is not None and member.role == FamilyRole.OWNER.value:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="O criador da familia nao pode ser rebaixado.")
-    if actor.id == member.id:
+    if role is not None and actor.id == member.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Voce nao pode alterar a propria permissao.")
-    if actor.role != FamilyRole.OWNER.value and (member.role == FamilyRole.ADMIN.value or role == "admin"):
+    if role is not None and actor.role != FamilyRole.OWNER.value and (member.role == FamilyRole.ADMIN.value or role == "admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Somente o proprietario pode promover ou rebaixar administradores.",
         )
-    if member.role == FamilyRole.ADMIN.value and role == "member":
+    if role is not None and member.role == FamilyRole.ADMIN.value and role == "member":
         admin_count = (
             db.query(FamilyMember)
             .filter(FamilyMember.family_id == family_id, FamilyMember.role.in_([FamilyRole.OWNER.value, FamilyRole.ADMIN.value]))
@@ -373,7 +382,10 @@ def update_member_role(db: Session, family_id: str, user_id: str, member_id: str
         if admin_count <= 1:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A familia precisa manter pelo menos um administrador.")
 
-    member.role = FamilyRole.ADMIN.value if role == "admin" else FamilyRole.MEMBER.value
+    if role is not None:
+        member.role = FamilyRole.ADMIN.value if role == "admin" else FamilyRole.MEMBER.value
+    if aliases is not None:
+        member.ai_aliases = aliases
     db.add(member)
     db.commit()
     db.refresh(member)

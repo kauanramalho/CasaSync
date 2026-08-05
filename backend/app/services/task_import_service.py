@@ -187,6 +187,9 @@ def _auto_review_reason(db: Session, family_id: str, item: TaskSuggestionImportI
     if (item.confidence or 0.0) < AUTO_CREATE_CONFIDENCE_THRESHOLD:
         return "Confianca abaixo de 80%; precisa de revisao manual."
 
+    if item.needsConfirmation:
+        return "A interpretacao da imagem exige confirmacao humana."
+
     if item.warnings:
         return "A IA marcou avisos ou incertezas; precisa de revisao manual."
 
@@ -235,6 +238,22 @@ def _description_with_import_note(item: TaskSuggestionImportItem) -> str | None:
         details.append(f"Origem da sugestao: {item.sourceImageName}.")
     if item.originalText:
         details.append(f"Texto identificado pela IA: {item.originalText[:500]}.")
+    if item.sourceEvidence:
+        evidence = item.sourceEvidence
+        evidence_parts = [
+            value
+            for value in (
+                evidence.dateText,
+                evidence.personText,
+                evidence.roleText,
+                evidence.locationText,
+                *evidence.descriptionTexts,
+                evidence.blockText,
+            )
+            if value
+        ]
+        if evidence_parts:
+            details.append("Evidencias revisadas: " + "; ".join(evidence_parts)[:500] + ".")
     if item.endDate or item.endTime:
         details.append(f"Fim sugerido pela IA: {' '.join(part for part in [item.endDate, item.endTime] if part)}.")
     if item.warnings:

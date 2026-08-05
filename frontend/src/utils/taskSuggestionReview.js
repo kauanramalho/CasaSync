@@ -76,13 +76,13 @@ function emailLocalPart(email) {
   return text.includes("@") ? text.split("@", 1)[0] : "";
 }
 
-function firstName(name) {
-  return normalizeLookupText(name).split(" ", 1)[0] || "";
-}
-
 function derivedNameAliases(name) {
   const tokens = new Set(normalizeLookupText(name).split(" "));
   return tokens.has("beatriz") ? ["bia"] : [];
+}
+
+function firstName(name) {
+  return normalizeLookupText(name).split(" ", 1)[0] || "";
 }
 
 function uniqueList(values) {
@@ -102,9 +102,11 @@ function buildMemberOptions(members = []) {
         firstName(name),
         username,
         email,
-        emailLocalPart(email)
+        emailLocalPart(email),
+        ...(Array.isArray(member?.aliases) ? member.aliases : [])
       ]).map(normalizeLookupText).filter(Boolean);
-      return { id, name, aliases, derivedAliases: derivedNameAliases(name) };
+      const hasBackendAliases = Object.prototype.hasOwnProperty.call(member || {}, "aliases");
+      return { id, name, aliases, derivedAliases: hasBackendAliases ? [] : derivedNameAliases(name) };
     })
     .filter((member) => member.id && member.name);
 }
@@ -490,6 +492,11 @@ export function buildReviewItem(rawItem = {}, index, categories = [], members = 
     sourceImageName: rawItem.sourceImageName || "",
     originalText: rawItem.originalText || "",
     needsReview: rawItem.needsReview !== false,
+    needsConfirmation: rawItem.needsConfirmation !== false,
+    responsibleAliasMatched: rawItem.responsibleAliasMatched || "",
+    roleDetected: rawItem.roleDetected || "",
+    location: rawItem.location || "",
+    sourceEvidence: rawItem.sourceEvidence || null,
     googleCalendarSuggestion: Boolean(rawItem.googleCalendarSuggestion)
   };
 }
@@ -499,6 +506,9 @@ export function getUncertainReviewWarnings(item) {
 
   if (item.confidence < LOW_CONFIDENCE_THRESHOLD) {
     warnings.push("Baixa confianca: confira todos os campos antes de confirmar.");
+  }
+  if (item.needsConfirmation) {
+    warnings.push("A interpretacao exige confirmacao humana antes da criacao.");
   }
   if (!String(item.date || "").trim()) {
     warnings.push("Data nao identificada. Voce pode criar sem data ou preencher manualmente.");
@@ -574,7 +584,12 @@ export function buildTaskImportPayload(items, { syncGoogleCalendar = false, auto
         reminderUnit: reminders[0]?.unit || null,
         reminders,
         sourceImageName: item.sourceImageName || null,
-        originalText: item.originalText || null
+        originalText: item.originalText || null,
+        needsConfirmation: Boolean(item.needsConfirmation),
+        responsibleAliasMatched: item.responsibleAliasMatched || null,
+        roleDetected: item.roleDetected || null,
+        location: item.location || null,
+        sourceEvidence: item.sourceEvidence || null
       };
     })
   };

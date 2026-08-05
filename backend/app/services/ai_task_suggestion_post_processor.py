@@ -74,6 +74,7 @@ class AiMemberOption:
     name: str
     username: str | None = None
     email: str | None = None
+    aliases: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -94,6 +95,8 @@ class AiSuggestionContext:
     custom_instructions: str | None = None
     image_context: str | None = None
     current_user_id: str | None = None
+    enforce_explicit_aliases: bool = False
+    auto_confirm_threshold: float = 0.90
 
 
 @dataclass(frozen=True)
@@ -130,6 +133,7 @@ def build_ai_suggestion_context(
     now: datetime | None = None,
     timezone_name: str = DEFAULT_TIMEZONE,
     current_user_id: str | None = None,
+    auto_confirm_threshold: float = 0.90,
 ) -> AiSuggestionContext:
     members = (
         db.query(FamilyMember)
@@ -150,6 +154,11 @@ def build_ai_suggestion_context(
                 name=(member.user.name if member.user else "").strip(),
                 username=(member.user.username if member.user else None),
                 email=(member.user.email if member.user else None),
+                aliases=tuple(
+                    alias.strip()
+                    for alias in (member.ai_aliases or [])
+                    if isinstance(alias, str) and alias.strip()
+                ),
             )
             for member in members
             if member.user_id and member.user
@@ -169,6 +178,8 @@ def build_ai_suggestion_context(
         custom_instructions=custom_instructions,
         image_context=image_context,
         current_user_id=current_user_id if any(member.user_id == current_user_id for member in members) else None,
+        enforce_explicit_aliases=True,
+        auto_confirm_threshold=auto_confirm_threshold,
     )
 
 
@@ -184,6 +195,8 @@ def members_for_prompt(context: AiSuggestionContext) -> list[dict]:
         }
         if member.username:
             payload["username"] = member.username
+        if member.aliases:
+            payload["aliases"] = list(member.aliases)
         if member.id == context.current_user_id:
             payload["isCurrentUser"] = True
         members.append(payload)
@@ -222,6 +235,7 @@ def resolve_assignee_resolution_for_suggestion(item: ImageAnalysisItem | object,
             context.members,
             require_explicit=True,
             current_user_id=context.current_user_id,
+            enforce_explicit_aliases=context.enforce_explicit_aliases,
         )
         _log_assignee_resolution(source_label, source_text, context.members, resolution)
         if resolution.had_signal:
@@ -234,6 +248,7 @@ def resolve_assignee_resolution_for_suggestion(item: ImageAnalysisItem | object,
             context.members,
             require_explicit=False,
             current_user_id=context.current_user_id,
+            enforce_explicit_aliases=context.enforce_explicit_aliases,
         )
         _log_assignee_resolution(f"campo {field_name}", source_text, context.members, resolution)
         if resolution.had_signal:
@@ -332,8 +347,7 @@ def normalize_suggestion_date(item: ImageAnalysisItem | object, context: AiSugge
 
     normalized_date = date_value.isoformat()
     LOGGER.info(
-        "AI image date normalized: original_text_excerpt=%s ai_date=%s year_explicit=%s normalized_date=%s timezone=%s",
-        _safe_log_excerpt(_item_value(item, "originalText") or _item_value(item, "title") or ""),
+        "AI image date normalized: ai_date=%s year_explicit=%s normalized_date=%s timezone=%s",
         raw_date or original_date.isoformat(),
         year_explicit,
         normalized_date,
@@ -377,6 +391,17 @@ def post_process_image_analysis_response(response: ImageAnalysisResponse, contex
         warnings.extend(reminder_warnings)
 
         first_reminder = reminders[0] if reminders else None
+        alias_matched = _authorized_alias_match(item, context, assignee_ids)
+        if _item_value(item, "responsibleAliasMatched") and not alias_matched:
+            warnings.append("O alias retornado nao esta cadastrado para o membro; confirme manualmente.")
+        confirmation_reasons = _confirmation_reasons(
+            item,
+            assignee_resolution.status,
+            warnings,
+            normalized_date,
+            assignee_ids,
+            context.auto_confirm_threshold,
+        )
         patch = {
             "categoryId": category_id,
             "assigneeIds": assignee_ids,
@@ -386,6 +411,7 @@ def post_process_image_analysis_response(response: ImageAnalysisResponse, contex
             "originalAssigneeText": assignee_resolution.original_text,
             "assigneeResolutionStatus": assignee_resolution.status,
             "assigneeResolutionWarnings": assignee_resolution.warnings,
+            "responsibleAliasMatched": alias_matched,
             "date": normalized_date,
             "time": normalized_time,
             "dateYearSource": _date_year_source(item, context, normalized_date),
@@ -394,6 +420,7 @@ def post_process_image_analysis_response(response: ImageAnalysisResponse, contex
             "reminderEnabled": bool(reminders and normalized_date),
             "reminderValue": first_reminder["value"] if first_reminder else None,
             "reminderUnit": first_reminder["unit"] if first_reminder else None,
+            "needsConfirmation": bool(confirmation_reasons),
         }
         changed = changed or any(getattr(item, key, None) != value for key, value in patch.items())
         processed_items.append(ImageAnalysisItem.model_validate({**item.model_dump(), **patch}))
@@ -411,6 +438,62 @@ def post_process_image_analysis_response(response: ImageAnalysisResponse, contex
             "totalSuggestionsGenerated": len(processed_items),
         }
     )
+
+
+def _authorized_alias_match(
+    item: ImageAnalysisItem | object,
+    context: AiSuggestionContext,
+    assignee_ids: list[str],
+) -> str | None:
+    supplied = normalize_lookup_text(_item_value(item, "responsibleAliasMatched"))
+    candidates = [member for member in context.members if member.id in assignee_ids]
+    if supplied:
+        for member in candidates:
+            if supplied in {normalize_lookup_text(alias) for alias in member.aliases}:
+                return _item_value(item, "responsibleAliasMatched")
+    source = normalize_lookup_text(
+        _item_value(item, "responsible")
+        or _item_value(item, "originalAssigneeText")
+        or _item_value(item, "originalText")
+    )
+    for member in candidates:
+        for alias in member.aliases:
+            if _text_contains_alias(source, alias):
+                return alias
+    return None
+
+
+def _confirmation_reasons(
+    item: ImageAnalysisItem | object,
+    assignee_status: str,
+    warnings: list[str],
+    normalized_date: str | None,
+    assignee_ids: list[str],
+    threshold: float,
+) -> list[str]:
+    reasons: list[str] = []
+    if bool(_item_value(item, "needsConfirmation")):
+        reasons.append("modelo_solicitou_confirmacao")
+    if float(_item_value(item, "confidence") or 0.0) < threshold:
+        reasons.append("baixa_confianca")
+    if assignee_status in {"ambiguous", "not_found"} or (
+        _item_value(item, "responsible") and not assignee_ids
+    ):
+        reasons.append("responsavel_nao_validado")
+    if _item_value(item, "type") in {"event", "reminder"} and not normalized_date:
+        reasons.append("data_essencial_ausente")
+    evidence = _item_value(item, "sourceEvidence")
+    if not evidence or not any(
+        _item_value(evidence, key) if not isinstance(evidence, dict) else evidence.get(key)
+        for key in ("dateText", "personText", "roleText", "descriptionTexts", "blockText", "locationText")
+    ):
+        reasons.append("evidencia_ausente")
+    if any(
+        any(token in normalize_lookup_text(warning) for token in ("ambigu", "contrad", "bloco", "celula", "cortad", "ilegiv", "confirm"))
+        for warning in warnings
+    ):
+        reasons.append("aviso_de_ambiguidade")
+    return list(dict.fromkeys(reasons))
 
 
 def _category_description(category: AiCategoryOption) -> str:
@@ -690,6 +773,7 @@ def _resolve_assignees_from_text(
     *,
     require_explicit: bool,
     current_user_id: str | None = None,
+    enforce_explicit_aliases: bool = False,
 ) -> AssigneeResolution:
     raw_text = _stringify_assignee_text(text)
     normalized_text = normalize_lookup_text(raw_text)
@@ -739,7 +823,11 @@ def _resolve_assignees_from_text(
     warnings: list[str] = []
     had_signal = explicit_signal or bool(fragments)
     for fragment in fragments:
-        fragment_resolution = _resolve_assignees_from_fragment(fragment, members)
+        fragment_resolution = _resolve_assignees_from_fragment(
+            fragment,
+            members,
+            enforce_explicit_aliases=enforce_explicit_aliases,
+        )
         for member_id in fragment_resolution.ids:
             if member_id not in ids:
                 ids.append(member_id)
@@ -754,31 +842,37 @@ def _resolve_assignees_from_text(
     )
 
 
-def _resolve_assignees_from_fragment(fragment: str, members: tuple[AiMemberOption, ...]) -> AssigneeResolution:
+def _resolve_assignees_from_fragment(
+    fragment: str,
+    members: tuple[AiMemberOption, ...],
+    *,
+    enforce_explicit_aliases: bool = False,
+) -> AssigneeResolution:
     normalized_fragment = normalize_lookup_text(fragment)
     if not normalized_fragment:
         return AssigneeResolution(ids=[], warnings=[], had_signal=False, status="unresolved")
 
     ids: list[str] = []
     warnings: list[str] = []
-    exact_matched_first_names: set[str] = set()
     short_alias_index: dict[str, list[AiMemberOption]] = {}
+    strong_alias_index: dict[str, list[AiMemberOption]] = {}
     for member in members:
-        for alias in [_first_name(member.name), *_derived_name_aliases(member.name)]:
+        derived_aliases = [] if enforce_explicit_aliases else _derived_name_aliases(member.name)
+        for alias in [_first_name(member.name), *derived_aliases]:
             if alias and member not in short_alias_index.setdefault(alias, []):
                 short_alias_index[alias].append(member)
-
-    for member in members:
         for alias in _strong_member_aliases(member):
-            if alias in short_alias_index:
-                continue
-            if _text_contains_alias(normalized_fragment, alias):
-                if member.id not in ids:
-                    ids.append(member.id)
-                first_name = _first_name(member.name)
-                if first_name:
-                    exact_matched_first_names.add(first_name)
-                break
+            if alias and alias not in short_alias_index and member not in strong_alias_index.setdefault(alias, []):
+                strong_alias_index[alias].append(member)
+
+    for alias, matches in strong_alias_index.items():
+        if not _text_contains_alias(normalized_fragment, alias):
+            continue
+        if len(matches) == 1:
+            if matches[0].id not in ids:
+                ids.append(matches[0].id)
+        else:
+            warnings.append(f"Responsavel '{alias}' e ambiguo nesta familia; confirme manualmente.")
 
     for alias, matches in short_alias_index.items():
         if not _text_contains_alias(normalized_fragment, alias):
@@ -787,14 +881,16 @@ def _resolve_assignees_from_fragment(fragment: str, members: tuple[AiMemberOptio
             if matches[0].id not in ids:
                 ids.append(matches[0].id)
         else:
-            if alias not in exact_matched_first_names:
-                warnings.append(f"Responsavel '{alias}' e ambiguo nesta familia; confirme manualmente.")
+            warnings.append(f"Responsavel '{alias}' e ambiguo nesta familia; confirme manualmente.")
 
-    fuzzy_resolution = _resolve_fuzzy_assignees_from_fragment(normalized_fragment, members, set(ids))
-    for member_id in fuzzy_resolution.ids:
-        if member_id not in ids:
-            ids.append(member_id)
-    warnings.extend(fuzzy_resolution.warnings)
+    if not enforce_explicit_aliases:
+        fuzzy_resolution = _resolve_fuzzy_assignees_from_fragment(normalized_fragment, members, set(ids))
+        for member_id in fuzzy_resolution.ids:
+            if member_id not in ids:
+                ids.append(member_id)
+        warnings.extend(fuzzy_resolution.warnings)
+    elif not ids:
+        warnings.append("O nome nao corresponde a um membro ou alias autorizado da familia.")
 
     unique_warnings = list(dict.fromkeys(warnings))[:5]
     if ids:
@@ -880,7 +976,7 @@ def _stringify_assignee_text(value: str | list | tuple | None) -> str:
 
 def _strong_member_aliases(member: AiMemberOption) -> list[str]:
     aliases = []
-    for value in [member.name, member.username, member.email, _email_local_part(member.email)]:
+    for value in [member.name, _first_name(member.name), member.username, member.email, _email_local_part(member.email), *member.aliases]:
         normalized = normalize_lookup_text(value)
         if normalized and len(normalized) >= 2 and normalized not in aliases:
             aliases.append(normalized)
@@ -889,10 +985,7 @@ def _strong_member_aliases(member: AiMemberOption) -> list[str]:
 
 def _derived_name_aliases(name: str | None) -> list[str]:
     tokens = set(normalize_lookup_text(name).split())
-    aliases = []
-    if "beatriz" in tokens:
-        aliases.append("bia")
-    return aliases
+    return ["bia"] if "beatriz" in tokens else []
 
 
 def _first_name(name: str | None) -> str:
@@ -937,12 +1030,11 @@ def _log_assignee_resolution(
     if not LOGGER.isEnabledFor(logging.DEBUG) or not resolution.had_signal:
         return
     LOGGER.debug(
-        "AI assignee resolution source=%s text_excerpt=%s members=%s resolved_ids=%s warnings=%s",
+        "AI assignee resolution source=%s member_count=%s resolved_count=%s warning_count=%s",
         source_label,
-        _safe_log_excerpt(_stringify_assignee_text(text)),
-        [{"id": member.id, "name": member.name} for member in members],
-        resolution.ids,
-        resolution.warnings,
+        len(members),
+        len(resolution.ids),
+        len(resolution.warnings),
     )
 
 

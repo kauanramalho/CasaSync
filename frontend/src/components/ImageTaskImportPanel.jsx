@@ -1324,6 +1324,20 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
                             Texto identificado: {item.originalText}
                           </div>
                         )}
+
+                        {(item.roleDetected || item.location || item.sourceEvidence) && (
+                          <div className="rounded-2xl border border-violet-100 bg-violet-50/70 px-3 py-2 text-xs font-bold text-violet-700">
+                            {item.roleDetected && <p>Funcao detectada: {item.roleDetected}</p>}
+                            {item.location && <p>Local: {item.location}</p>}
+                            {item.sourceEvidence?.dateText && <p>Trecho da data: {item.sourceEvidence.dateText}</p>}
+                            {item.sourceEvidence?.personText && <p>Trecho da pessoa: {item.sourceEvidence.personText}</p>}
+                            {item.sourceEvidence?.roleText && <p>Trecho da funcao: {item.sourceEvidence.roleText}</p>}
+                            {item.sourceEvidence?.descriptionTexts?.length > 0 && (
+                              <p>Trechos do bloco: {item.sourceEvidence.descriptionTexts.join("; ")}</p>
+                            )}
+                            {item.sourceEvidence?.blockText && <p>Bloco associado: {item.sourceEvidence.blockText}</p>}
+                          </div>
+                        )}
                       </div>
 
                       <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-3">

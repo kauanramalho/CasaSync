@@ -19,7 +19,7 @@ Use este guia antes de alterar upload de imagem, OpenAI Vision, sugestoes da IA,
 ## OpenAI Vision
 
 - A chamada a OpenAI deve acontecer somente no backend.
-- Variaveis relevantes ficam em `backend/app/core/config.py`: `AI_IMAGE_ANALYSIS_ENABLED`, `AI_VISION_ENABLED`, `AI_VISION_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_VISION_MODEL`, timeout e max tokens.
+- Variaveis relevantes ficam em `backend/app/core/config.py`: `AI_IMAGE_ANALYSIS_ENABLED`, `AI_VISION_ENABLED`, `AI_VISION_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_VISION_MODEL`, reasoning, limite de tentativas, limite de confirmacao, detalhe da imagem, timezone, timeout e max tokens.
 - O frontend nunca deve receber `OPENAI_API_KEY`, prompt interno, resposta crua do provider ou conteudo bruto da imagem em logs.
 - Quando IA estiver desativada ou mal configurada, o fluxo deve falhar com mensagem segura. Nao reintroduzir respostas falsas se o requisito for IA real.
 
@@ -45,9 +45,10 @@ Campos principais em `ImageAnalysisItem`:
 - `reminderEnabled`, `reminderValue`, `reminderUnit` para compatibilidade.
 - `reminders`: lista de ate 5 lembretes `{ value, unit }`, usada quando a IA ou as instrucoes pedirem multiplos avisos.
 - `sourceImageName`, `originalText`.
+- `responsibleAliasMatched`, `roleDetected`, `location`, `needsConfirmation` e `sourceEvidence` com trechos curtos da mesma celula/bloco.
 - `googleCalendarSuggestion`.
 
-A resposta completa traz `sourceType`, `overallConfidence`, `items`, `warnings`, `needsUserReview`, `imageErrors`, `totalImagesProcessed` e `totalSuggestionsGenerated`.
+A resposta completa traz `sourceType`, `overallConfidence`, `items`, `warnings`, `needsUserReview`, `imageErrors`, `totalImagesProcessed`, `totalSuggestionsGenerated`, `attemptCount`, `retryReasons` e uso agregado de tokens quando o provider fornece essa metrica.
 
 ## Revisao, importacao e criacao automatica
 
@@ -83,3 +84,10 @@ A resposta completa traz `sourceType`, `overallConfidence`, `items`, `warnings`,
 - Conferir `ImageTaskImportPanel`, `taskSuggestionReview`, `image_analysis_service`, `ai_vision_adapter`, `task_import_service` e schemas.
 - Nao logar imagem, OCR, prompt completo, API key ou provider payload.
 - Manter revisao humana quando modo automatico estiver desligado e manter pendencias editaveis quando automatico bloquear itens.
+
+## Aliases autorizados e retries
+
+- Aliases sao cadastrados por administrador no membro da familia (`PATCH /api/families/current/members/{member_id}`, campo `aliases`) e enviados ao modelo somente para a familia ativa.
+- Nomes parecidos sem alias explicito nao resolvem automaticamente no fluxo real; IDs invalidos sao removidos e exigem confirmacao.
+- O primeiro request usa reasoning medium; a segunda, se necessaria, usa reasoning high. Nunca ha terceira tentativa nem troca automatica para outro modelo.
+- O transporte e HTTP direto para a Responses API porque este checkout nao possui o SDK OpenAI instalado; os testes usam mocks locais.

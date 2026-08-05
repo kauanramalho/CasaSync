@@ -157,6 +157,7 @@ def _upgrade_existing_tables() -> None:
             _add_column_if_missing(connection, "families", "image_url", "image_url TEXT")
 
         if "family_members" in existing_tables:
+            _add_column_if_missing(connection, "family_members", "ai_aliases", "ai_aliases JSON")
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_family_members_family_id ON family_members (family_id)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_family_members_user_id ON family_members (user_id)"))
             _backfill_active_family_ids(connection)

@@ -289,6 +289,7 @@ def upgrade() -> None:
     sa.Column('user_id', sa.String(length=36), nullable=False),
     sa.Column('role', sa.String(length=24), nullable=False),
     sa.Column('points', sa.Integer(), nullable=False),
+    sa.Column('ai_aliases', sa.JSON(), nullable=True),
     sa.Column('id', sa.String(length=36), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),

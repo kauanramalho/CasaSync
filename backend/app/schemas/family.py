@@ -47,7 +47,24 @@ class FamilyUpdate(BaseModel):
 
 
 class FamilyMemberUpdate(BaseModel):
-    role: str = Field(pattern="^(admin|member)$")
+    role: str | None = Field(default=None, pattern="^(admin|member)$")
+    aliases: list[str] | None = Field(default=None, max_length=12)
+
+    @field_validator("aliases")
+    @classmethod
+    def normalize_aliases(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        normalized: list[str] = []
+        for alias in value:
+            item = " ".join(str(alias or "").split()).strip()
+            if not item:
+                continue
+            if len(item) > 80:
+                raise ValueError("Cada alias deve ter no maximo 80 caracteres.")
+            if item.casefold() not in {existing.casefold() for existing in normalized}:
+                normalized.append(item)
+        return normalized
 
 
 class FamilyMemberRead(ORMModel):
@@ -56,6 +73,7 @@ class FamilyMemberRead(ORMModel):
     user_id: str
     role: str
     points: int
+    aliases: list[str] = Field(default_factory=list)
     created_at: datetime
     user: UserSummary
 
