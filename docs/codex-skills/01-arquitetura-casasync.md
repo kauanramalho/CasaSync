@@ -6,7 +6,7 @@ Use este guia antes de mudancas estruturais no CasaSync. Ele resume onde as peca
 
 - Frontend: React/Vite em `frontend/src`, com rotas em paginas, componentes reutilizaveis e `frontend/src/services/api.js` como cliente unico da API.
 - Backend: FastAPI em `backend/app`, separado em `routes`, `services`, `schemas`, `models`, `core` e `database`.
-- Banco: SQLAlchemy models em `backend/app/models`. O projeto usa `Base.metadata.create_all` e upgrades aditivos em `backend/app/database/init_db.py`; nao ha uma camada Alembic tradicional neste momento.
+- Banco: SQLAlchemy models em `backend/app/models`, com schema versionado pelo Alembic em `backend/alembic`. O startup executa `alembic upgrade head`; `create_all` fica restrito a testes e compatibilidade local, nao ao runtime de producao.
 - Contexto principal: usuario autenticado, familia ativa, membros/responsaveis, categorias, tarefas, anexos, lembretes, IA por imagem e Google Agenda.
 
 ## Backend

@@ -1,6 +1,6 @@
 # Auditoria de Seguranca CasaSync
 
-Atualizada em: 2026-06-20
+Atualizada em: 2026-08-05
 
 ## Fluxo de autenticacao revisado
 
@@ -46,18 +46,20 @@ Atualizada em: 2026-06-20
 
 ## Riscos remanescentes antes do beta
 
-- Migracoes Alembic ainda devem substituir `create_all`/upgrades aditivos antes de producao.
 - O rate limit continua em memoria e por instancia; para escala horizontal, migrar para Redis ou gateway/API WAF.
 - Tokens continuam em `localStorage`; para maior hardening futuro, considerar cookie HttpOnly/Secure/SameSite com CSRF.
 - Recuperacao de senha nao existe no codigo atual; quando adicionada, aplicar token curto, hash, uso unico e rate limit.
 - Imagens persistidas continuam acessiveis por URL opaca para suportar `<img>` sem cookies; revisar URLs assinadas ou proxy autenticado antes de armazenar midia mais sensivel.
-- Auditoria de vulnerabilidades Python ficou limitada a `pip check`; adicionar `pip-audit`/SCA no CI.
+- O `npm audit` aponta um advisory alto do React Router para RSC. O CasaSync e uma SPA Vite sem RSC, e a correcao sugerida pelo npm exige downgrade incompativel; acompanhar uma correcao upstream compativel sem usar `--force`.
 
 ## Validacoes executadas
 
 - `python -m compileall backend/app`
+- `python -m unittest discover -s backend/tests` (116 testes)
+- `pip-audit -r backend/requirements.txt --progress-spinner off` sem vulnerabilidades conhecidas, com `cryptography>=50.0.0,<51.0.0`
 - `npm.cmd run lint`
 - `npm.cmd run build`
 - `npm.cmd audit --audit-level=moderate`
-- `backend/venv/Scripts/python.exe -m pip check`
+- `backend/.venv/Scripts/python.exe -m pip check`
+- Alembic em PostgreSQL 16: banco vazio, `alembic check`, downgrade/upgrade e adocao de schema compativel preservando dados sentinel.
 - Testes diretos em SQLite temporario para cadastro 2FA, bloqueio de token parcial, codigo errado, codigo correto, reutilizacao de codigo, expiracao, limite de tentativas, cooldown de reenvio e verificacao apos troca de e-mail.

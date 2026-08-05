@@ -11,7 +11,9 @@ O CasaSync foi organizado como uma base full-stack escalável, separando respons
 - `services`: regras de negócio, pontuação, família, tarefas, IA simulada e integrações.
 - `routes`: camada HTTP do FastAPI.
 
-Essa separação evita rotas gigantes e facilita evoluir para casos como múltiplas famílias por usuário, permissões, auditoria, Alembic e serviços externos.
+Essa separação evita rotas gigantes e facilita evoluir para casos como múltiplas famílias por usuário, permissões, auditoria e serviços externos.
+
+O schema de banco é versionado por Alembic em `backend/alembic`. O startup do backend executa `alembic upgrade head` antes de aceitar tráfego, e `create_all` não é usado no runtime de produção.
 
 ## Frontend
 
@@ -27,4 +29,4 @@ O design segue os mockups do CasaSync: dashboard SaaS, sidebar clara, cartões s
 
 - Google Agenda possui OAuth backend, conexao por usuario/familia, tokens criptografados e sync confirmado por tarefa.
 - Planejador IA já possui service isolado. Hoje usa mock, mas pode ser substituído por OpenAI/agents sem alterar as telas.
-- Migrações Alembic devem substituir `create_all` antes de produção.
+- Migrações Alembic são a fonte de verdade do schema em produção; cada alteração de modelo deve incluir uma migration compatível com dados existentes.
