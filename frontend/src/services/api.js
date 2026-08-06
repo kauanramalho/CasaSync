@@ -3,8 +3,10 @@ const SESSION_TOKEN_KEY = "casasync_session_token";
 const PENDING_TWO_FACTOR_KEY = "casasync_pending_2fa";
 const ACTIVE_FAMILY_ID_KEY = "casasync_active_family_id";
 const AUTH_SESSION_CHANGED_EVENT = "casasync:auth-session-changed";
+const API_REQUEST_TIMEOUT_MS = 25000;
 const pendingGetRequests = new Map();
 let cachedApiUrl = null;
+const runtimeEnv = import.meta.env || {};
 
 const FAMILY_SCOPED_PREFIXES = [
   "/automation",
@@ -21,7 +23,7 @@ const FAMILY_SCOPED_PREFIXES = [
 ];
 
 function configuredApiUrl() {
-  return (import.meta.env.VITE_API_URL || import.meta.env.NEXT_PUBLIC_API_URL || "").trim();
+  return (runtimeEnv.VITE_API_URL || runtimeEnv.NEXT_PUBLIC_API_URL || "").trim();
 }
 
 function developmentFallbackApiUrl() {
@@ -44,11 +46,11 @@ function appendApiPrefix(pathname) {
   return path.endsWith("/api") ? path : `${path}/api`;
 }
 
-function normalizeApiUrl(apiUrl) {
+export function normalizeApiUrl(apiUrl, { isProduction = Boolean(runtimeEnv.PROD) } = {}) {
   const value = apiUrl.replace(/\/+$/, "");
 
   if (value.startsWith("/")) {
-    if (import.meta.env.PROD) {
+    if (isProduction) {
       throw new Error("Configure VITE_API_URL com a URL publica completa do backend em producao.");
     }
     return appendApiPrefix(value);
@@ -61,7 +63,7 @@ function normalizeApiUrl(apiUrl) {
     throw new Error("VITE_API_URL invalida. Use uma URL absoluta, por exemplo https://seu-backend.onrender.com/api.");
   }
 
-  if (import.meta.env.PROD) {
+  if (isProduction) {
     if (parsedUrl.protocol !== "https:") {
       throw new Error("Em producao, VITE_API_URL deve usar HTTPS e apontar para o backend publico.");
     }
@@ -81,7 +83,7 @@ function getApiUrl() {
 
   const apiUrl = configuredApiUrl();
   if (!apiUrl) {
-    if (import.meta.env.DEV) {
+    if (runtimeEnv.DEV) {
       cachedApiUrl = normalizeApiUrl(developmentFallbackApiUrl());
       return cachedApiUrl;
     }
@@ -102,11 +104,41 @@ function makeApiError(message, metadata = {}) {
   return error;
 }
 
-function fallbackApiErrorMessage(status) {
+export function fallbackApiErrorMessage(status) {
   if (status === 409) return "E-mail ou username ja esta em uso.";
   if (status === 422) return "Confira os dados informados e tente novamente.";
-  if (status >= 500) return "Nao foi possivel concluir a acao agora. Tente novamente em alguns minutos.";
+  if (status === 401) return "Sua sessao expirou. Entre novamente para continuar.";
+  if (status === 403) return "Voce nao tem permissao para concluir esta acao.";
+  if (status === 404) return "A rota ou recurso solicitado nao foi encontrado.";
+  if (status === 429) return "Muitas tentativas. Aguarde um pouco e tente novamente.";
+  if (status >= 500) return "O servidor CasaSync esta indisponivel ou iniciando. Tente novamente em alguns minutos.";
   return "Nao foi possivel concluir a acao.";
+}
+
+async function fetchWithTimeout(url, options) {
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  let timedOut = false;
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller?.abort();
+  }, API_REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      ...(controller ? { signal: controller.signal } : {})
+    });
+  } catch (error) {
+    if (timedOut) {
+      throw makeApiError("A API pode estar iniciando. Aguarde alguns segundos e tente novamente.", {
+        isNetworkError: true,
+        isTimeoutError: true
+      });
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export function createApiResponseError(status, data, fallbackMessage) {
@@ -226,29 +258,29 @@ async function performRequest(path, { method = "GET", body, auth = true } = {}) 
     headers.Authorization = `Bearer ${token}`;
   }
 
-  if (import.meta.env.DEV) {
+  if (runtimeEnv.DEV) {
     console.info("[CasaSync API]", method, url);
   }
 
   let response;
   try {
-    response = await fetch(url, {
+    response = await fetchWithTimeout(url, {
       method,
       headers,
       credentials: "omit",
       body: body !== undefined ? JSON.stringify(body) : undefined
     });
   } catch (error) {
-    if (import.meta.env.DEV) {
+    if (runtimeEnv.DEV) {
       console.error("[CasaSync API]", "network-error", method, url, error);
     }
-    throw makeApiError(
-      "Nao foi possivel conectar a API. O servidor pode estar indisponivel ou bloqueando a origem do site.",
-      { isNetworkError: true }
-    );
+    if (error?.isTimeoutError) throw error;
+    throw makeApiError("Nao foi possivel conectar a API. Verifique a origem configurada, a conexao ou tente novamente enquanto o servidor inicia.", {
+      isNetworkError: true
+    });
   }
 
-  if (import.meta.env.DEV) {
+  if (runtimeEnv.DEV) {
     console.info("[CasaSync API]", response.status, method, url);
   }
 
@@ -283,17 +315,18 @@ async function uploadRequest(
 
   let response;
   try {
-    response = await fetch(url, {
+    response = await fetchWithTimeout(url, {
       method: "POST",
       headers,
       credentials: "omit",
       body: formData
     });
   } catch (error) {
-    if (import.meta.env.DEV) {
+    if (runtimeEnv.DEV) {
       console.error("[CasaSync API]", "upload-network-error", url, error);
     }
-    throw new Error(networkErrorMessage);
+    if (error?.isTimeoutError) throw error;
+    throw makeApiError(networkErrorMessage, { isNetworkError: true });
   }
 
   const data = response.status === 204 ? null : await response.json().catch(() => null);
@@ -317,16 +350,17 @@ async function downloadRequest(path, { auth = true } = {}) {
 
   let response;
   try {
-    response = await fetch(url, {
+    response = await fetchWithTimeout(url, {
       method: "GET",
       headers,
       credentials: "omit"
     });
   } catch (error) {
-    if (import.meta.env.DEV) {
+    if (runtimeEnv.DEV) {
       console.error("[CasaSync API]", "download-network-error", url, error);
     }
-    throw new Error("Nao foi possivel abrir o anexo. Verifique sua conexao e tente novamente.");
+    if (error?.isTimeoutError) throw error;
+    throw makeApiError("Nao foi possivel abrir o anexo. Verifique sua conexao e tente novamente.", { isNetworkError: true });
   }
 
   if (!response.ok) {

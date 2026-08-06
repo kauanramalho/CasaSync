@@ -62,6 +62,7 @@ class ProductionSettingsSecurityTest(unittest.TestCase):
             "jwt_secret_key": "jwt-secret-with-more-than-thirty-two-random-characters",
             "two_factor_hmac_secret": "hmac-secret-with-more-than-thirty-two-random-characters",
             "email_dev_mode": False,
+            "frontend_url": "https://casasync.example.com",
         }
         values.update(overrides)
         return Settings(**values)
@@ -96,6 +97,35 @@ class ProductionSettingsSecurityTest(unittest.TestCase):
             integration_token_encryption_key="calendar-encryption-key-with-more-than-thirty-two-characters",
         )
         self.assertTrue(settings.is_production)
+
+    def test_cors_origins_accept_json_and_csv_but_reject_wildcard_or_paths(self):
+        settings = Settings(
+            _env_file=None,
+            cors_origins='["https://app.example.com/", "https://preview.example.com"]',
+        )
+        self.assertEqual(settings.cors_origins, ["https://app.example.com", "https://preview.example.com"])
+
+        csv_settings = Settings(_env_file=None, cors_origins="https://app.example.com, https://admin.example.com/")
+        self.assertEqual(csv_settings.cors_origins, ["https://app.example.com", "https://admin.example.com"])
+
+        for invalid in ("*", "https://app.example.com/dashboard", "not-an-origin"):
+            with self.subTest(invalid=invalid), self.assertRaises(ValidationError):
+                Settings(_env_file=None, cors_origins=invalid)
+        with self.assertRaises(ValidationError):
+            Settings(_env_file=None, cors_origin_regex="[")
+
+    def test_production_cors_requires_explicit_https_origin_or_regex(self):
+        with self.assertRaises(ValidationError):
+            self.production_settings(frontend_url=None, cors_origins=[], cors_origin_regex=None)
+
+        with self.assertRaises(ValidationError):
+            self.production_settings(frontend_url="http://app.example.com")
+
+        with self.assertRaises(ValidationError):
+            self.production_settings(frontend_url=None, cors_origin_regex=r".*")
+
+        regex_only = self.production_settings(frontend_url=None, cors_origin_regex=r"^https://preview\.example\.com$")
+        self.assertEqual(regex_only.allowed_cors_origins, [])
 
     def test_neon_database_url_uses_psycopg2_and_requires_ssl(self):
         settings = self.production_settings(
@@ -377,6 +407,7 @@ class AuthSecurityTest(unittest.TestCase):
             "environment": "production",
             "jwt_secret_key": "test-jwt-secret-with-more-than-thirty-two-characters",
             "two_factor_hmac_secret": "test-hmac-secret-with-more-than-thirty-two-characters",
+            "frontend_url": "https://casasync.example.com",
         }
         with self.assertRaises(ValidationError):
             Settings(**secure_values, email_delivery_http_url="http://example.test/deliver")

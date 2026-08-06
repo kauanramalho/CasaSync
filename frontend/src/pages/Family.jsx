@@ -51,6 +51,7 @@ export default function Family() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const familyImageRef = useRef(null);
+  const loadInFlightRef = useRef(false);
   const [families, setFamilies] = useState([]);
   const [members, setMembers] = useState([]);
   const [monthlyRanking, setMonthlyRanking] = useState([]);
@@ -68,8 +69,12 @@ export default function Family() {
   const [leavingFamily, setLeavingFamily] = useState(false);
   const [decidingRequestId, setDecidingRequestId] = useState("");
   const [savingFamily, setSavingFamily] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const load = useCallback(async function load() {
+    if (loadInFlightRef.current) return;
+    loadInFlightRef.current = true;
+    setLoading(true);
     setError("");
     try {
       const familyRows = await familiesApi.list();
@@ -95,6 +100,9 @@ export default function Family() {
       }
     } catch (err) {
       setError(normalizeApiError(err));
+    } finally {
+      loadInFlightRef.current = false;
+      setLoading(false);
     }
   }, [user?.id]);
 
@@ -333,9 +341,15 @@ export default function Family() {
       <PageHeader title="Familia" subtitle="Gerencie membros, convites e o grupo principal do CasaSync." user={user} />
 
       {(message || error) && (
-        <p className={`mb-5 rounded-2xl px-4 py-3 text-sm font-semibold ${error ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"}`}>
-          {error || message}
-        </p>
+        <div className={`mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl px-4 py-3 text-sm font-semibold ${error ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"}`}>
+          <span>{error || message}</span>
+          {error && (
+            <Button type="button" variant="secondary" className="px-3 py-2 text-xs" onClick={load} disabled={loading}>
+              <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              Tentar novamente
+            </Button>
+          )}
+        </div>
       )}
 
       {currentFamily && (

@@ -1,4 +1,5 @@
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -10,7 +11,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 REPO_ROOT = BACKEND_DIR.parent
 
-PRODUCTION_CORS_ORIGINS = ["https://casa-sync.vercel.app"]
 DEVELOPMENT_CORS_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -42,6 +42,28 @@ def _normalize_origin(origin: str) -> str:
         netloc = f"{netloc}:{parsed.port}"
 
     return urlunsplit((parsed.scheme.lower(), netloc, "", "", ""))
+
+
+def _validate_origin(value: str, field_name: str) -> str:
+    """Validate an explicit browser origin without silently broadening it."""
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} deve conter apenas URLs de origem validas.")
+
+    cleaned = value.strip()
+    if not cleaned or cleaned == "*":
+        raise ValueError(f"{field_name} nao pode ficar vazio nem usar '*'.")
+
+    parsed = urlsplit(cleaned)
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+        raise ValueError(f"{field_name} deve usar uma origem HTTP/HTTPS completa.")
+    if parsed.username or parsed.password or parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+        raise ValueError(f"{field_name} deve conter somente esquema, host e porta, sem caminho ou credenciais.")
+    try:
+        parsed.port
+    except ValueError as exc:
+        raise ValueError(f"{field_name} contem uma porta invalida.") from exc
+
+    return _normalize_origin(cleaned)
 
 
 def _is_local_origin(origin: str) -> bool:
@@ -154,11 +176,35 @@ class Settings(BaseSettings):
                 return []
             if cleaned.startswith("["):
                 try:
-                    return json.loads(cleaned)
-                except json.JSONDecodeError:
-                    pass
-            return [origin.strip() for origin in cleaned.split(",") if origin.strip()]
-        return value
+                    parsed = json.loads(cleaned)
+                except json.JSONDecodeError as exc:
+                    raise ValueError("CORS_ORIGINS deve ser JSON valido ou uma lista separada por virgulas.") from exc
+                if not isinstance(parsed, list):
+                    raise ValueError("CORS_ORIGINS em JSON deve ser uma lista de origens.")
+                value = parsed
+            else:
+                value = [origin.strip() for origin in cleaned.split(",") if origin.strip()]
+        if not isinstance(value, (list, tuple, set)):
+            raise ValueError("CORS_ORIGINS deve ser uma lista de origens.")
+        return [_validate_origin(origin, "CORS_ORIGINS") for origin in value]
+
+    @field_validator("frontend_url", mode="before")
+    @classmethod
+    def normalize_frontend_url(cls, value):
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        return _validate_origin(value, "FRONTEND_URL")
+
+    @field_validator("cors_origin_regex")
+    @classmethod
+    def validate_cors_origin_regex(cls, value):
+        if value is None:
+            return value
+        try:
+            re.compile(value)
+        except re.error as exc:
+            raise ValueError("CORS_ORIGIN_REGEX deve ser uma expressao regular valida.") from exc
+        return value.strip()
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -166,7 +212,6 @@ class Settings(BaseSettings):
         return _normalize_database_url(value)
 
     @field_validator(
-        "frontend_url",
         "cors_origin_regex",
         "google_client_id",
         "google_client_secret",
@@ -233,6 +278,14 @@ class Settings(BaseSettings):
         if not self.is_production:
             return self
 
+        configured_origins = [origin for origin in (self.frontend_url, *self.cors_origins) if origin]
+        if not configured_origins and not self.cors_origin_regex:
+            raise ValueError("Em producao, configure FRONTEND_URL, CORS_ORIGINS ou CORS_ORIGIN_REGEX.")
+        if any(urlsplit(origin).scheme.lower() != "https" for origin in configured_origins):
+            raise ValueError("As origens CORS devem usar HTTPS em producao.")
+        if self.cors_origin_regex and not self.cors_origin_regex.startswith("^https://"):
+            raise ValueError("CORS_ORIGIN_REGEX deve ser ancorado em HTTPS em producao.")
+
         jwt_secret = self.jwt_secret_key.strip()
         if len(jwt_secret) < 32 or jwt_secret.lower() in INSECURE_JWT_SECRETS:
             raise ValueError("JWT_SECRET_KEY deve ter pelo menos 32 caracteres aleatorios em producao.")
@@ -269,7 +322,6 @@ class Settings(BaseSettings):
         if self.frontend_url:
             origins.append(self.frontend_url)
         origins.extend(self.cors_origins)
-        origins.extend(PRODUCTION_CORS_ORIGINS)
         if not self.is_production:
             origins.extend(DEVELOPMENT_CORS_ORIGINS)
 

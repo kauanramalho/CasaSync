@@ -478,7 +478,9 @@ def handle_google_callback(
 def _frontend_settings_url(settings: Settings, result: GoogleCalendarCallbackResponse) -> str:
     base_url = (settings.frontend_url or "").strip().rstrip("/")
     if not base_url:
-        base_url = "https://casa-sync.vercel.app" if settings.is_production else "http://localhost:5173"
+        if settings.is_production:
+            raise RuntimeError("FRONTEND_URL precisa estar configurado para redirecionar o callback do Google em producao.")
+        base_url = "http://localhost:5173"
     parsed = urlsplit(base_url)
     query = urlencode({"googleCalendar": result.status, "message": result.message})
     return urlunsplit((parsed.scheme, parsed.netloc, "/configuracoes", query, ""))
