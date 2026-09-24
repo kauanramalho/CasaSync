@@ -55,7 +55,6 @@ export default function Login() {
           value={form.password}
           onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
           autoComplete="current-password"
-          minLength={8}
           required
         />
         <label className="flex cursor-pointer items-center gap-3 rounded-2xl bg-white/70 px-4 py-3 text-sm font-semibold text-muted transition hover:bg-white">

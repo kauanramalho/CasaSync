@@ -20,8 +20,10 @@ from app.services.auth_service import (
     register_user,
     update_user_profile,
 )
+from app.services.email_service import two_factor_delivery_available
 from app.services.family_service import get_active_family
 from app.services.two_factor_service import (
+    as_aware_utc,
     create_two_factor_challenge,
     load_pending_two_factor_context,
     login_two_factor_purpose,
@@ -49,8 +51,9 @@ def _two_factor_response(
     db: Session,
     *,
     commit: bool = True,
+    enforce_cooldown: bool = True,
 ) -> TwoFactorRequiredResponse:
-    challenge = create_two_factor_challenge(db, user, purpose, commit=commit)
+    challenge = create_two_factor_challenge(db, user, purpose, commit=commit, enforce_cooldown=enforce_cooldown)
     settings = get_settings()
     return TwoFactorRequiredResponse(
         pending_token=create_pending_two_factor_token(
@@ -61,7 +64,7 @@ def _two_factor_response(
         ),
         purpose=purpose,
         masked_email=mask_email(user.email),
-        expires_at=challenge.expires_at,
+        expires_at=as_aware_utc(challenge.expires_at),
         delivery_mode="development" if settings.email_dev_mode else "email",
     )
 
@@ -71,7 +74,15 @@ def register(payload: UserCreate, request: Request, db: Session = Depends(get_db
     try:
         check_rate_limit(f"auth:register:{client_identifier(request)}", limit=8, window_seconds=3600)
         user = register_user(db, payload, commit=False)
-        response = _two_factor_response(user, "signup", db, commit=False)
+        if not two_factor_delivery_available():
+            user = record_login_without_two_factor(db, user, commit=False)
+            response = AuthResponse(
+                access_token=create_access_token(user.id, token_version=user.token_version),
+                user=user,
+            )
+            db.commit()
+            return response
+        response = _two_factor_response(user, "signup", db, commit=False, enforce_cooldown=False)
         db.commit()
         return response
     except HTTPException as exc:
@@ -96,24 +107,58 @@ def register(payload: UserCreate, request: Request, db: Session = Depends(get_db
 def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
     client_id = client_identifier(request)
     identifier_hash = _identifier_fingerprint(payload.identifier)
-    check_rate_limit(f"auth:login:ip:{client_id}", limit=30, window_seconds=300)
-    check_rate_limit(f"auth:login:account:{identifier_hash}", limit=10, window_seconds=300)
-    user = authenticate_user(db, payload.identifier, payload.password)
-    purpose = login_two_factor_purpose(user)
-    if purpose == "signup" or should_require_login_two_factor(user):
-        return _two_factor_response(user, purpose, db)
-    user = record_login_without_two_factor(db, user)
-    get_active_family(db, user)
-    return AuthResponse(access_token=create_access_token(user.id, token_version=user.token_version), user=user)
+    try:
+        check_rate_limit(f"auth:login:ip:{client_id}", limit=30, window_seconds=300)
+        check_rate_limit(f"auth:login:account:{identifier_hash}", limit=10, window_seconds=300)
+        user = authenticate_user(db, payload.identifier, payload.password)
+        purpose = login_two_factor_purpose(user)
+        if two_factor_delivery_available() and (purpose == "signup" or should_require_login_two_factor(user)):
+            return _two_factor_response(user, purpose, db, enforce_cooldown=False)
+        if not user.email_verified:
+            logger.warning(
+                "Login concedido sem verificacao de e-mail (fallback sem canal de entrega) email_hash=%s",
+                identifier_hash,
+            )
+        user = record_login_without_two_factor(db, user)
+        get_active_family(db, user)
+        return AuthResponse(access_token=create_access_token(user.id, token_version=user.token_version), user=user)
+    except HTTPException as exc:
+        db.rollback()
+        if exc.status_code not in {status.HTTP_401_UNAUTHORIZED, status.HTTP_429_TOO_MANY_REQUESTS}:
+            logger.warning(
+                "Login request failed status=%s email_hash=%s detail=%s",
+                exc.status_code,
+                identifier_hash,
+                exc.detail,
+            )
+        raise
+    except Exception as exc:
+        db.rollback()
+        logger.exception("Unexpected login error email_hash=%s", identifier_hash)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Nao foi possivel concluir o login agora. Tente novamente em alguns minutos.",
+        ) from exc
 
 
 @router.post("/2fa/verify", response_model=AuthResponse)
 def verify_two_factor(payload: TwoFactorVerifyRequest, request: Request, db: Session = Depends(get_db)):
     check_rate_limit(f"auth:2fa:verify:{client_identifier(request)}", limit=20, window_seconds=300)
-    context = load_pending_two_factor_context(db, payload.pending_token, require_active_challenge=True)
-    user = verify_two_factor_code(db, context, payload.code)
-    get_active_family(db, user)
-    return AuthResponse(access_token=create_access_token(user.id, token_version=user.token_version), user=user)
+    try:
+        context = load_pending_two_factor_context(db, payload.pending_token, require_active_challenge=True)
+        user = verify_two_factor_code(db, context, payload.code)
+        get_active_family(db, user)
+        return AuthResponse(access_token=create_access_token(user.id, token_version=user.token_version), user=user)
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        logger.exception("Unexpected 2FA verify error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Nao foi possivel concluir a verificacao agora. Tente novamente em alguns minutos.",
+        ) from exc
 
 
 @router.post("/2fa/resend", response_model=TwoFactorRequiredResponse)
@@ -134,9 +179,14 @@ def update_me(payload: UserUpdate, current_user: User = Depends(get_current_user
     next_email = payload.email.strip().lower() if payload.email else None
     email_changed = bool(next_email and next_email != current_user.email)
     if email_changed:
+        if not two_factor_delivery_available():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Alteracao de e-mail indisponivel sem canal de verificacao configurado.",
+            )
         try:
             user = update_user_profile(db, current_user, payload, commit=False)
-            response = _two_factor_response(user, "signup", db, commit=False)
+            response = _two_factor_response(user, "signup", db, commit=False, enforce_cooldown=False)
             db.commit()
             return response
         except Exception:

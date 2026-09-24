@@ -45,16 +45,23 @@ EXPECTED_USER_INDEXES = {
     'ix_users_username_lower_unique',
 }
 
+LEGACY_USERS_UPGRADE_COLUMNS = {
+    'username': 'username VARCHAR(30)',
+    'token_version': 'token_version INTEGER DEFAULT 0 NOT NULL',
+    'email_verified': 'email_verified BOOLEAN DEFAULT TRUE NOT NULL',
+    'email_verified_at': 'email_verified_at {timestamp_type}',
+    'two_factor_enabled': 'two_factor_enabled BOOLEAN DEFAULT TRUE NOT NULL',
+    'last_login_at': 'last_login_at {timestamp_type}',
+    'last_2fa_verified_at': 'last_2fa_verified_at {timestamp_type}',
+    'email_task_reminders_enabled': 'email_task_reminders_enabled BOOLEAN DEFAULT FALSE NOT NULL',
+    'push_task_reminders_enabled': 'push_task_reminders_enabled BOOLEAN DEFAULT FALSE NOT NULL',
+    'ai_task_import_instructions': 'ai_task_import_instructions TEXT',
+    'active_family_id': 'active_family_id VARCHAR(36)',
+}
 
-def _adopt_compatible_existing_schema() -> bool:
-    if context.is_offline_mode():
-        return False
 
-    bind = op.get_bind()
-    inspector = sa.inspect(bind)
+def _validate_existing_schema(bind, inspector) -> None:
     existing_tables = set(inspector.get_table_names()) - {'alembic_version'}
-    if not existing_tables:
-        return False
 
     missing_tables = EXPECTED_TABLES - existing_tables
     if missing_tables:
@@ -82,7 +89,59 @@ def _adopt_compatible_existing_schema() -> bool:
             'Banco CasaSync incompativel; indices de autenticacao ausentes: '
             + ', '.join(sorted(missing_indexes))
         )
-    return True
+
+
+def _add_column_if_missing(connection, inspector, table_name: str, column_name: str, definition: str) -> None:
+    actual_columns = {column['name'] for column in inspector.get_columns(table_name)}
+    if column_name not in actual_columns:
+        connection.execute(sa.text(f'ALTER TABLE {table_name} ADD COLUMN {definition}'))
+
+
+def _repair_partial_schema(bind) -> None:
+    from app.database.base import Base
+    import app.models  # noqa: F401
+
+    Base.metadata.create_all(bind=bind)
+    timestamp_type = 'TIMESTAMP WITH TIME ZONE' if bind.dialect.name == 'postgresql' else 'DATETIME'
+    inspector = sa.inspect(bind)
+
+    if 'users' in set(inspector.get_table_names()):
+        for column_name, definition in LEGACY_USERS_UPGRADE_COLUMNS.items():
+            _add_column_if_missing(
+                bind,
+                inspector,
+                'users',
+                column_name,
+                definition.format(timestamp_type=timestamp_type),
+            )
+        bind.execute(sa.text('CREATE UNIQUE INDEX IF NOT EXISTS ix_users_email ON users (email)'))
+        bind.execute(sa.text('CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users (username)'))
+        if bind.dialect.name != 'sqlite':
+            bind.execute(
+                sa.text(
+                    'CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username_lower_unique '
+                    'ON users (LOWER(username)) WHERE username IS NOT NULL'
+                )
+            )
+
+
+def _adopt_compatible_existing_schema() -> bool:
+    if context.is_offline_mode():
+        return False
+
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_tables = set(inspector.get_table_names()) - {'alembic_version'}
+    if not existing_tables:
+        return False
+
+    try:
+        _validate_existing_schema(bind, inspector)
+        return True
+    except RuntimeError:
+        _repair_partial_schema(bind)
+        _validate_existing_schema(bind, sa.inspect(bind))
+        return True
 
 
 def upgrade() -> None:

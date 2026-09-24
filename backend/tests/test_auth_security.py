@@ -354,8 +354,12 @@ class AuthSecurityTest(unittest.TestCase):
             password="StrongPass123",
         )
         delivery_error = HTTPException(status_code=503, detail="delivery unavailable")
+        settings = TEST_SETTINGS.model_copy(update={"email_dev_mode": True})
         with (
             patch("app.routes.auth.check_rate_limit"),
+            patch("app.routes.auth.get_settings", return_value=settings),
+            patch("app.services.two_factor_service.get_settings", return_value=settings),
+            patch("app.services.email_service.get_settings", return_value=settings),
             patch("app.services.two_factor_service.send_two_factor_email", side_effect=delivery_error),
             patch("app.routes.auth.logger.warning"),
         ):

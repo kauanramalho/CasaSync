@@ -65,7 +65,7 @@ class UserLogin(BaseModel):
         max_length=255,
         validation_alias=AliasChoices("identifier", "email"),
     )
-    password: str = Field(min_length=8, max_length=128)
+    password: str = Field(min_length=1, max_length=128)
 
     @field_validator("identifier")
     @classmethod
@@ -103,7 +103,7 @@ class UserUpdate(BaseModel):
     username: str | None = Field(default=None, max_length=30)
     email: EmailStr | None = None
     avatar_url: str | None = Field(default=None, max_length=MAX_IMAGE_URL_LENGTH)
-    current_password: str | None = Field(default=None, min_length=8, max_length=128)
+    current_password: str | None = Field(default=None, min_length=1, max_length=128)
 
     @field_validator("name")
     @classmethod
@@ -136,7 +136,7 @@ class UserUpdate(BaseModel):
 class PasswordUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    current_password: str = Field(min_length=8, max_length=128)
+    current_password: str = Field(min_length=1, max_length=128)
     new_password: str = Field(min_length=8, max_length=128)
 
     @field_validator("new_password")
@@ -148,4 +148,4 @@ class PasswordUpdate(BaseModel):
 class PasswordConfirmation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    current_password: str = Field(min_length=8, max_length=128)
+    current_password: str = Field(min_length=1, max_length=128)

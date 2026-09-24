@@ -22,8 +22,25 @@ def run() -> None:
             print("Seed já existe. Use kauan@casasync.app / 12345678 para entrar.")
             return
 
-        kauan = User(name="Kauan", username="kauan", email="kauan@casasync.app", hashed_password=hash_password("12345678"))
-        bia = User(name="Bia", username="bia", email="bia@casasync.app", hashed_password=hash_password("12345678"))
+        now = datetime.now(timezone.utc)
+        kauan = User(
+            name="Kauan",
+            username="kauan",
+            email="kauan@casasync.app",
+            hashed_password=hash_password("12345678"),
+            email_verified=True,
+            email_verified_at=now,
+            last_2fa_verified_at=now,
+        )
+        bia = User(
+            name="Bia",
+            username="bia",
+            email="bia@casasync.app",
+            hashed_password=hash_password("12345678"),
+            email_verified=True,
+            email_verified_at=now,
+            last_2fa_verified_at=now,
+        )
         db.add_all([kauan, bia])
         db.flush()
 
@@ -40,7 +57,6 @@ def run() -> None:
 
         categories = ensure_default_categories(db, family.id)
         category_map = {category.name: category for category in categories}
-        now = datetime.now(timezone.utc)
 
         tasks = [
             ("Planejar date da semana", "Escolher lugar, horário e orçamento.", bia.id, "Relacionamento", TaskPriority.HIGH, TaskStatus.PENDING, 0),

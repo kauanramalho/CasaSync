@@ -69,6 +69,51 @@ class MigrationTest(unittest.TestCase):
             finally:
                 engine.dispose()
 
+    def test_partial_legacy_schema_is_repaired_and_adopted_without_data_loss(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "legacy.db"
+            database_url = f"sqlite:///{database_path.as_posix()}"
+            engine = create_engine(database_url)
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "CREATE TABLE users ("
+                        "id VARCHAR(36) PRIMARY KEY, "
+                        "name VARCHAR(120) NOT NULL, "
+                        "email VARCHAR(255) NOT NULL, "
+                        "hashed_password VARCHAR(255) NOT NULL, "
+                        "avatar_url TEXT, "
+                        "is_active BOOLEAN NOT NULL DEFAULT 1, "
+                        "created_at DATETIME NOT NULL, "
+                        "updated_at DATETIME NOT NULL)"
+                    )
+                )
+                connection.execute(
+                    text(
+                        "INSERT INTO users (id, name, email, hashed_password, is_active, created_at, updated_at) "
+                        "VALUES ('legacy-user', 'Legacy', 'legacy@example.com', 'hash', 1, "
+                        "'2026-01-01 00:00:00', '2026-01-01 00:00:00')"
+                    )
+                )
+            engine.dispose()
+
+            command.upgrade(migration_config(database_url), "head")
+
+            engine = create_engine(database_url)
+            try:
+                with Session(engine) as db:
+                    user = db.query(User).filter(User.email == "legacy@example.com").one()
+                    self.assertEqual(user.id, "legacy-user")
+                    self.assertTrue(user.email_verified)
+                    self.assertTrue(user.is_active)
+                with engine.connect() as connection:
+                    revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+                    tables = set(inspect(engine).get_table_names())
+                self.assertEqual(revision, "20260801_0001")
+                self.assertTrue(EXPECTED_TABLES.issubset(tables | {"alembic_version"}))
+            finally:
+                engine.dispose()
+
 
 if __name__ == "__main__":
     unittest.main()

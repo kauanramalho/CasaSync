@@ -26,6 +26,15 @@ def _delivery_unavailable() -> HTTPException:
     )
 
 
+def two_factor_delivery_available() -> bool:
+    settings = get_settings()
+    return bool(
+        settings.email_dev_mode
+        or settings.email_delivery_http_configured
+        or settings.smtp_configured
+    )
+
+
 def _send_two_factor_via_http(recipient: str, code: str, purpose: str, expires_minutes: int) -> None:
     settings = get_settings()
     payload = json.dumps(
@@ -89,6 +98,10 @@ def send_two_factor_email(recipient: str, code: str, purpose: str, expires_minut
                 smtp.send_message(message)
         except (OSError, smtplib.SMTPException) as exc:
             raise _delivery_unavailable() from exc
+        return
+
+    if not settings.is_production:
+        logger.warning("Entrega 2FA simulada; nenhum canal de e-mail configurado em ambiente local.")
         return
 
     raise _delivery_unavailable()

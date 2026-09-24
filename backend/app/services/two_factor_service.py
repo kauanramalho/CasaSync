@@ -92,24 +92,25 @@ def _invalidate_active_codes(db: Session, user_id: str, purpose: str) -> None:
     )
 
 
-def _enforce_send_limits(db: Session, user_id: str, purpose: str) -> None:
+def _enforce_send_limits(db: Session, user_id: str, purpose: str, *, enforce_cooldown: bool = True) -> None:
     settings = get_settings()
     now = utc_now()
-    cooldown_start = now - timedelta(seconds=settings.two_factor_resend_cooldown_seconds)
-    recent_code = (
-        db.query(TwoFactorCode)
-        .filter(
-            TwoFactorCode.user_id == user_id,
-            TwoFactorCode.purpose == purpose,
-            TwoFactorCode.last_sent_at >= cooldown_start,
+    if enforce_cooldown:
+        cooldown_start = now - timedelta(seconds=settings.two_factor_resend_cooldown_seconds)
+        recent_code = (
+            db.query(TwoFactorCode)
+            .filter(
+                TwoFactorCode.user_id == user_id,
+                TwoFactorCode.purpose == purpose,
+                TwoFactorCode.last_sent_at >= cooldown_start,
+            )
+            .first()
         )
-        .first()
-    )
-    if recent_code:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Aguarde antes de solicitar outro codigo.",
-        )
+        if recent_code:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Aguarde antes de solicitar outro codigo.",
+            )
 
     hour_start = now - timedelta(hours=1)
     sends_last_hour = (
@@ -134,12 +135,13 @@ def create_two_factor_challenge(
     purpose: str,
     *,
     commit: bool = True,
+    enforce_cooldown: bool = True,
 ) -> TwoFactorCode:
     if purpose not in VALID_PURPOSES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tipo de verificacao invalido.")
 
     settings = get_settings()
-    _enforce_send_limits(db, user.id, purpose)
+    _enforce_send_limits(db, user.id, purpose, enforce_cooldown=enforce_cooldown)
     _invalidate_active_codes(db, user.id, purpose)
 
     code = _generate_code()
@@ -269,9 +271,15 @@ def verify_two_factor_code(db: Session, context: PendingTwoFactorContext, code: 
     return context.user
 
 
-def record_login_without_two_factor(db: Session, user: User) -> User:
-    user.last_login_at = utc_now()
+def record_login_without_two_factor(db: Session, user: User, *, commit: bool = True) -> User:
+    now = utc_now()
+    user.last_login_at = now
+    if not user.email_verified:
+        user.email_verified = True
+        if not user.email_verified_at:
+            user.email_verified_at = now
     db.add(user)
-    db.commit()
-    db.refresh(user)
+    if commit:
+        db.commit()
+        db.refresh(user)
     return user
