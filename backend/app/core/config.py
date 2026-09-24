@@ -2,10 +2,11 @@ import json
 import re
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import Field, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -122,7 +123,8 @@ class Settings(BaseSettings):
     email_notifications_enabled: bool = False
 
     frontend_url: str | None = None
-    cors_origins: list[str] = Field(default_factory=list)
+    # Environment/dotenv strings must reach our JSON/CSV validator before decoding.
+    cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
     cors_origin_regex: str | None = None
 
     google_client_id: str | None = None
@@ -183,7 +185,7 @@ class Settings(BaseSettings):
                     raise ValueError("CORS_ORIGINS em JSON deve ser uma lista de origens.")
                 value = parsed
             else:
-                value = [origin.strip() for origin in cleaned.split(",") if origin.strip()]
+                value = [origin.strip() for origin in cleaned.split(",")]
         if not isinstance(value, (list, tuple, set)):
             raise ValueError("CORS_ORIGINS deve ser uma lista de origens.")
         return [_validate_origin(origin, "CORS_ORIGINS") for origin in value]

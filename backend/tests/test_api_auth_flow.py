@@ -148,6 +148,12 @@ class ApiAuthFlowTest(unittest.TestCase):
             self.assertEqual(current_user.status_code, 200)
             self.assertEqual(current_user.json()["username"], "qa.auth")
 
+            empty_families = self.client.get("/api/families", headers=headers)
+            self.assertEqual(empty_families.status_code, 200)
+            self.assertEqual(empty_families.json(), [])
+            no_active_family = self.client.get("/api/families/active", headers=headers)
+            self.assertEqual(no_active_family.status_code, 404)
+
             family = self.client.post("/api/families", headers=headers, json={"name": "Familia QA"})
             self.assertEqual(family.status_code, 201, family.text)
 

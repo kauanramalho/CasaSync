@@ -1,9 +1,11 @@
+import { normalizeApiUrl as normalizeConfiguredApiUrl, resolveApiUrl } from "./apiConfig.js";
+
 const TOKEN_KEY = "casasync_token";
 const SESSION_TOKEN_KEY = "casasync_session_token";
 const PENDING_TWO_FACTOR_KEY = "casasync_pending_2fa";
 const ACTIVE_FAMILY_ID_KEY = "casasync_active_family_id";
 const AUTH_SESSION_CHANGED_EVENT = "casasync:auth-session-changed";
-const API_REQUEST_TIMEOUT_MS = 25000;
+export const API_REQUEST_TIMEOUT_MS = 65000;
 const pendingGetRequests = new Map();
 let cachedApiUrl = null;
 const runtimeEnv = import.meta.env || {};
@@ -22,75 +24,16 @@ const FAMILY_SCOPED_PREFIXES = [
   "/uploads"
 ];
 
-function configuredApiUrl() {
-  return (runtimeEnv.VITE_API_URL || runtimeEnv.NEXT_PUBLIC_API_URL || "").trim();
-}
-
-function developmentFallbackApiUrl() {
-  return `http://${["local", "host"].join("")}:8000/api`;
-}
-
-function isLocalApiHost(hostname) {
-  const host = hostname.toLowerCase();
-  return (
-    host === ["local", "host"].join("") ||
-    host === "0.0.0.0" ||
-    host === "::1" ||
-    host === "[::1]" ||
-    /^127(?:\.\d{1,3}){3}$/.test(host)
-  );
-}
-
-function appendApiPrefix(pathname) {
-  const path = pathname.replace(/\/+$/, "");
-  return path.endsWith("/api") ? path : `${path}/api`;
-}
-
 export function normalizeApiUrl(apiUrl, { isProduction = Boolean(runtimeEnv.PROD) } = {}) {
-  const value = apiUrl.replace(/\/+$/, "");
-
-  if (value.startsWith("/")) {
-    if (isProduction) {
-      throw new Error("Configure VITE_API_URL com a URL publica completa do backend em producao.");
-    }
-    return appendApiPrefix(value);
-  }
-
-  let parsedUrl;
-  try {
-    parsedUrl = new URL(value);
-  } catch {
-    throw new Error("VITE_API_URL invalida. Use uma URL absoluta, por exemplo https://seu-backend.onrender.com/api.");
-  }
-
-  if (isProduction) {
-    if (parsedUrl.protocol !== "https:") {
-      throw new Error("Em producao, VITE_API_URL deve usar HTTPS e apontar para o backend publico.");
-    }
-    if (isLocalApiHost(parsedUrl.hostname)) {
-      throw new Error("VITE_API_URL de producao nao pode apontar para uma maquina local.");
-    }
-  }
-
-  parsedUrl.pathname = appendApiPrefix(parsedUrl.pathname);
-  parsedUrl.search = "";
-  parsedUrl.hash = "";
-  return parsedUrl.toString().replace(/\/+$/, "");
+  return normalizeConfiguredApiUrl(apiUrl, { isProduction });
 }
 
 function getApiUrl() {
   if (cachedApiUrl) return cachedApiUrl;
 
-  const apiUrl = configuredApiUrl();
-  if (!apiUrl) {
-    if (runtimeEnv.DEV) {
-      cachedApiUrl = normalizeApiUrl(developmentFallbackApiUrl());
-      return cachedApiUrl;
-    }
-    throw new Error("API nao configurada. Defina VITE_API_URL com a URL publica do backend.");
-  }
-
-  cachedApiUrl = normalizeApiUrl(apiUrl);
+  cachedApiUrl = resolveApiUrl(runtimeEnv, {
+    developmentFallbackUrl: import.meta.env?.DEV === true ? "http://localhost:8000/api" : ""
+  });
   return cachedApiUrl;
 }
 
@@ -115,16 +58,16 @@ export function fallbackApiErrorMessage(status) {
   return "Nao foi possivel concluir a acao.";
 }
 
-async function fetchWithTimeout(url, options) {
+export async function fetchWithTimeout(url, options, { timeoutMs = API_REQUEST_TIMEOUT_MS, fetchImpl = globalThis.fetch } = {}) {
   const controller = typeof AbortController === "function" ? new AbortController() : null;
   let timedOut = false;
   const timeoutId = setTimeout(() => {
     timedOut = true;
     controller?.abort();
-  }, API_REQUEST_TIMEOUT_MS);
+  }, timeoutMs);
 
   try {
-    return await fetch(url, {
+    return await fetchImpl(url, {
       ...options,
       ...(controller ? { signal: controller.signal } : {})
     });

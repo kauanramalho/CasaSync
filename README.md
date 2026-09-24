@@ -122,6 +122,9 @@ Frontend (Vercel/Netlify):
 - Publish directory: `dist`
 - Configure `VITE_API_URL=https://casasync-api.onrender.com/api` no ambiente de producao. O cliente também aceita a URL sem `/api` e normaliza automaticamente.
 - `NEXT_PUBLIC_API_URL` também é aceito como alias público. Não use `API_URL` genérico no frontend Vite.
+- O build rejeita API ausente, HTTP, host local ou URL com credenciais. O fallback local existe apenas no servidor de desenvolvimento.
+- O cliente aguarda até 65 segundos para a API gratuita iniciar, sem repetir automaticamente operações de escrita.
+- Diagnóstico atual, testes e configuração dos domínios confirmados: [recuperação de conectividade](docs/CONNECTIVITY_RECOVERY.md).
 
 Checklist rápido de autenticação em produção:
 

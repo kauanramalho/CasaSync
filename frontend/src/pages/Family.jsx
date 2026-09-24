@@ -52,6 +52,7 @@ export default function Family() {
   const { showToast } = useToast();
   const familyImageRef = useRef(null);
   const loadInFlightRef = useRef(false);
+  const familyActionInFlightRef = useRef(false);
   const [families, setFamilies] = useState([]);
   const [members, setMembers] = useState([]);
   const [monthlyRanking, setMonthlyRanking] = useState([]);
@@ -70,6 +71,7 @@ export default function Family() {
   const [decidingRequestId, setDecidingRequestId] = useState("");
   const [savingFamily, setSavingFamily] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [familyAction, setFamilyAction] = useState("");
 
   const load = useCallback(async function load() {
     if (loadInFlightRef.current) return;
@@ -163,6 +165,9 @@ export default function Family() {
 
   async function createFamily(event) {
     event.preventDefault();
+    if (familyActionInFlightRef.current) return;
+    familyActionInFlightRef.current = true;
+    setFamilyAction("create");
     setMessage("");
     setError("");
     try {
@@ -173,11 +178,17 @@ export default function Family() {
       await switchFamily(createdFamily.id);
     } catch (err) {
       setError(normalizeApiError(err));
+    } finally {
+      familyActionInFlightRef.current = false;
+      setFamilyAction("");
     }
   }
 
   async function joinFamily(event) {
     event.preventDefault();
+    if (familyActionInFlightRef.current) return;
+    familyActionInFlightRef.current = true;
+    setFamilyAction("join");
     setMessage("");
     setError("");
     try {
@@ -185,9 +196,12 @@ export default function Family() {
       setInviteCode("");
       setMessage("Solicitacao enviada. Um administrador precisa aprovar sua entrada na familia.");
       emitAppDataChanged();
-      load();
+      await load();
     } catch (err) {
       setError(normalizeApiError(err));
+    } finally {
+      familyActionInFlightRef.current = false;
+      setFamilyAction("");
     }
   }
 
@@ -447,10 +461,10 @@ export default function Family() {
           <Card>
             <h2 className="section-title">Criar familia</h2>
             <form onSubmit={createFamily} className="mt-5 space-y-4">
-              <input className="soft-input" placeholder="Nome da familia" value={familyName} onChange={(event) => setFamilyName(event.target.value)} required />
-              <Button type="submit" className="w-full">
+              <input className="soft-input" placeholder="Nome da familia" value={familyName} onChange={(event) => setFamilyName(event.target.value)} disabled={Boolean(familyAction)} required />
+              <Button type="submit" className="w-full" disabled={loading || Boolean(familyAction)}>
                 <Plus className="h-5 w-5" />
-                Criar familia
+                {familyAction === "create" ? "Criando familia..." : "Criar familia"}
               </Button>
             </form>
           </Card>
@@ -458,10 +472,10 @@ export default function Family() {
           <Card>
             <h2 className="section-title">Entrar por convite</h2>
             <form onSubmit={joinFamily} className="mt-5 space-y-4">
-              <input className="soft-input uppercase" placeholder="CODIGO DE CONVITE" value={inviteCode} onChange={(event) => setInviteCode(event.target.value.toUpperCase())} required />
-              <Button type="submit" variant="secondary" className="w-full">
+              <input className="soft-input uppercase" placeholder="CODIGO DE CONVITE" value={inviteCode} onChange={(event) => setInviteCode(event.target.value.toUpperCase())} disabled={Boolean(familyAction)} required />
+              <Button type="submit" variant="secondary" className="w-full" disabled={loading || Boolean(familyAction)}>
                 <DoorOpen className="h-5 w-5" />
-                Solicitar entrada
+                {familyAction === "join" ? "Enviando solicitacao..." : "Solicitar entrada"}
               </Button>
             </form>
           </Card>
