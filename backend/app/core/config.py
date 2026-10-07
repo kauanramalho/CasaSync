@@ -142,7 +142,7 @@ class Settings(BaseSettings):
     ai_vision_enabled: bool = False
     ai_vision_provider: str = "openai"
     openai_api_key: str | None = None
-    openai_vision_model: str = "gpt-5.6-luna"
+    openai_vision_model: str = "gpt-6-luna"
     openai_vision_reasoning_effort: str = "medium"
     openai_vision_retry_reasoning_effort: str = "high"
     openai_vision_max_attempts: int = 2

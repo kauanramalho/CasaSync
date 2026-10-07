@@ -402,7 +402,7 @@ class OpenAIVisionAdapter:
         members_json = json.dumps(context.members or [], ensure_ascii=False)
         categories_json = json.dumps(context.categories or [], ensure_ascii=False)
         return {
-            "model": context.openai_vision_model or "gpt-5.6-luna",
+            "model": context.openai_vision_model or "gpt-6-luna",
             "reasoning": {"effort": reasoning_effort or context.openai_vision_reasoning_effort},
             "max_output_tokens": max(300, min(int(context.openai_vision_max_output_tokens or 1200), 4000)),
             "text": {"format": {"type": "json_schema", "name": "casasync_image_task_suggestions", "strict": True, "schema": IMAGE_ANALYSIS_JSON_SCHEMA}},

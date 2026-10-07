@@ -88,7 +88,7 @@ class OpenAIVisionAdapterMockTest(unittest.TestCase):
             provider="openai",
             enabled=True,
             openai_api_key="test-key",
-            openai_vision_model="gpt-5.6-luna",
+            openai_vision_model="gpt-6-luna",
             openai_vision_reasoning_effort="medium",
             openai_vision_retry_reasoning_effort="high",
             openai_vision_max_attempts=2,
@@ -108,7 +108,7 @@ class OpenAIVisionAdapterMockTest(unittest.TestCase):
         request = fake.call_args.args[0]
         payload = json.loads(request.data.decode("utf-8"))
         self.assertEqual(request.full_url, OPENAI_RESPONSES_URL)
-        self.assertEqual(payload["model"], "gpt-5.6-luna")
+        self.assertEqual(payload["model"], "gpt-6-luna")
         self.assertEqual(payload["reasoning"], {"effort": "medium"})
         self.assertEqual(payload["text"]["format"]["type"], "json_schema")
         self.assertEqual(payload["input"][1]["content"][1]["type"], "input_image")

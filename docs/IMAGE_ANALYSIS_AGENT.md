@@ -21,7 +21,7 @@ Variaveis:
 - `AI_VISION_PROVIDER=openai`
 - `AI_VISION_ENABLED=true`
 - `OPENAI_API_KEY=<definida apenas no ambiente seguro>`
-- `OPENAI_VISION_MODEL=gpt-5.6-luna`
+- `OPENAI_VISION_MODEL=gpt-6-luna`
 - `OPENAI_VISION_REASONING_EFFORT=medium`
 - `OPENAI_VISION_RETRY_REASONING_EFFORT=high`
 - `OPENAI_VISION_MAX_ATTEMPTS=2`
@@ -38,7 +38,7 @@ O adapter real usa a Responses API por HTTP (este checkout nao possui o SDK Open
 - chama a OpenAI somente no backend;
 - envia a imagem validada como data URL temporaria;
 - usa Structured Outputs/JSON Schema para pedir retorno estruturado;
-- faz no maximo uma segunda tentativa, somente por schema, ambiguidade, evidencia insuficiente ou baixa confianca; a primeira usa reasoning medium e a segunda high;
+- faz no maximo uma segunda tentativa, somente por schema, ambiguidade, evidencia insuficiente ou baixa confianca; usa `gpt-6-luna` com reasoning medium na primeira chamada e high na tentativa de recuperacao;
 - preserva evidencias curtas, funcao, local, alias autorizado e `needsConfirmation`;
 - valida o retorno com `ImageAnalysisResponse`, incluindo confianca e lembrete sugerido quando houver;
 - retorna warnings seguros se a imagem estiver ruim ou ilegivel;
