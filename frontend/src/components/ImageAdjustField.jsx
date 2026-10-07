@@ -1,19 +1,17 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { ImagePlus, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { ImagePlus, Crop, Trash2 } from "lucide-react";
+import ImageCropEditor, { cropPreviewStyle } from "./ImageCropEditor";
 
 import { uploadsApi } from "../services/api";
 import {
   cropImageFileToBlob,
   defaultCrop,
   imageFileAccept,
+  inspectImageFile,
   optimizedImageMaxBytes,
   validateImageDimensions,
   validateImageFile
 } from "../utils/files";
-
-function backgroundPosition(crop) {
-  return `${50 + (Number(crop.x) || 0) / 4}% ${50 + (Number(crop.y) || 0) / 4}%`;
-}
 
 function isInlineImage(value) {
   return String(value || "").trim().toLowerCase().startsWith("data:image/");
@@ -26,7 +24,6 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
     helper = "PNG, JPG ou WEBP. A imagem sera otimizada automaticamente.",
     chooseLabel = "Escolher imagem",
     removeLabel = "Remover imagem",
-    cancelLabel = "Cancelar ajuste",
     disabled = false,
     emptyLabel = "",
     previewClassName = "h-40 w-40 rounded-full",
@@ -51,6 +48,10 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
   const [removed, setRemoved] = useState(false);
   const [crop, setCrop] = useState(defaultCrop);
   const [fieldError, setFieldError] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [dimensions, setDimensions] = useState({ width: 1, height: 1 });
+  const [editorCrop, setEditorCrop] = useState(defaultCrop);
+  const [confirmedDraft, setConfirmedDraft] = useState(false);
 
   const revokeDraftUrl = useCallback(() => {
     if (draftUrlRef.current) {
@@ -63,6 +64,8 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
     revokeDraftUrl();
     setDraftUrl("");
     setDraftFile(null);
+    setEditing(false);
+    setConfirmedDraft(false);
   }, [revokeDraftUrl]);
 
   useEffect(() => () => revokeDraftUrl(), [revokeDraftUrl]);
@@ -159,6 +162,7 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
         return;
       }
 
+      setDimensions(await inspectImageFile(file));
       const objectUrl = URL.createObjectURL(file);
       revokeDraftUrl();
       draftUrlRef.current = objectUrl;
@@ -166,6 +170,9 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
       setDraftFile(file);
       setRemoved(false);
       setCrop(defaultCrop);
+      setEditorCrop(defaultCrop);
+      setConfirmedDraft(false);
+      setEditing(true);
       setFieldError("");
     } catch {
       const message = "Nao foi possivel carregar a imagem.";
@@ -193,11 +200,11 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
     onRemove?.();
   }
 
-  const previewStyle = previewUrl
+  const previewStyle = previewUrl && !draftUrl
     ? {
         backgroundImage: `url(${previewUrl})`,
-        backgroundSize: draftUrl ? `${Math.max(100, crop.zoom * 100)}%` : "cover",
-        backgroundPosition: draftUrl ? backgroundPosition(crop) : "center"
+        backgroundSize: "cover",
+        backgroundPosition: "center"
       }
     : undefined;
 
@@ -205,9 +212,10 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
     <div className={className}>
       {label && <p className="text-sm font-bold text-ink">{label}</p>}
       <div
-        className={`overflow-hidden bg-gradient-to-br from-rose-100 to-violet-100 bg-cover bg-center shadow-card ${previewClassName}`}
+        className={`relative overflow-hidden bg-gradient-to-br from-rose-100 to-violet-100 bg-cover bg-center shadow-card ${previewClassName}`}
         style={previewStyle}
       >
+        {draftUrl && <img src={draftUrl} alt="Prévia da foto recortada" className="absolute" style={cropPreviewStyle(dimensions, crop, outputWidth / outputHeight)} />}
         {!previewUrl && <div className="grid h-full w-full place-items-center text-4xl font-bold text-ink">{emptyLabel || <ImagePlus className="h-7 w-7 text-blush" />}</div>}
       </div>
 
@@ -234,29 +242,9 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
       {fieldError && <p className="mt-3 rounded-2xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600">{fieldError}</p>}
 
       {draftUrl && !disabled && (
-        <div className="mt-5 space-y-3 rounded-2xl bg-white/80 p-4">
-          <div className="flex items-center gap-2 text-xs font-bold text-muted">
-            <SlidersHorizontal className="h-4 w-4 text-blush" />
-            Ajuste
-          </div>
-          <div>
-            <div className="mb-1 flex items-center justify-between text-xs font-bold text-muted">
-              <span>Zoom</span>
-              <span>{crop.zoom.toFixed(1)}x</span>
-            </div>
-            <input className="w-full accent-rose-400" type="range" min="1" max="2.4" step="0.1" value={crop.zoom} onChange={(event) => setCrop((current) => ({ ...current, zoom: Number(event.target.value) }))} />
-          </div>
-          <div>
-            <p className="mb-1 text-xs font-bold text-muted">Posicao</p>
-            <input className="w-full accent-rose-400" type="range" min="-40" max="40" value={crop.x} onChange={(event) => setCrop((current) => ({ ...current, x: Number(event.target.value) }))} />
-            <input className="mt-2 w-full accent-rose-400" type="range" min="-40" max="40" value={crop.y} onChange={(event) => setCrop((current) => ({ ...current, y: Number(event.target.value) }))} />
-          </div>
-          <button type="button" onClick={cancelDraft} className="inline-flex items-center gap-2 text-sm font-bold text-muted hover:text-blush">
-            <X className="h-4 w-4" />
-            {cancelLabel}
-          </button>
-        </div>
+        <button type="button" onClick={() => { setEditorCrop(crop); setEditing(true); }} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-bold text-blush"><Crop className="h-4 w-4" />Ajustar recorte</button>
       )}
+      {editing && draftUrl && !disabled && <ImageCropEditor url={draftUrl} dimensions={dimensions} crop={editorCrop} onChange={setEditorCrop} ratio={outputWidth / outputHeight} onCancel={() => { if (confirmedDraft) setEditing(false); else cancelDraft(); }} onConfirm={() => { setCrop(editorCrop); setConfirmedDraft(true); setEditing(false); }} />}
     </div>
   );
 });

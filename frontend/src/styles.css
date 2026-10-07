@@ -453,6 +453,7 @@
 [data-theme="elegant-dark"] .bg-white\/70,
 [data-theme="elegant-dark"] .bg-white\/75,
 [data-theme="elegant-dark"] .bg-white\/80,
+[data-theme="elegant-dark"] .bg-white\/85,
 [data-theme="elegant-dark"] .bg-white\/90,
 [data-theme="elegant-dark"] .bg-white\/95 {
   background-color: rgb(var(--color-surface) / 0.92) !important;
@@ -475,6 +476,70 @@
 
 [data-theme="elegant-dark"] .ring-white {
   --tw-ring-color: rgb(var(--color-surface-soft) / 1) !important;
+}
+
+/* Semantic highlights must remain readable with the dark theme's foreground. */
+[data-theme="elegant-dark"] .bg-rose-50,
+[data-theme="elegant-dark"] .bg-rose-50\/40,
+[data-theme="elegant-dark"] .bg-rose-50\/50,
+[data-theme="elegant-dark"] .bg-rose-50\/55,
+[data-theme="elegant-dark"] .bg-rose-50\/60,
+[data-theme="elegant-dark"] .bg-rose-50\/70,
+[data-theme="elegant-dark"] .bg-rose-50\/80,
+[data-theme="elegant-dark"] .bg-rose-50\/95,
+[data-theme="elegant-dark"] .bg-rose-100 {
+  background-color: rgb(244 63 94 / 0.14) !important;
+}
+[data-theme="elegant-dark"] .bg-blue-50,
+[data-theme="elegant-dark"] .bg-blue-50\/50,
+[data-theme="elegant-dark"] .bg-blue-50\/60,
+[data-theme="elegant-dark"] .bg-blue-50\/70,
+[data-theme="elegant-dark"] .bg-blue-50\/80,
+[data-theme="elegant-dark"] .bg-blue-100 {
+  background-color: rgb(59 130 246 / 0.16) !important;
+}
+[data-theme="elegant-dark"] .bg-emerald-50,
+[data-theme="elegant-dark"] .bg-emerald-50\/80,
+[data-theme="elegant-dark"] .bg-emerald-50\/95,
+[data-theme="elegant-dark"] .bg-emerald-100 {
+  background-color: rgb(16 185 129 / 0.14) !important;
+}
+[data-theme="elegant-dark"] .bg-violet-50,
+[data-theme="elegant-dark"] .bg-violet-50\/50,
+[data-theme="elegant-dark"] .bg-violet-50\/70,
+[data-theme="elegant-dark"] .bg-violet-100 {
+  background-color: rgb(139 92 246 / 0.16) !important;
+}
+[data-theme="elegant-dark"] .bg-orange-50,
+[data-theme="elegant-dark"] .bg-amber-50,
+[data-theme="elegant-dark"] .bg-amber-50\/75,
+[data-theme="elegant-dark"] .bg-amber-50\/80,
+[data-theme="elegant-dark"] .bg-amber-100 {
+  background-color: rgb(245 158 11 / 0.14) !important;
+}
+[data-theme="elegant-dark"] .text-rose-600,
+[data-theme="elegant-dark"] .text-rose-700 { color: rgb(253 164 175) !important; }
+[data-theme="elegant-dark"] .text-blue-600,
+[data-theme="elegant-dark"] .text-blue-700 { color: rgb(147 197 253) !important; }
+[data-theme="elegant-dark"] .text-emerald-600,
+[data-theme="elegant-dark"] .text-emerald-700 { color: rgb(110 231 183) !important; }
+[data-theme="elegant-dark"] .text-violet-600,
+[data-theme="elegant-dark"] .text-violet-700 { color: rgb(196 181 253) !important; }
+[data-theme="elegant-dark"] .text-orange-600,
+[data-theme="elegant-dark"] .text-orange-700,
+[data-theme="elegant-dark"] .text-amber-600,
+[data-theme="elegant-dark"] .text-amber-700 { color: rgb(252 211 77) !important; }
+[data-theme="elegant-dark"] .text-slate-600,
+[data-theme="elegant-dark"] .text-slate-700,
+[data-theme="elegant-dark"] .text-slate-800,
+[data-theme="elegant-dark"] .text-slate-900 { color: rgb(var(--color-ink)) !important; }
+[data-theme="elegant-dark"] .from-white {
+  --tw-gradient-from: rgb(var(--color-surface)) var(--tw-gradient-from-position);
+  --tw-gradient-to: rgb(var(--color-surface) / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+[data-theme="elegant-dark"] .via-white {
+  --tw-gradient-stops: var(--tw-gradient-from), rgb(var(--color-surface)) var(--tw-gradient-via-position), var(--tw-gradient-to);
 }
 
 @keyframes fade-up {

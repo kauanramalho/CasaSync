@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
@@ -9,6 +9,9 @@ import {
   Home,
   LogOut,
   Medal,
+  Menu,
+  X,
+  ChevronDown,
   Settings,
   Users
 } from "lucide-react";
@@ -16,6 +19,8 @@ import {
 import LogoMark from "../components/LogoMark";
 import ProgressRing from "../components/ProgressRing";
 import SelectMenu from "../components/SelectMenu";
+import FamilyAvatar from "../components/FamilyAvatar";
+import useDialogFocus from "../hooks/useDialogFocus";
 import { useActiveFamily } from "../hooks/useActiveFamily";
 import { useAuth } from "../hooks/useAuth";
 import { dashboardApi } from "../services/api";
@@ -26,7 +31,7 @@ const navItems = [
   { to: "/tarefas", label: "Tarefas", icon: CheckSquare },
   { to: "/calendario", label: "Calendário", icon: CalendarDays },
   { to: "/categorias", label: "Categorias", icon: Folder },
-  { to: "/familia", label: "Membros", icon: Users },
+  { to: "/familia", label: "Famílias e membros", icon: Users },
   { to: "/ranking", label: "Ranking", icon: Medal },
   { to: "/espaco-do-casal", label: "Espaço do Casal", icon: Heart },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3 },
@@ -37,7 +42,7 @@ const CREATE_FAMILY_ACTION = "__create_family";
 const JOIN_FAMILY_ACTION = "__join_family";
 
 function roleLabel(role) {
-  if (role === "owner") return "Proprietario";
+  if (role === "owner") return "Líder";
   if (role === "admin") return "Administrador";
   return "Membro";
 }
@@ -48,11 +53,24 @@ export default function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarMetrics, setSidebarMetrics] = useState({ done: 0, total: 0, points: 0 });
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [familyExpanded, setFamilyExpanded] = useState(false);
+  const drawerRef = useRef(null);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  useDialogFocus(drawerRef, menuOpen, closeMenu);
+  useEffect(() => { setMenuOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1024px)");
+    const closeOnDesktop = () => { if (media.matches) setMenuOpen(false); };
+    media.addEventListener("change", closeOnDesktop);
+    return () => media.removeEventListener("change", closeOnDesktop);
+  }, []);
   const familyOptions = useMemo(
     () => [
       ...families.map((familyItem) => ({
         value: familyItem.id,
         label: familyItem.name,
+        family: familyItem,
         helper: familyItem.current_user_role
           ? `${roleLabel(familyItem.current_user_role)}${familyItem.invite_code ? ` - Codigo ${familyItem.invite_code}` : ""}`
           : familyItem.invite_code ? `Codigo ${familyItem.invite_code}` : "Familia CasaSync"
@@ -200,27 +218,31 @@ export default function AppLayout() {
 
       <div className="flex min-h-screen min-h-dvh min-w-0 flex-col">
         <div className="sticky top-0 z-10 border-b border-white/70 bg-white/75 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-xl lg:hidden">
-          <LogoMark subtitle={activeFamily?.name || "Minha familia"} />
-          <FamilySwitcher compact />
-          <div className="-mx-4 mt-3 flex snap-x gap-2 overflow-x-auto px-4 pb-1">
-            {navItems.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  `flex min-h-11 shrink-0 snap-start items-center gap-2 whitespace-nowrap rounded-2xl px-3 py-2 text-xs font-semibold ${
-                    isActive ? "bg-blush/10 text-blush" : "bg-white text-muted"
-                  }`
-                }
-              >
-                <item.icon className="h-4 w-4" />
-                {item.label}
-              </NavLink>
-            ))}
+          <div className="flex min-w-0 items-center gap-3">
+            <button type="button" onClick={() => setMenuOpen(true)} aria-label="Abrir menu de navegação" aria-expanded={menuOpen} aria-controls="mobile-navigation" className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-blush/10 text-blush"><Menu className="h-6 w-6" /></button>
+            <div className="min-w-0 flex-1"><LogoMark subtitle="Sua rotina em família" /></div>
+            <button type="button" onClick={() => setFamilyExpanded((value) => !value)} aria-label={familyExpanded ? "Ocultar família ativa" : "Mostrar família ativa"} aria-expanded={familyExpanded} className="flex shrink-0 items-center gap-1 rounded-full p-1 text-muted"><FamilyAvatar family={activeFamily} className="h-9 w-9" /><ChevronDown className={`h-4 w-4 ${familyExpanded ? "rotate-180" : ""}`} /></button>
           </div>
+          {familyExpanded && <FamilySwitcher compact />}
         </div>
+        {menuOpen && (
+          <div className="fixed inset-0 z-[80] bg-slate-950/50 backdrop-blur-sm lg:hidden" onMouseDown={(event) => { if (event.target === event.currentTarget) closeMenu(); }}>
+            <aside ref={drawerRef} id="mobile-navigation" role="dialog" aria-modal="true" aria-label="Menu de navegação" className="flex h-dvh w-[min(88vw,360px)] flex-col overflow-y-auto bg-surface p-4 pt-[max(1rem,env(safe-area-inset-top))] shadow-soft">
+              <div className="flex items-center justify-between gap-2"><h2 className="font-bold text-ink">CasaSync</h2><button type="button" onClick={closeMenu} aria-label="Fechar menu" className="grid h-11 w-11 place-items-center rounded-xl text-muted"><X /></button></div>
+              <FamilySwitcher compact />
+              <nav className="mt-4 flex flex-col gap-1" aria-label="Navegação principal">
+                {navItems.map((item) => <NavLink key={item.to} to={item.to} onClick={closeMenu} className={({ isActive }) => `flex min-h-12 items-center gap-3 rounded-2xl px-4 py-3 font-semibold ${isActive ? "bg-blush/10 text-blush" : "text-muted hover:bg-blush/5"}`}><item.icon className="h-5 w-5" />{item.label}</NavLink>)}
+              </nav>
+              <button type="button" onClick={handleLogout} className="mt-5 flex min-h-11 items-center gap-3 rounded-2xl px-4 text-muted"><LogOut className="h-5 w-5" />Sair</button>
+            </aside>
+          </div>
+        )}
         <main className="min-w-0 flex-1 overflow-x-hidden px-3 py-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:px-4 md:px-8 lg:px-10 lg:py-8">
-          {showNoFamilyState ? (
+          {familyLoading && !activeFamily ? (
+            <div role="status" aria-live="polite" className="grid min-h-[40vh] place-items-center text-sm font-semibold text-muted">
+              Carregando familia ativa...
+            </div>
+          ) : showNoFamilyState ? (
             <div className="mx-auto grid min-h-[60vh] max-w-2xl place-items-center text-center">
               <div className="rounded-[28px] bg-white/85 p-8 shadow-soft">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted">CasaSync</p>

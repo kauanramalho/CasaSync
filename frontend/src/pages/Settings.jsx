@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   BadgeCheck,
   BellRing,
@@ -32,6 +32,7 @@ import { familiesApi, integrationsApi, notificationsApi } from "../services/api"
 import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError } from "../utils/formatters";
 import { timezoneOptions, weekStartOptions } from "../utils/preferences";
+import { consumeGoogleCalendarCallback } from "../utils/googleCalendarCallback";
 import {
   getBrowserPushSupport,
   getBrowserPushSubscription,
@@ -62,7 +63,8 @@ function isAdminRole(role) {
 export default function Settings() {
   const { user, updateUser, deleteAccount } = useAuth();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
   const { preferences, updatePreference, updatePreferences } = useAppPreferences();
   const { paletteId, palettes, selectPalette } = useTheme();
   const { showToast } = useToast();
@@ -83,6 +85,7 @@ export default function Settings() {
   const [error, setError] = useState("");
   const [savingFamily, setSavingFamily] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
+  const callbackHandled = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -127,21 +130,30 @@ export default function Settings() {
   }, [showToast, user?.id]);
 
   useEffect(() => {
-    const googleCalendarStatus = searchParams.get("googleCalendar");
-    const message = searchParams.get("message");
-    if (!googleCalendarStatus) return;
-
+    const callback = consumeGoogleCalendarCallback(searchParams, location.hash);
+    if (!callback || callbackHandled.current) return;
+    callbackHandled.current = true;
+    // Remove the short-lived code/state before performing any async work.
+    navigate({ pathname: location.pathname, search: callback.cleanedParams.toString(), hash: "" }, { replace: true });
     setActiveTab("general");
-    if (message) {
-      setCalendarMessage(message);
-      showToast({ type: googleCalendarStatus === "connected" ? "success" : "info", message });
+    setCalendarMessage(callback.message);
+    if (!callback.payload) {
+      showToast({ type: callback.status === "connected" ? "success" : "info", message: callback.message });
+      return;
     }
-
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.delete("googleCalendar");
-    nextParams.delete("message");
-    setSearchParams(nextParams, { replace: true });
-  }, [searchParams, setSearchParams, showToast]);
+    setCalendarBusy(true);
+    integrationsApi.completeGoogleCalendar(callback.payload).then(async (result) => {
+      setCalendarMessage(result.message);
+      showToast({ type: result.status === "connected" ? "success" : "error", message: result.message });
+      const status = await integrationsApi.googleCalendarStatus();
+      setCalendarStatus(status);
+      setCalendarMode(status?.mode || "primary");
+    }).catch(() => {
+      const message = "Nao foi possivel confirmar a conexao. Inicie novamente com sua conta e familia ativa.";
+      setCalendarMessage(message);
+      showToast({ type: "error", message });
+    }).finally(() => setCalendarBusy(false));
+  }, [searchParams, location.hash, location.pathname, navigate, showToast]);
 
   const canAdminFamily = isAdminRole(currentMember?.role);
 
@@ -414,12 +426,10 @@ export default function Settings() {
               </div>
               <div className="flex items-center justify-between rounded-2xl bg-white/75 px-4 py-3">
                 <div>
-                  <p className="font-semibold text-ink">Modo casal</p>
-                  <p className="text-sm text-muted">Espaco seguro apenas para o casal</p>
+                  <p className="font-semibold text-ink">Espaco do casal</p>
+                  <p className="text-sm text-muted">Metas e ideias compartilhadas com os membros da familia ativa.</p>
                 </div>
-                <span className="h-7 w-12 rounded-full bg-emerald-400 p-1">
-                  <span className="block h-5 w-5 translate-x-5 rounded-full bg-white" />
-                </span>
+                <Button as="a" href="/espaco-do-casal" variant="secondary" className="shrink-0">Abrir</Button>
               </div>
             </div>
           </Card>
@@ -458,19 +468,12 @@ export default function Settings() {
             <div className="mt-6 space-y-5">
               <div className="flex items-center justify-between rounded-2xl bg-white/75 px-4 py-3">
                 <div>
-                  <p className="font-semibold text-ink">Backup automatico</p>
-                  <p className="text-sm text-muted">Dados salvos diariamente</p>
+                  <p className="font-semibold text-ink">Seus dados no CasaSync</p>
+                  <p className="text-sm text-muted">As alteracoes confirmadas pela API sao salvas no servidor.</p>
                 </div>
-                <RefreshCw className="h-5 w-5 text-emerald-500" />
               </div>
               <div>
-                <div className="mb-2 flex justify-between text-sm text-muted">
-                  <span>1.2 GB de 10 GB utilizados</span>
-                  <span>12%</span>
-                </div>
-                <div className="h-2 rounded-full bg-slate-100">
-                  <div className="h-2 w-[12%] rounded-full bg-blush" />
-                </div>
+                <p className="text-sm text-muted">O app ainda nao exibe uma medicao de armazenamento nem um historico de backups. Nao considere esta tela uma confirmacao de backup.</p>
               </div>
             </div>
           </Card>
@@ -481,8 +484,9 @@ export default function Settings() {
               <h2 className="section-title">Google Agenda</h2>
             </div>
             <p className="mt-4 text-sm text-muted">
-              Sua conta Google continua a mesma. Esta configuracao define em qual agenda os eventos da familia ativa serao criados.
+              Conecte sua conta pelo Google. Somente tarefas que voce confirmar serao enviadas; seus outros eventos nao sao importados para o CasaSync.
             </p>
+            <p className="mt-3 text-sm text-muted">A autorizacao ocorre em accounts.google.com. Se o Google mostrar um aviso de app nao verificado, cancele a vinculacao e aguarde a verificacao oficial do CasaSync.</p>
             <div className="mt-5 grid gap-3 rounded-2xl bg-white/75 px-4 py-4 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-semibold text-muted">Familia ativa</span>
@@ -619,6 +623,8 @@ export default function Settings() {
                   : "Push esta desativado por configuracao."}
               </p>
               <p>Permissao do navegador: {getNotificationPermissionLabel(pushPermission)}.</p>
+              <p>Alertas em segundo plano dependem do Web Push ativo, de um lembrete configurado e da permissão deste dispositivo. No iPhone/iPad, adicione o CasaSync à Tela de Início e ative as notificações dentro do app instalado (iOS/iPadOS 16.4 ou superior).</p>
+              <p>O formato do balão e o som são controlados pelo telefone. Modo Foco, economia de bateria e permissões podem silenciar os alertas.</p>
               {!pushSupported && <p className="rounded-2xl bg-amber-50 px-4 py-3 font-semibold text-amber-700">Este navegador nao oferece suporte completo a Web Push.</p>}
               {pushPermission === "denied" && (
                 <p className="rounded-2xl bg-amber-50 px-4 py-3 font-semibold text-amber-700">

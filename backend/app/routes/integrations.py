@@ -9,6 +9,7 @@ from app.models.user import User
 from app.schemas.integration import (
     GoogleCalendarConnectUrl,
     GoogleCalendarCallbackResponse,
+    GoogleCalendarCompleteRequest,
     GoogleCalendarDisconnectResponse,
     GoogleCalendarFamilyCalendarResponse,
     GoogleCalendarFamilySettingsRead,
@@ -23,7 +24,8 @@ from app.services.calendar_service import (
     get_google_auth_url,
     get_google_calendar_family_settings,
     get_google_calendar_status,
-    handle_google_callback,
+    complete_google_callback,
+    prepare_google_callback_redirect,
     sync_task_to_calendar,
     update_google_calendar_family_settings,
 )
@@ -94,13 +96,28 @@ def google_calendar_callback(
     settings: Settings = Depends(get_settings),
 ):
     try:
-        result = handle_google_callback(db, code=code, state=state, error=error, settings=settings)
+        redirect = prepare_google_callback_redirect(code=code, state=state, error=error, settings=settings)
     except HTTPException:
         result = GoogleCalendarCallbackResponse(
             status="error",
             message="Nao foi possivel concluir a conexao com o Google Agenda. Inicie a conexao novamente.",
         )
-    return RedirectResponse(build_google_callback_redirect(settings, result), status_code=302)
+        redirect = build_google_callback_redirect(settings, result)
+    return RedirectResponse(redirect, status_code=302, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+
+
+@router.post("/google-calendar/complete", response_model=GoogleCalendarCallbackResponse)
+def google_calendar_complete(
+    payload: GoogleCalendarCompleteRequest,
+    current_user: User = Depends(get_current_user),
+    family_id: str = Depends(get_family_id),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    return complete_google_callback(
+        db, code=payload.code, state=payload.state,
+        current_user=current_user, family_id=family_id, settings=settings,
+    )
 
 
 @router.post("/google-calendar/tasks/{task_id}/sync", response_model=GoogleCalendarTaskSyncResponse)

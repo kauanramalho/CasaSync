@@ -255,7 +255,7 @@ export default function Tasks() {
 
       {error && <p className="mb-5 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</p>}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard icon={Rows3} label="Todas" value={counts.all} hint="tarefas registradas" tone="blue" />
         <StatCard icon={Clock3} label="Pendentes" value={counts.pendente} hint="em aberto" tone="orange" />
         <StatCard icon={CheckCircle2} label="Concluidas" value={counts.concluida} hint="com pontos" tone="emerald" />

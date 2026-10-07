@@ -15,11 +15,12 @@ from app.routes.auth import me as me_route
 from app.routes.families import active_family as active_family_route, list_my_families
 from app.routes.tasks import import_suggestions as import_suggestions_route
 from app.schemas.category import CategoryCreate
+from app.schemas.family import FamilyUpdate
 from app.schemas.task import TaskCreate, TaskUpdate
 from app.schemas.task_import import TaskSuggestionImportItem, TaskSuggestionsImportRequest, TaskSuggestionsImportResponse
 from app.services.category_service import create_category, list_categories
 from app.services.dashboard_service import get_dashboard, get_dashboard_summary
-from app.services.family_service import decide_join_request, list_members, refresh_user_active_family, request_join_family, set_active_family
+from app.services.family_service import decide_join_request, delete_family, update_family, list_members, refresh_user_active_family, request_join_family, set_active_family
 from app.services.task_service import create_task, get_task, list_tasks, update_task
 from app.services.task_import_service import import_task_suggestions
 
@@ -59,6 +60,32 @@ class MultiFamilyContextTest(unittest.TestCase):
             ]
         )
         self.db.commit()
+
+    def test_family_list_exposes_photo_and_membership_role(self):
+        self.family_a.image_url = "https://example.com/family.webp"
+        self.db.commit()
+        rows = {row.id: row for row in list_my_families(self.user, self.db)}
+        self.assertEqual(rows[self.family_a.id].current_user_role, "owner")
+        self.assertEqual(rows[self.family_a.id].image_url, self.family_a.image_url)
+        self.assertEqual(rows[self.family_b.id].current_user_role, "admin")
+        self.assertNotIn(self.family_c.id, rows)
+
+    def test_non_owner_cannot_delete_and_outsider_cannot_edit_family(self):
+        with self.assertRaises(HTTPException) as rejected:
+            delete_family(self.db, self.family_b.id, self.user.id)
+        self.assertEqual(rejected.exception.status_code, 403)
+        with self.assertRaises(HTTPException):
+            update_family(self.db, self.family_c.id, self.user.id, FamilyUpdate(name="Invadida"))
+        self.assertIsNotNone(self.db.get(Family, self.family_b.id))
+        self.assertEqual(self.family_c.name, "Casa C")
+
+    def test_owner_can_edit_delete_and_active_family_falls_back(self):
+        set_active_family(self.db, self.user, self.family_a.id)
+        updated = update_family(self.db, self.family_a.id, self.user.id, FamilyUpdate(name="Casa editada"))
+        self.assertEqual(updated.name, "Casa editada")
+        delete_family(self.db, self.family_a.id, self.user.id)
+        self.assertIsNone(self.db.get(Family, "family-a"))
+        self.assertEqual(self.user.active_family_id, self.family_b.id)
 
     def tearDown(self):
         self.db.close()

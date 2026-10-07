@@ -344,7 +344,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             {stats.map((item) => {
               const meta = statMeta[item.key] ?? statMeta.pending;
               return <StatCard key={item.key} icon={meta.icon} tone={meta.tone} label={item.label} value={item.value} hint={item.hint} emphasis={item.key === "overdue" && item.value > 0} />;
@@ -353,15 +353,15 @@ export default function Dashboard() {
 
           <Card className="mt-6 overflow-hidden p-0 sm:p-0">
             <div className="grid xl:grid-cols-2">
-              <section className="border-b border-border/70 p-4 sm:p-5 xl:border-b-0 xl:border-r">
+              <section className="min-w-0 border-b border-border/70 p-4 sm:p-5 xl:border-b-0 xl:border-r">
                 <div className="mb-4 flex items-center justify-between gap-3">
-                  <div><p className="text-xs font-bold uppercase tracking-[0.16em] text-rose-600">Precisa de atenção</p><h2 className="mt-1 text-lg font-bold text-ink">Tarefas atrasadas</h2></div>
-                  <span className="grid h-11 w-11 place-items-center rounded-2xl bg-rose-50 text-rose-500"><AlertCircle className="h-5 w-5" /></span>
+                  <div className="min-w-0 break-words"><p className="text-xs font-bold uppercase tracking-[0.16em] text-rose-600">Precisa de atenção</p><h2 className="mt-1 text-lg font-bold text-ink">Tarefas atrasadas</h2></div>
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-rose-50 text-rose-500"><AlertCircle className="h-5 w-5" /></span>
                 </div>
                 <FocusTaskList tasks={overdueTasks} tone="danger" emptyTitle="Tudo em dia por aqui" emptyDescription="Quando uma tarefa passar do prazo, ela aparecerá nesta área." onComplete={handleComplete} onOpenDetails={setDetailsTask} />
                 {overdueTasks.length > 0 && <Link to="/tarefas" className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-rose-600">Ver todas as tarefas <ArrowRight className="h-4 w-4" /></Link>}
               </section>
-              <section className="p-4 sm:p-5">
+              <section className="min-w-0 p-4 sm:p-5">
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <div><p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-600">Próximos passos</p><h2 className="mt-1 text-lg font-bold text-ink">Tarefas com prazo</h2></div>
                   <span className="grid h-11 w-11 place-items-center rounded-2xl bg-blue-50 text-blue-500"><CalendarClock className="h-5 w-5" /></span>
@@ -501,7 +501,7 @@ export default function Dashboard() {
 function DashboardSkeleton() {
   return (
     <div className="animate-pulse" aria-label="Carregando visão geral" aria-busy="true">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         {Array.from({ length: 4 }, (_, index) => (
           <div key={index} className="glass-panel h-32 rounded-[24px] bg-surface/70" />
         ))}
@@ -551,7 +551,7 @@ function FocusTaskList({ tasks, emptyTitle, emptyDescription, tone, onComplete, 
               </span>
             </button>
           </div>
-          <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 pl-[52px]">
+          <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 sm:pl-[52px]">
             {task.category && <CategoryBadge category={task.category} compact className="max-w-full" />}
             <AssigneeStack task={task} />
           </div>

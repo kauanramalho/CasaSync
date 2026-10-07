@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useAuth } from "./useAuth";
 import { getActiveFamilyId, notificationsApi } from "../services/api";
 import { ACTIVE_FAMILY_CHANGED_EVENT, APP_DATA_CHANGED_EVENT, APP_RESUMED_EVENT } from "../utils/events";
+import { isNotificationVisible } from "../utils/notificationVisibility";
 
 const STORAGE_KEY = "casasync_notifications";
 const REMINDER_CHECK_INTERVAL_MS = 60_000;
@@ -95,7 +96,7 @@ export function NotificationsProvider({ children }) {
           description,
           type,
           actor,
-          family_id,
+          family_id: family_id ?? getActiveFamilyId(),
           user_id: user_id ?? user?.id,
           read: false,
           created_at: new Date().toISOString()
@@ -118,7 +119,7 @@ export function NotificationsProvider({ children }) {
 
   const markAllAsRead = useCallback(() => {
     updateLocalNotifications((current) =>
-      current.map((item) => (!user?.id || !item.user_id || item.user_id === user.id ? { ...item, read: true } : item))
+      current.map((item) => (isNotificationVisible(item, user?.id, getActiveFamilyId()) ? { ...item, read: true } : item))
     );
     setServerNotifications((current) => current.map((item) => ({ ...item, read: true })));
     if (user?.id) notificationsApi.markAllRead().catch(() => refreshServerNotifications());
@@ -127,13 +128,14 @@ export function NotificationsProvider({ children }) {
   const clearAll = useCallback(() => {
     updateLocalNotifications((current) => {
       if (!user?.id) return [];
-      return current.filter((item) => item.user_id && item.user_id !== user.id);
+      return current.filter((item) => !isNotificationVisible(item, user.id, getActiveFamilyId()));
     });
     setServerNotifications([]);
     if (user?.id) notificationsApi.clearAll().catch(() => refreshServerNotifications());
   }, [refreshServerNotifications, updateLocalNotifications, user?.id]);
 
   useEffect(() => {
+    setActiveFamilyIdState(getActiveFamilyId());
     if (!user?.id) {
       setServerNotifications([]);
       return undefined;
@@ -169,12 +171,8 @@ export function NotificationsProvider({ children }) {
   }, [refreshServerNotifications, user?.id]);
 
   const value = useMemo(() => {
-    const visibleLocalNotifications = user?.id
-      ? localNotifications.filter(
-          (item) => (!item.user_id || item.user_id === user.id) && (!activeFamilyId || !item.family_id || item.family_id === activeFamilyId)
-        )
-      : localNotifications;
-    const notifications = [...serverNotifications, ...visibleLocalNotifications].sort(
+    const notifications = [...serverNotifications, ...localNotifications]
+      .filter((item) => isNotificationVisible(item, user?.id, activeFamilyId)).sort(
       (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
     );
     const unreadCount = notifications.filter((item) => !item.read).length;

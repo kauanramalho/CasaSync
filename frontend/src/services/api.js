@@ -1,4 +1,5 @@
 import { normalizeApiUrl as normalizeConfiguredApiUrl, resolveApiUrl } from "./apiConfig.js";
+import { shouldInvalidateSession } from "../utils/auth.js";
 
 const TOKEN_KEY = "casasync_token";
 const SESSION_TOKEN_KEY = "casasync_session_token";
@@ -230,7 +231,7 @@ async function performRequest(path, { method = "GET", body, auth = true } = {}) 
   const data = response.status === 204 ? null : await response.json().catch(() => null);
 
   if (!response.ok) {
-    if (auth && response.status === 401) {
+    if (auth && response.status === 401 && shouldInvalidateSession(token, getToken())) {
       clearToken();
       window.dispatchEvent(new Event(AUTH_SESSION_CHANGED_EVENT));
     }
@@ -274,7 +275,7 @@ async function uploadRequest(
 
   const data = response.status === 204 ? null : await response.json().catch(() => null);
   if (!response.ok) {
-    if (auth && response.status === 401) {
+    if (auth && response.status === 401 && shouldInvalidateSession(token, getToken())) {
       clearToken();
       window.dispatchEvent(new Event(AUTH_SESSION_CHANGED_EVENT));
     }
@@ -307,7 +308,7 @@ async function downloadRequest(path, { auth = true } = {}) {
   }
 
   if (!response.ok) {
-    if (auth && response.status === 401) {
+    if (auth && response.status === 401 && shouldInvalidateSession(token, getToken())) {
       clearToken();
       window.dispatchEvent(new Event(AUTH_SESSION_CHANGED_EVENT));
     }
@@ -503,6 +504,7 @@ export const integrationsApi = {
   updateGoogleCalendarSettings: (payload) => request("/integrations/google-calendar/settings", { method: "PATCH", body: payload }),
   ensureGoogleFamilyCalendar: () => request("/integrations/google-calendar/family-calendar", { method: "POST" }),
   googleCalendarConnectUrl: () => request("/integrations/google-calendar/connect-url"),
+  completeGoogleCalendar: (payload) => request("/integrations/google-calendar/complete", { method: "POST", body: payload }),
   disconnectGoogleCalendar: () => request("/integrations/google-calendar/disconnect", { method: "POST" }),
   syncGoogleCalendarTask: (taskId) => request(`/integrations/google-calendar/tasks/${taskId}/sync`, { method: "POST" })
 };

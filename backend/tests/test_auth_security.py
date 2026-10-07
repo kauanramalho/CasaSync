@@ -87,6 +87,13 @@ class ProductionSettingsSecurityTest(unittest.TestCase):
         with self.assertRaises(ValidationError):
             Settings(_env_file=None, jwt_algorithm="none")
 
+    def test_production_calendar_callback_requires_https_without_credentials(self):
+        for uri in ("http://api.example.com/callback", "https://localhost/callback",
+                    "https://user:secret@api.example.com/callback", "https://api.example.com/callback?token=test"):
+            with self.subTest(uri=uri), self.assertRaises(ValidationError):
+                self.production_settings(google_calendar_enabled=True, google_redirect_uri=uri,
+                                         integration_token_encryption_key="calendar-key-with-more-than-thirty-two-characters")
+
     def test_production_requires_calendar_encryption_key_when_enabled(self):
         with self.assertRaises(ValidationError):
             self.production_settings(google_calendar_enabled=True, integration_token_encryption_key=None)

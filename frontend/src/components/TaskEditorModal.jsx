@@ -143,13 +143,13 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
         if (event.target === event.currentTarget && !saving) onClose?.();
       }}
     >
-      <div className="flex max-h-[calc(100dvh-1rem)] w-full max-w-3xl flex-col overflow-hidden rounded-t-[24px] border border-white/80 bg-white shadow-soft animate-in sm:max-h-[92vh] sm:rounded-[28px]" onMouseDown={(event) => event.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-labelledby="task-editor-heading" className="flex max-h-[calc(100dvh-1rem)] w-full max-w-3xl flex-col overflow-hidden rounded-t-[24px] border border-white/80 bg-white shadow-soft animate-in sm:max-h-[92vh] sm:rounded-[28px]" onMouseDown={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-4 sm:px-6 sm:py-5">
           <div className="min-w-0">
-            <p className="section-title">Editar tarefa</p>
+            <h2 id="task-editor-heading" className="section-title">Editar tarefa</h2>
             <p className="mt-1 text-sm text-muted">Ajuste responsaveis, status, prioridade e prazo em um so lugar.</p>
           </div>
-          <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-2xl bg-slate-50 text-muted hover:text-ink">
+          <button type="button" onClick={onClose} disabled={saving} aria-label="Fechar editor de tarefa" className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-slate-50 text-muted hover:text-ink disabled:opacity-50">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -158,13 +158,13 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
           <div className="min-h-0 overflow-y-auto px-4 py-5 sm:px-6">
             <div className="grid gap-5 md:grid-cols-2">
               <div className="md:col-span-2">
-                <label className="mb-2 block text-sm font-semibold text-ink">Nome</label>
-                <input className="soft-input" value={form.title} onChange={(event) => updateField("title", event.target.value)} required />
+                <label htmlFor="edit-task-title" className="mb-2 block text-sm font-semibold text-ink">Nome</label>
+                <input id="edit-task-title" className="soft-input" value={form.title} onChange={(event) => updateField("title", event.target.value)} minLength={2} maxLength={180} required />
               </div>
 
               <div className="md:col-span-2">
-                <label className="mb-2 block text-sm font-semibold text-ink">Descricao</label>
-                <textarea className="soft-input min-h-24 resize-none" value={form.description} onChange={(event) => updateField("description", event.target.value)} />
+                <label htmlFor="edit-task-description" className="mb-2 block text-sm font-semibold text-ink">Descricao</label>
+                <textarea id="edit-task-description" className="soft-input min-h-24 resize-none" value={form.description} onChange={(event) => updateField("description", event.target.value)} maxLength={1200} />
               </div>
 
               <div className="md:col-span-2">

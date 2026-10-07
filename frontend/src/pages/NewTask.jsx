@@ -148,7 +148,7 @@ export default function NewTask() {
         message: calendarMessage ? `Tarefa criada com sucesso. ${calendarMessage}` : "Tarefa criada com sucesso."
       });
       emitAppDataChanged();
-      navigate("/tarefas");
+      navigate("/");
     } catch (err) {
       const message = normalizeApiError(err);
       setError(message);
@@ -167,12 +167,12 @@ export default function NewTask() {
       <Card className="mx-auto max-w-4xl">
         <form onSubmit={handleSubmit} className="grid gap-5 md:grid-cols-2">
           <div className="md:col-span-2">
-            <label className="mb-2 block text-sm font-semibold text-ink">Titulo</label>
-            <input className="soft-input" value={form.title} onChange={(event) => updateField("title", event.target.value)} required />
+            <label htmlFor="new-task-title" className="mb-2 block text-sm font-semibold text-ink">Titulo</label>
+            <input id="new-task-title" className="soft-input" value={form.title} onChange={(event) => updateField("title", event.target.value)} minLength={2} maxLength={180} required />
           </div>
           <div className="md:col-span-2">
-            <label className="mb-2 block text-sm font-semibold text-ink">Descricao</label>
-            <textarea className="soft-input min-h-28 resize-none" value={form.description} onChange={(event) => updateField("description", event.target.value)} />
+            <label htmlFor="new-task-description" className="mb-2 block text-sm font-semibold text-ink">Descricao</label>
+            <textarea id="new-task-description" className="soft-input min-h-28 resize-none" value={form.description} onChange={(event) => updateField("description", event.target.value)} maxLength={1200} />
           </div>
           <div className="md:col-span-2">
             <label className="mb-2 block text-sm font-semibold text-ink">Responsaveis</label>

@@ -76,13 +76,14 @@ self.addEventListener("push", (event) => {
   } catch {
     data = {};
   }
+  if (!data || typeof data !== "object") data = {};
 
   const title = data.title || "CasaSync";
   const options = {
     body: data.body || "Voce tem uma nova notificacao.",
     icon: "/icons/icon-192.png?v=20260602-purple",
     badge: "/icons/favicon-32x32.png?v=20260602-purple",
-    tag: data.tag || "casasync-notification",
+    tag: data.tag || `casasync-${data.taskId || data.timestamp || Date.now()}`,
     renotify: false,
     timestamp: data.timestamp || Date.now(),
     data: { url: data.url || "/", taskId: data.taskId || null }
@@ -93,7 +94,13 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const targetUrl = event.notification.data?.url || "/";
+  let requestedUrl;
+  try {
+    requestedUrl = new URL(event.notification.data?.url || "/", self.location.origin);
+  } catch {
+    requestedUrl = new URL("/", self.location.origin);
+  }
+  const targetUrl = requestedUrl.origin === self.location.origin ? requestedUrl.href : self.location.origin;
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {

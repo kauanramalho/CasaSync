@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import get_settings
+from app.core.push_security import validate_push_endpoint
 from app.models.enums import TaskStatus
 from app.models.family import Family, FamilyMember
 from app.models.notification import Notification, WebPushSubscription
@@ -132,6 +133,8 @@ def save_web_push_subscription(
 ) -> WebPushSubscription:
     require_family_member(db, family_id, user_id)
     subscription = db.query(WebPushSubscription).filter(WebPushSubscription.endpoint == payload.endpoint).first()
+    if subscription and subscription.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Esta inscricao pertence a outra conta. Reative as notificacoes neste navegador.")
     if not subscription:
         subscription = WebPushSubscription(endpoint=payload.endpoint)
     subscription.family_id = family_id
@@ -209,6 +212,8 @@ def send_task_reminder_push(db: Session, *, user_id: str, family_id: str, task: 
     delivered = False
     for subscription in subscriptions:
         try:
+            # Existing database rows must also pass validation before network I/O.
+            validate_push_endpoint(subscription.endpoint)
             webpush(
                 subscription_info={
                     "endpoint": subscription.endpoint,
@@ -217,6 +222,7 @@ def send_task_reminder_push(db: Session, *, user_id: str, family_id: str, task: 
                 data=_push_payload(task, reminder_id),
                 vapid_private_key=settings.vapid_private_key,
                 vapid_claims={"sub": settings.vapid_subject},
+                timeout=20,
             )
             delivered = True
         except WebPushException as exc:

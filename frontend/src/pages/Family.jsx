@@ -10,6 +10,7 @@ import {
   ImagePlus,
   Plus,
   RefreshCcw,
+  Share2,
   ShieldCheck,
   Trash2,
   Trophy,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 
 import Avatar from "../components/Avatar";
+import FamilyAvatar from "../components/FamilyAvatar";
 import Button from "../components/Button";
 import Card from "../components/Card";
 import ImageAdjustField from "../components/ImageAdjustField";
@@ -30,13 +32,14 @@ import { useToast } from "../hooks/useToast";
 import { dashboardApi, familiesApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError, toValidDate } from "../utils/formatters";
+import { buildFamilyInvite, shareFamilyInvite } from "../utils/familyInvite";
 
 function isAdminRole(role) {
   return role === "owner" || role === "admin";
 }
 
 function roleLabel(role) {
-  if (role === "owner") return "Proprietario";
+  if (role === "owner") return "Líder";
   return isAdminRole(role) ? "Administrador" : "Membro";
 }
 
@@ -47,7 +50,7 @@ function dateKey(value) {
 
 export default function Family() {
   const { user } = useAuth();
-  const { refreshFamilies, switchFamily } = useActiveFamily();
+  const { activeFamily, families: myFamilies, refreshFamilies, switchFamily, switching } = useActiveFamily();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const familyImageRef = useRef(null);
@@ -72,6 +75,16 @@ export default function Family() {
   const [savingFamily, setSavingFamily] = useState(false);
   const [loading, setLoading] = useState(false);
   const [familyAction, setFamilyAction] = useState("");
+  const [inviteImage, setInviteImage] = useState(null);
+  const [sharing, setSharing] = useState(false);
+  const [deletingFamily, setDeletingFamily] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetch("/icons/icon-512.png").then((response) => { if (!response.ok) throw new Error(); return response.blob(); }).then((blob) => {
+      if (alive) setInviteImage(new File([blob], "CasaSync.png", { type: "image/png" }));
+    }).catch(() => undefined);
+    return () => { alive = false; };
+  }, []);
 
   const load = useCallback(async function load() {
     if (loadInFlightRef.current) return;
@@ -236,6 +249,7 @@ export default function Family() {
       familyImageRef.current?.resetDraft();
       setMessage("Configuracoes da familia atualizadas.");
       showToast({ type: "success", message: "Configuracoes da familia atualizadas." });
+      await refreshFamilies();
       emitAppDataChanged();
       load();
     } catch (err) {
@@ -271,6 +285,17 @@ export default function Family() {
     }
   }
 
+  async function shareInvite() {
+    if (!currentFamily || sharing) return;
+    setSharing(true);
+    try {
+      const result = await shareFamilyInvite(buildFamilyInvite(currentFamily, user?.name, window.location.origin), inviteImage);
+      showToast({ type: "success", message: result === "copied" ? "Convite copiado. Cole na rede social que preferir." : "Convite compartilhado." });
+    } catch (err) {
+      if (err?.name !== "AbortError") showToast({ type: "error", message: err.message || "Não foi possível compartilhar." });
+    } finally { setSharing(false); }
+  }
+
   async function updateMemberRole(member, role) {
     setMessage("");
     setError("");
@@ -298,7 +323,9 @@ export default function Family() {
   }
 
   async function deleteFamily() {
-    if (!window.confirm("Excluir esta familia e todos os dados vinculados?")) return;
+    if (deletingFamily || !canOwner) return;
+    if (!window.confirm(`Excluir a família ${currentFamily.name} e todos os dados vinculados? Esta ação não pode ser desfeita.`)) return;
+    setDeletingFamily(true);
     setMessage("");
     setError("");
     try {
@@ -308,6 +335,8 @@ export default function Family() {
       await refreshFamilies();
     } catch (err) {
       setError(normalizeApiError(err));
+    } finally {
+      setDeletingFamily(false);
     }
   }
 
@@ -352,7 +381,19 @@ export default function Family() {
 
   return (
     <>
-      <PageHeader title="Familia" subtitle="Gerencie membros, convites e o grupo principal do CasaSync." user={user} />
+      <PageHeader title="Famílias" subtitle="Veja seus grupos, sua liderança e gerencie membros e convites." user={user} />
+      <Card className="mb-6">
+        <h2 className="section-title">Minhas famílias</h2>
+        <p className="mt-2 text-sm text-muted">Selecione uma família para acessar suas configurações. Só o líder pode excluí-la.</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {myFamilies.map((family) => <button type="button" key={family.id} disabled={switching} onClick={() => switchFamily(family.id).catch((err) => setError(normalizeApiError(err)))} className={`flex min-w-0 items-center gap-3 rounded-2xl border p-4 text-left disabled:opacity-50 ${family.id === activeFamily?.id ? "border-blush bg-blush/10" : "border-border hover:bg-blush/5"}`}>
+            <FamilyAvatar family={family} className="h-12 w-12" />
+            <span className="min-w-0"><span className="block break-words font-bold text-ink">{family.name}</span><span className="mt-1 block text-xs font-semibold text-muted">{roleLabel(family.current_user_role)}{family.id === activeFamily?.id ? " · Ativa" : ""}</span></span>
+            {family.current_user_role === "owner" && <Crown className="ml-auto h-5 w-5 shrink-0 text-blush" aria-label="Você é líder" />}
+          </button>)}
+          {!myFamilies.length && <p className="text-sm text-muted">Você ainda não participa de uma família.</p>}
+        </div>
+      </Card>
 
       {(message || error) && (
         <div className={`mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl px-4 py-3 text-sm font-semibold ${error ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"}`}>
@@ -376,12 +417,13 @@ export default function Family() {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="break-words text-2xl font-bold text-ink">{currentFamily.name}</h2>
-                  {canAdmin && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700"><ShieldCheck className="h-3 w-3" /> admin</span>}
+                  {canAdmin && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700"><ShieldCheck className="h-3 w-3" />{canOwner ? "Líder" : "Administrador"}</span>}
                 </div>
                 <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">{currentFamily.description || "Casa organizada, rotina mais leve e um ranking para manter todo mundo junto."}</p>
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
+              <Button type="button" variant="secondary" onClick={shareInvite} disabled={sharing} className="sm:col-span-2"><Share2 className="h-5 w-5" />{sharing ? "Compartilhando..." : "Compartilhar convite"}</Button>
               <button onClick={copyInviteCode} className="flex min-w-0 items-center justify-between rounded-2xl bg-white px-4 py-3 text-left shadow-card transition hover:-translate-y-0.5 hover:bg-rose-50">
                 <span className="min-w-0">
                   <span className="block text-xs font-bold text-muted">Convite</span>
@@ -514,7 +556,7 @@ export default function Family() {
                   {savingFamily ? "Salvando..." : "Salvar configuracoes"}
                 </Button>
                 {canOwner && (
-                  <Button type="button" variant="danger" className="w-full" onClick={deleteFamily}>
+                  <Button type="button" variant="danger" className="w-full" onClick={deleteFamily} disabled={deletingFamily}>
                     <Trash2 className="h-5 w-5" />
                     Excluir familia
                   </Button>

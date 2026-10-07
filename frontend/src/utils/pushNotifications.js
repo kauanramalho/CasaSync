@@ -55,10 +55,12 @@ export async function subscribeToBrowserPush(publicKey) {
   }
 
   const registration = await registerCasaSyncServiceWorker();
-  const existing = await registration.pushManager.getSubscription();
+  // Registration may still be installing on the first visit.
+  const ready = registration.active ? registration : await navigator.serviceWorker.ready;
+  const existing = await ready.pushManager.getSubscription();
   if (existing) return existing.toJSON();
 
-  const subscription = await registration.pushManager.subscribe({
+  const subscription = await ready.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: base64UrlToUint8Array(publicKey)
   });

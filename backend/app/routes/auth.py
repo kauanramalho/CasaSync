@@ -75,6 +75,9 @@ def register(payload: UserCreate, request: Request, db: Session = Depends(get_db
         check_rate_limit(f"auth:register:{client_identifier(request)}", limit=8, window_seconds=3600)
         user = register_user(db, payload, commit=False)
         if not two_factor_delivery_available():
+            if get_settings().is_production:
+                raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                                    detail="Verificacao de e-mail temporariamente indisponivel. Tente novamente mais tarde.")
             user = record_login_without_two_factor(db, user, commit=False)
             response = AuthResponse(
                 access_token=create_access_token(user.id, token_version=user.token_version),
@@ -96,7 +99,7 @@ def register(payload: UserCreate, request: Request, db: Session = Depends(get_db
         raise
     except Exception as exc:
         db.rollback()
-        logger.exception("Unexpected register error email_hash=%s", _identifier_fingerprint(payload.email))
+        logger.error("Unexpected register error type=%s email_hash=%s", type(exc).__name__, _identifier_fingerprint(payload.email))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Nao foi possivel criar sua conta agora. Tente novamente em alguns minutos.",
@@ -112,7 +115,12 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
         check_rate_limit(f"auth:login:account:{identifier_hash}", limit=10, window_seconds=300)
         user = authenticate_user(db, payload.identifier, payload.password)
         purpose = login_two_factor_purpose(user)
-        if two_factor_delivery_available() and (purpose == "signup" or should_require_login_two_factor(user)):
+        verification_required = purpose == "signup" or should_require_login_two_factor(user)
+        delivery_available = two_factor_delivery_available()
+        if verification_required and not delivery_available and get_settings().is_production:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                                detail="Verificacao de e-mail temporariamente indisponivel. Tente novamente mais tarde.")
+        if delivery_available and verification_required:
             return _two_factor_response(user, purpose, db, enforce_cooldown=False)
         if not user.email_verified:
             logger.warning(
@@ -134,7 +142,7 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
         raise
     except Exception as exc:
         db.rollback()
-        logger.exception("Unexpected login error email_hash=%s", identifier_hash)
+        logger.error("Unexpected login error type=%s email_hash=%s", type(exc).__name__, identifier_hash)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Nao foi possivel concluir o login agora. Tente novamente em alguns minutos.",
@@ -154,7 +162,7 @@ def verify_two_factor(payload: TwoFactorVerifyRequest, request: Request, db: Ses
         raise
     except Exception as exc:
         db.rollback()
-        logger.exception("Unexpected 2FA verify error")
+        logger.error("Unexpected 2FA verify error type=%s", type(exc).__name__)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Nao foi possivel concluir a verificacao agora. Tente novamente em alguns minutos.",

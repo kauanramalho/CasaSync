@@ -1,3 +1,7 @@
 export function isTwoFactorRequiredResponse(response) {
   return response?.requires_two_factor === true && typeof response.pending_token === "string" && response.pending_token.length > 0;
 }
+
+export function shouldInvalidateSession(requestToken, currentToken) {
+  return Boolean(requestToken && requestToken === currentToken);
+}

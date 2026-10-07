@@ -10,6 +10,7 @@ import { useNotifications } from "../hooks/useNotifications";
 import { familiesApi } from "../services/api";
 import { APP_DATA_CHANGED_EVENT, emitAppDataChanged } from "../utils/events";
 import { toValidDate } from "../utils/formatters";
+import { useToast } from "../hooks/useToast";
 
 const notificationTone = {
   task: "bg-blue-50 text-blue-600",
@@ -44,21 +45,35 @@ export default function PageHeader({ title, subtitle, action, user }) {
   const [openUserMenu, setOpenUserMenu] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [joinRequests, setJoinRequests] = useState([]);
+  const [decidingRequest, setDecidingRequest] = useState(null);
+  const decidingRef = useRef(false);
+  const { showToast } = useToast();
   const notificationsRef = useRef(null);
+  const userMenuRef = useRef(null);
   const { notifications, unreadCount, markAsRead, markAllAsRead, clearAll } = useNotifications();
   const totalUnread = unreadCount + joinRequests.length;
 
   useEffect(() => {
-    if (!openNotifications) return undefined;
+    if (!openNotifications && !openUserMenu) return undefined;
 
     function handlePointerDown(event) {
-      if (notificationsRef.current?.contains(event.target)) return;
+      if (!notificationsRef.current?.contains(event.target)) setOpenNotifications(false);
+      if (!userMenuRef.current?.contains(event.target)) setOpenUserMenu(false);
+    }
+
+    function handleEscape(event) {
+      if (event.key !== "Escape") return;
       setOpenNotifications(false);
+      setOpenUserMenu(false);
     }
 
     document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [openNotifications]);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [openNotifications, openUserMenu]);
 
   useEffect(() => {
     let alive = true;
@@ -94,26 +109,37 @@ export default function PageHeader({ title, subtitle, action, user }) {
   }
 
   async function decideJoinRequest(requestId, approve) {
-    if (approve) {
-      await familiesApi.approveJoinRequest(requestId);
-    } else {
-      await familiesApi.rejectJoinRequest(requestId);
+    if (decidingRef.current) return;
+    decidingRef.current = true;
+    setDecidingRequest(requestId);
+    try {
+      if (approve) {
+        await familiesApi.approveJoinRequest(requestId);
+      } else {
+        await familiesApi.rejectJoinRequest(requestId);
+      }
+      setJoinRequests((current) => current.filter((item) => item.id !== requestId));
+      emitAppDataChanged();
+      showToast({ type: "success", message: approve ? "Entrada aprovada." : "Solicitacao recusada." });
+    } catch {
+      showToast({ type: "error", message: "Nao foi possivel processar a solicitacao. Tente novamente." });
+    } finally {
+      decidingRef.current = false;
+      setDecidingRequest(null);
     }
-    setJoinRequests((current) => current.filter((item) => item.id !== requestId));
-    emitAppDataChanged();
   }
 
   return (
-    <header className="mb-8 flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+    <header className="mb-8 grid min-w-0 grid-cols-[minmax(0,1fr)_3rem_3rem] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_3rem_auto] lg:flex lg:justify-between lg:gap-4">
       <div className="min-w-0">
         <h1 className="page-title">{title}</h1>
         {subtitle && <p className="mt-2 text-sm text-muted">{subtitle}</p>}
       </div>
 
-      <div className="flex w-full min-w-0 flex-wrap items-center gap-3 lg:w-auto lg:justify-end">
-        <GlobalSearch />
+      <div className="contents lg:flex lg:w-auto lg:min-w-0 lg:flex-wrap lg:items-center lg:justify-end lg:gap-3">
+        <GlobalSearch className="col-span-3 row-start-2" />
 
-        <div ref={notificationsRef} className="relative">
+        <div ref={notificationsRef} className="relative col-start-2 row-start-1">
           <button
             onClick={() => {
               setOpenNotifications((current) => !current);
@@ -121,6 +147,8 @@ export default function PageHeader({ title, subtitle, action, user }) {
             }}
             className="relative grid h-12 w-12 place-items-center rounded-2xl bg-white text-muted shadow-card transition hover:-translate-y-0.5 hover:text-ink hover:shadow-soft"
             title="Notificacoes"
+            aria-label="Notificacoes"
+            aria-expanded={openNotifications}
           >
             <Bell className="h-5 w-5" />
             {totalUnread > 0 && (
@@ -167,6 +195,7 @@ export default function PageHeader({ title, subtitle, action, user }) {
                           <button
                             type="button"
                             onClick={() => decideJoinRequest(request.id, true)}
+                            disabled={decidingRequest !== null}
                             className="min-h-10 rounded-xl bg-emerald-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-600"
                           >
                             Aceitar
@@ -174,6 +203,7 @@ export default function PageHeader({ title, subtitle, action, user }) {
                           <button
                             type="button"
                             onClick={() => decideJoinRequest(request.id, false)}
+                            disabled={decidingRequest !== null}
                             className="min-h-10 rounded-xl bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-100"
                           >
                             Recusar
@@ -220,21 +250,23 @@ export default function PageHeader({ title, subtitle, action, user }) {
           )}
         </div>
 
-        <div className="relative">
+        <div ref={userMenuRef} className="relative col-start-3 row-start-1 min-w-0">
           <button
             type="button"
             onClick={() => {
               setOpenUserMenu((current) => !current);
               setOpenNotifications(false);
             }}
-            className="flex items-center gap-3 rounded-2xl bg-white px-3 py-2 shadow-card transition hover:-translate-y-0.5 hover:shadow-soft"
+            aria-label="Abrir menu do perfil"
+            aria-expanded={openUserMenu}
+            className="flex h-12 w-12 items-center justify-center gap-3 rounded-2xl bg-white p-2 shadow-card transition hover:-translate-y-0.5 hover:shadow-soft sm:w-auto sm:px-3"
           >
             <Avatar user={user} />
-            <div className="hidden text-left sm:block">
-              <p className="text-sm font-bold text-ink">{user?.name || "Usuario"}</p>
-              <p className="text-xs text-muted">{user?.username ? `@${user.username}` : "Ver perfil"}</p>
+            <div className="hidden min-w-0 max-w-[180px] text-left sm:block">
+              <p className="truncate text-sm font-bold text-ink">{user?.name || "Usuario"}</p>
+              <p className="truncate text-xs text-muted">{user?.username ? `@${user.username}` : "Ver perfil"}</p>
             </div>
-            <ChevronDown className={`h-4 w-4 text-muted transition ${openUserMenu ? "rotate-180 text-blush" : ""}`} />
+            <ChevronDown className={`hidden h-4 w-4 shrink-0 text-muted transition sm:block ${openUserMenu ? "rotate-180 text-blush" : ""}`} />
           </button>
 
           {openUserMenu && (
@@ -270,7 +302,7 @@ export default function PageHeader({ title, subtitle, action, user }) {
           )}
         </div>
 
-        {action}
+        {action && <div className="col-span-3 row-start-3 flex flex-wrap items-center gap-3">{action}</div>}
       </div>
 
       {profileOpen && <ProfileModal user={user} onClose={() => setProfileOpen(false)} onSaved={updateUser} />}

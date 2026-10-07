@@ -10,7 +10,7 @@ import {
   setToken
 } from "../services/api";
 import { AUTH_SESSION_CHANGED_EVENT, emitAuthSessionChanged } from "../utils/events";
-import { isTwoFactorRequiredResponse } from "../utils/auth";
+import { isTwoFactorRequiredResponse, shouldInvalidateSession } from "../utils/auth";
 
 const AuthContext = createContext(null);
 
@@ -47,7 +47,8 @@ export function AuthProvider({ children }) {
     let alive = true;
 
     async function loadSession() {
-      if (!getToken()) {
+      const requestToken = getToken();
+      if (!requestToken) {
         setUser(null);
         setLoading(false);
         return;
@@ -55,12 +56,12 @@ export function AuthProvider({ children }) {
 
       try {
         const me = await authApi.me();
-        if (alive) setUser(me);
+        if (alive && requestToken === getToken()) setUser(me);
       } catch (error) {
-        if (error?.status === 401) {
+        if (error?.status === 401 && shouldInvalidateSession(requestToken, getToken())) {
           clearToken();
         }
-        if (alive) setUser(null);
+        if (alive && (!getToken() || requestToken === getToken())) setUser(null);
       } finally {
         if (alive) setLoading(false);
       }

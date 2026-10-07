@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createApiResponseError } from "../src/services/api.js";
-import { isTwoFactorRequiredResponse } from "../src/utils/auth.js";
+import { isTwoFactorRequiredResponse, shouldInvalidateSession } from "../src/utils/auth.js";
+
+test("a delayed 401 from an old account never clears the current session", () => {
+  assert.equal(shouldInvalidateSession("old-token", "new-token"), false);
+  assert.equal(shouldInvalidateSession("expired-token", "expired-token"), true);
+  assert.equal(shouldInvalidateSession(null, null), false);
+  assert.equal(shouldInvalidateSession("old-token", null), false);
+});
 
 test("frontend enters 2FA only for the real backend challenge contract", () => {
   assert.equal(

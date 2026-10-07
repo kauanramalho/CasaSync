@@ -310,6 +310,16 @@ class Settings(BaseSettings):
         encryption_key = (self.integration_token_encryption_key or "").strip()
         if self.google_calendar_enabled and len(encryption_key) < 32:
             raise ValueError("INTEGRATION_TOKEN_ENCRYPTION_KEY deve ter pelo menos 32 caracteres quando Google Agenda esta ativo em producao.")
+        if self.google_calendar_enabled and self.google_redirect_uri:
+            callback = urlsplit(self.google_redirect_uri)
+            if (
+                callback.scheme != "https"
+                or not callback.hostname
+                or callback.hostname.lower() in LOCAL_HOSTS
+                or callback.username or callback.password
+                or callback.query or callback.fragment
+            ):
+                raise ValueError("GOOGLE_REDIRECT_URI deve ser um callback HTTPS publico sem credenciais, query ou fragmento em producao.")
         if encryption_key and encryption_key in {jwt_secret, hmac_secret}:
             raise ValueError("INTEGRATION_TOKEN_ENCRYPTION_KEY deve usar um segredo separado em producao.")
         return self

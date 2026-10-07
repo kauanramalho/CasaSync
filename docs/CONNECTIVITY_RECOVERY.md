@@ -1,5 +1,64 @@
 # Recuperação de conectividade do CasaSync
 
+## Atualização operacional — 2026-10-07
+
+Esta seção substitui o estado de produção descrito no relatório histórico de setembro abaixo. Domínio confirmado pelo usuário: `https://casa-sync.vercel.app`.
+
+### Causa confirmada e correção aplicada
+
+- Frontend e backend publicados estão no commit `fe7a85f`; o bundle público `index-CqlwBC2L.js` corresponde ao build local, contém a API `https://casasync-api.onrender.com/api` e timeout de 65 segundos. O preflight da origem principal responde 200 com a origem exata autorizada.
+- `/health/ready` respondeu 200 com banco conectado, mas isso não verifica compatibilidade do schema. A primeira resposta demorou 43,835 segundos.
+- Comparação dos 22 modelos, com 266 colunas, contra o PostgreSQL identificou uma coluna ausente: `family_members.ai_aliases`. A consulta `SELECT id, ai_aliases FROM family_members LIMIT 0` retornou `column "ai_aliases" does not exist`.
+- O banco já estava marcado em `20260801_0001`. A baseline atual contém a coluna, mas editar uma revisão já aplicada não executa novamente seu DDL. O upgrade legado em `init_db.py` também não faz parte do startup de produção, que usa Alembic.
+- No site real, o cadastro fictício chegou à verificação; a conta de QA foi ativada e autenticada. Uma única criação de família persistiu no Neon, mas a recarga da tela mostrou erro de API. Portanto, não repetir o POST quando a gravação pode ter ocorrido.
+- Após autorização explícita do usuário, foi criado o snapshot `snap-small-king-ay2xiqw8`, nome `casasync-before-family-alias-repair-20261007`, às 14:10:20 UTC. O mesmo DDL foi testado no ramo isolado `br-ancient-bonus-ay8ktlwr`: coluna JSON opcional, consulta de membros funcional e contagens preservadas.
+- Foi aplicado em produção apenas `ALTER TABLE family_members ADD COLUMN IF NOT EXISTS ai_aliases JSON;`. Antes e depois: 7 usuários, 4 famílias, 4 vínculos de membro, 0 tarefas e 0 solicitações. Não houve UPDATE/DELETE de dados existentes, mudança de credenciais, de CORS ou de autenticação.
+- O ramo temporário foi removido ao concluir a migração; o snapshot foi mantido. A recarga pelo botão **Tentar novamente** recuperou a família de QA, um membro/proprietário e controles administrativos, sem reenviar a criação.
+- Após a correção, login por e-mail e por username chegaram ao dashboard autenticado com a família ativa. Uma criação nova, `QA Pos-migracao 2026-10-07`, também ativou a família e exibiu seu proprietário sem erro de API. São duas famílias fictícias de QA; não foram duplicadas por retry automático.
+- Nova comparação de schema após a correção: as 22 tabelas e 266 colunas dos modelos estão presentes; nenhuma coluna obrigatória do mapeamento local ficou ausente.
+- Recarga completa do site manteve sessão, família ativa e proprietário. Consulta somente de leitura confirmou um proprietário e dez categorias em cada família de QA. Convite da própria família apresentou `Voce ja faz parte desta familia.`, em vez de falha de conexão; nenhuma solicitação indevida foi gravada.
+
+### Compatibilidade e prevenção de recorrência
+
+Novo arquivo local: `backend/alembic/versions/20261007_0002_family_member_ai_aliases.py`. É uma revisão incremental, aditiva e idempotente em instalações que já têm a coluna. O downgrade preserva a coluna e os aliases, pois a própria baseline já a declara.
+
+**A revisão remota continua em `20260801_0001` deliberadamente:** o backend publicado em `fe7a85f` ainda não conhece `20261007_0002`. Avançar o marcador agora faria o próximo startup falhar por revisão desconhecida. A recuperação pontual adiciona a coluna exigida pelo código já publicado; em uma publicação posterior autorizada do arquivo novo, `alembic upgrade head` reconhecerá a coluna existente e avançará a revisão com segurança. Não usar `stamp head` nem publicar automaticamente.
+
+Arquivos alterados nesta continuação: nova revisão Alembic, `backend/tests/test_migrations.py` e este relatório. `STATUS.md` foi preservado. Nenhum stage, commit, push, deploy ou alteração de variável remota foi feito. A única alteração remota de aplicação foi o DDL autorizado, acompanhado de backup e ramo de teste.
+
+### Validação desta continuação
+
+| Verificação | Resultado |
+| --- | --- |
+| Backend completo | 144 testes passaram |
+| Migrações: banco novo, legado e já versionado | 7 testes passaram; sem model drift no SQLite |
+| Reprodução HTTP com schema defeituoso | `/auth/me`: 200; lista de famílias e convite: 500 |
+| Mesmo banco após migração | Família/lista/membros/dashboard: 200; criação: 201; convite pendente e aprovação: 200; sem token: 401 |
+| Preservação e reexecução | Usuários, papel, pontos e família preservados; aliases existentes sobrevivem upgrade/downgrade; repetir upgrade é seguro |
+| PostgreSQL isolado e produção | DDL aditivo testado e aplicado; leitura da nova coluna funcional; contagens preservadas |
+| Frontend | 37 testes, ESLint e build passaram; nenhum código de UI alterado nesta continuação |
+| Python e Git | `compileall` incluindo Alembic e `git diff --check` passaram; uma head `20261007_0002` |
+| Site publicado | Cadastro/ativação QA, login por e-mail e username, dashboard, recuperação/criação de família e persistência após recarga passaram na interface; convite de membro existente foi recusado corretamente |
+| Varredura de segredos | Gitleaks com redação sobre o diff do escopo e nova revisão passou, sem vazamentos detectados |
+
+Comandos adicionais executados em PowerShell, na raiz canônica:
+
+```powershell
+$env:PYTHONPATH = Join-Path (Get-Location).Path 'backend'
+& backend/.venv/Scripts/python.exe -m unittest discover -s backend/tests -p test_migrations.py -q
+& backend/.venv/Scripts/python.exe -m unittest discover -s backend/tests -q
+& backend/.venv/Scripts/python.exe -m compileall -q backend/app backend/tests backend/alembic
+& backend/.venv/Scripts/python.exe -m alembic -c backend/alembic.ini heads
+git diff --check
+git status --short
+```
+
+Evidência visual: `C:\Users\DeskTop-Kauan\AppData\Local\Temp\casasync-acceptance-20261007\family-after-reload.jpg` e `dashboard-after-login.jpg`. Foram preservadas duas abas de navegador para continuar o teste: a primeira com a conta fictícia proprietária; a segunda na tela de login, sem manter conta aberta, para uma segunda conta controlada pelo usuário.
+
+Limites de aceitação: recebimento de e-mail em caixa real não foi comprovado; entrada e aprovação por uma segunda conta em produção ainda dependem de uma segunda sessão de teste. Os testes autenticados locais não substituem essa aceitação. Os dados fictícios de QA foram mantidos em produção; não excluir usuários/famílias sem confirmação específica. Não declarar o aplicativo inteiro “100% validado”.
+
+## Relatório histórico — 2026-09-15
+
 Verificação: 2026-09-15. Checkout canônico: `C:\Users\DeskTop-Kauan\Kauan Ramalho\Programacao\REPOSITORIOS GitHub\CasaSync`, branch `main`, commit-base `1bf46b8`.
 
 ## Resultado e limite

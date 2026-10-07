@@ -475,6 +475,38 @@ def handle_google_callback(
     return GoogleCalendarCallbackResponse(status="connected", message="Google Agenda conectado com sucesso.")
 
 
+def prepare_google_callback_redirect(
+    *, code: str | None, state: str | None, error: str | None, settings: Settings,
+) -> str:
+    """The public GET callback must never exchange or persist OAuth tokens."""
+    if error:
+        result = GoogleCalendarCallbackResponse(status="denied", message="Autorizacao Google cancelada ou negada.")
+    elif not is_google_calendar_enabled(settings):
+        result = GoogleCalendarCallbackResponse(status="disabled", message=GOOGLE_CALENDAR_DISABLED_MESSAGE)
+    elif not code or not state:
+        result = GoogleCalendarCallbackResponse(status="error", message="Inicie a conexao novamente nas configuracoes.")
+    else:
+        _decode_oauth_state(state)
+        result = GoogleCalendarCallbackResponse(status="authorize", message="Confirmando sua conexao com o Google Agenda.")
+        base = urlsplit(_frontend_settings_url(settings, result))
+        # Fragments are not sent to the frontend HTTP server or in Referer headers.
+        fragment = urlencode({'googleCalendar': 'authorize', 'googleCode': code, 'googleState': state})
+        return urlunsplit((base.scheme, base.netloc, base.path, '', fragment))
+    return _frontend_settings_url(settings, result)
+
+
+def complete_google_callback(
+    db: Session, *, code: str, state: str, current_user: User, family_id: str, settings: Settings,
+) -> GoogleCalendarCallbackResponse:
+    payload = _decode_oauth_state(state)
+    if (payload["sub"] != current_user.id or payload["family_id"] != family_id
+            or payload.get("ver", 0) != current_user.token_version):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Inicie a conexao novamente com sua conta e familia ativa.")
+    require_family_member(db, family_id, current_user.id)
+    return handle_google_callback(db, code=code, state=state, error=None, settings=settings)
+
+
 def _frontend_settings_url(settings: Settings, result: GoogleCalendarCallbackResponse) -> str:
     base_url = (settings.frontend_url or "").strip().rstrip("/")
     if not base_url:

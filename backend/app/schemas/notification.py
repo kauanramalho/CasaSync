@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.core.push_security import validate_push_endpoint
 
 from app.schemas.common import ORMModel
 
@@ -42,6 +44,11 @@ class WebPushKeys(BaseModel):
 class WebPushSubscriptionIn(BaseModel):
     endpoint: str = Field(min_length=20, max_length=2000)
     keys: WebPushKeys
+
+    @field_validator("endpoint")
+    @classmethod
+    def validate_endpoint(cls, value: str) -> str:
+        return validate_push_endpoint(value)
 
 
 class WebPushSubscriptionStatus(BaseModel):

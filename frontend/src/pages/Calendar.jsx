@@ -19,6 +19,7 @@ import { useToast } from "../hooks/useToast";
 import { categoriesApi, familiesApi, integrationsApi, tasksApi } from "../services/api";
 import {
   calendarMonthTasks,
+  calendarDateKey,
   calendarTimeLabel,
   filterCalendarTasks,
   groupCalendarTasksByDay,
@@ -380,11 +381,11 @@ export default function Calendar() {
 
   const listGroups = useMemo(() => {
     return periodTasks.reduce((acc, task) => {
-      const key = taskDateKey(task);
+      const key = calendarDateKey(task.due_date, preferences.timezone);
       acc[key] = [...(acc[key] || []), task];
       return acc;
     }, {});
-  }, [periodTasks]);
+  }, [periodTasks, preferences.timezone]);
 
   const selectedTasks = selectedDate ? tasksByDay[dateKey(selectedDate)] || [] : [];
 

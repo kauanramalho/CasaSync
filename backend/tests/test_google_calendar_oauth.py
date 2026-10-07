@@ -4,14 +4,17 @@ from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlparse
 from unittest.mock import patch
 
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import Settings
 from app.database.base import Base
 from app.models import Family, FamilyMember, GoogleCalendarUserConnection, Task, User
-from app.routes.integrations import google_calendar_callback
+from app.routes.integrations import google_calendar_callback, router
+from app.schemas.integration import GoogleCalendarCompleteRequest
 from app.services.calendar_provider_adapter import (
     CalendarProviderAuthError,
     CalendarTokenResult,
@@ -24,6 +27,7 @@ from app.services.calendar_service import (
     get_google_auth_url,
     get_google_calendar_status,
     handle_google_callback,
+    complete_google_callback,
     sync_task_to_calendar,
 )
 from app.services.secret_service import decrypt_secret, encrypt_secret
@@ -123,6 +127,89 @@ class GoogleCalendarOAuthTest(unittest.TestCase):
         self.db.commit()
         return task
 
+    def oauth_state(self, settings):
+        auth = get_google_auth_url(
+            current_user_id=self.user.id,
+            current_user_token_version=self.user.token_version,
+            family_id=self.family.id,
+            settings=settings,
+        )
+        return parse_qs(urlparse(auth.url).query)["state"][0]
+
+    def test_public_callback_does_not_exchange_or_persist_tokens(self):
+        settings = self.settings()
+        state = self.oauth_state(settings)
+        with patch("app.services.calendar_service.get_calendar_provider_adapter") as provider:
+            response = google_calendar_callback(
+                code="test-code", state=state, error=None, db=self.db, settings=settings,
+            )
+        provider.assert_not_called()
+        self.assertEqual(self.db.query(GoogleCalendarUserConnection).count(), 0)
+        location = urlparse(response.headers["location"])
+        self.assertEqual(location.query, "")
+        fragment = parse_qs(location.fragment)
+        self.assertEqual(fragment["googleCalendar"], ["authorize"])
+        self.assertEqual(fragment["googleCode"], ["test-code"])
+        self.assertEqual(fragment["googleState"], [state])
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        self.assertEqual(response.headers["referrer-policy"], "no-referrer")
+
+    def test_completion_requires_the_same_user_family_and_session_version(self):
+        settings = self.settings()
+        state = self.oauth_state(settings)
+        other_user = User(id="other-oauth", token_version=self.user.token_version)
+        for user, family_id in ((other_user, self.family.id), (self.user, "other-family")):
+            with self.subTest(user_id=user.id, family_id=family_id):
+                with patch("app.services.calendar_service.get_calendar_provider_adapter") as provider:
+                    with self.assertRaises(HTTPException) as raised:
+                        complete_google_callback(self.db, code="test-code", state=state,
+                                                 current_user=user, family_id=family_id, settings=settings)
+                    self.assertEqual(raised.exception.status_code, 403)
+                    provider.assert_not_called()
+        self.user.token_version += 1
+        with self.assertRaises(HTTPException) as raised:
+            complete_google_callback(self.db, code="test-code", state=state,
+                                     current_user=self.user, family_id=self.family.id, settings=settings)
+        self.assertEqual(raised.exception.status_code, 403)
+        self.assertEqual(self.db.query(GoogleCalendarUserConnection).count(), 0)
+
+    def test_authenticated_completion_saves_encrypted_tokens(self):
+        settings = self.settings()
+        state = self.oauth_state(settings)
+        with patch("app.services.calendar_service.get_calendar_provider_adapter", return_value=FakeOAuthAdapter()):
+            result = complete_google_callback(self.db, code="test-code", state=state,
+                                              current_user=self.user, family_id=self.family.id, settings=settings)
+        self.assertEqual(result.status, "connected")
+        connection = self.db.query(GoogleCalendarUserConnection).one()
+        self.assertEqual(connection.user_id, self.user.id)
+        self.assertNotIn("test-access-token", connection.access_token_encrypted)
+
+    def test_completion_rechecks_membership_before_contacting_google(self):
+        settings = self.settings()
+        state = self.oauth_state(settings)
+        self.db.query(FamilyMember).filter_by(user_id=self.user.id).delete()
+        self.db.commit()
+        with patch("app.services.calendar_service.get_calendar_provider_adapter") as provider:
+            with self.assertRaises(HTTPException) as raised:
+                complete_google_callback(self.db, code="test-code", state=state,
+                                         current_user=self.user, family_id=self.family.id, settings=settings)
+            self.assertEqual(raised.exception.status_code, 403)
+            provider.assert_not_called()
+
+    def test_completion_http_endpoint_rejects_missing_bearer_token(self):
+        test_app = FastAPI()
+        test_app.include_router(router, prefix="/api")
+        with TestClient(test_app) as client:
+            response = client.post("/api/integrations/google-calendar/complete", json={"code": "code", "state": "state"})
+        self.assertEqual(response.status_code, 401)
+
+    def test_completion_payload_rejects_empty_oversized_or_extra_fields(self):
+        for payload in ({"code": "", "state": "state"}, {"code": "code", "state": "x" * 4097},
+                        {"code": "code", "state": "state", "user_id": "forged"}):
+            with self.subTest(fields=list(payload)):
+                with self.assertRaises(ValidationError):
+                    GoogleCalendarCompleteRequest(**payload)
+
     def test_authorization_url_uses_offline_consent_and_current_scopes(self):
         response = get_google_auth_url(
             current_user_id=self.user.id,
@@ -135,7 +222,8 @@ class GoogleCalendarOAuthTest(unittest.TestCase):
         self.assertEqual(query["access_type"], ["offline"])
         self.assertEqual(query["prompt"], ["consent"])
         self.assertEqual(query["redirect_uri"], ["https://api.example.test/api/integrations/google-calendar/callback"])
-        self.assertIn("https://www.googleapis.com/auth/calendar", query["scope"][0])
+        self.assertIn("https://www.googleapis.com/auth/calendar.app.created", query["scope"][0].split())
+        self.assertNotIn("https://www.googleapis.com/auth/calendar", query["scope"][0].split())
         self.assertIn("https://www.googleapis.com/auth/calendar.events", query["scope"][0])
         self.assertTrue(query["state"][0])
 

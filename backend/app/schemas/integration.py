@@ -63,6 +63,13 @@ class GoogleCalendarCallbackResponse(BaseModel):
     message: str
 
 
+class GoogleCalendarCompleteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(min_length=1, max_length=4096)
+    state: str = Field(min_length=1, max_length=4096)
+
+
 class GoogleCalendarTaskSyncResponse(BaseModel):
     provider: str = "google"
     status: str

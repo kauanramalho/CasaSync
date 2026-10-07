@@ -1,6 +1,21 @@
 # Auditoria de Seguranca CasaSync
 
-Atualizada em: 2026-08-05
+Atualizada em: 2026-10-07. Correcoes desta revisao ainda locais, nao publicadas.
+
+## Revisao de 2026-10-07
+
+- Cadastro e verificacao obrigatoria falham com 503 em producao se nao houver canal de e-mail; nao verificam contas nem emitem sessao completa como fallback. Simulacao local permanece disponivel apenas fora de producao.
+- Excecoes inesperadas de autenticacao registram tipo e fingerprint, nao traceback/parametros SQL com dados da conta.
+- Web Push aceita somente endpoints HTTPS de provedores conhecidos, valida registros antigos antes do envio, limita timeout a 20 segundos e impede transferir uma inscricao entre usuarios.
+- Callback Google publico nao troca nem persiste tokens. Finalizacao exige POST autenticado, mesmo usuario, familia, versao da sessao e membership atual. Codigo/state seguem no fragmento do frontend, removido antes do POST.
+- Permissao ampla `calendar` substituida por `calendar.app.created`; `calendar.events` mantida. Grants antigos nao foram revogados.
+- Uma resposta 401 atrasada de outra sessao nao encerra a sessao atual. Notificacoes locais exigem usuario e familia identificados.
+- Headers do frontend foram configurados contra framing, sniffing e vazamento de Referer; verificacao no dominio publicado ainda pendente.
+- PyJWT atualizado para 2.15.1 no ambiente local e requisito minimo 2.15.0. Nodemailer atualizado para 10.0.16; lockfile atualizado sem scripts de instalacao.
+
+Validacao atual: **164 testes backend, 62 frontend, lint e build aprovados**; `pip-audit` e `npm audit --omit=dev` sem vulnerabilidades conhecidas. Auditoria completa npm ainda aponta **7 alertas no toolchain Tailwind 3 (5 altos, 2 moderados)**. Bandit: 10.491 linhas, 0 altos, 7 medios e 4 baixos; achados contextuais revisados, nao equivalentes a 11 vulnerabilidades confirmadas.
+
+Detalhes, comandos, limites e gate de publicacao: [SERVICE_AUDIT_20261007.md](SERVICE_AUDIT_20261007.md).
 
 ## Fluxo de autenticacao revisado
 
@@ -31,7 +46,7 @@ Atualizada em: 2026-08-05
 - Rate limit por conta independe do IP, ignora `X-Forwarded-For` nao confiavel e limita buckets em memoria.
 - Producao falha ao iniciar com JWT fraco, modo de e-mail de desenvolvimento ou secrets criticos ausentes/compartilhados.
 - Payloads de autenticacao rejeitam campos extras e novas senhas exigem ao menos uma letra e um numero.
-- Codigos 2FA nao sao registrados em logs; producao exige SMTP e desenvolvimento local pode simular entrega com `000000`.
+- Codigos 2FA nao sao registrados em logs; producao exige canal real SMTP ou relay HTTP autenticado e desenvolvimento local pode simular entrega com `000000`.
 - Cadastro novo e desfeito quando a entrega inicial do codigo 2FA falha.
 - CORS de previews nao e habilitado por regex implicitamente.
 
@@ -39,7 +54,7 @@ Atualizada em: 2026-08-05
 
 - `JWT_SECRET_KEY`: obrigatoria e forte em producao.
 - `TWO_FACTOR_HMAC_SECRET`: obrigatorio em producao, forte e separado do JWT.
-- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_USE_TLS`, `EMAIL_FROM`: necessarias para envio real.
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_USE_TLS`, `EMAIL_FROM`: envio SMTP real; alternativamente, relay HTTPS com `EMAIL_DELIVERY_HTTP_URL` e token forte pareado.
 - `EMAIL_DEV_MODE=false`: obrigatorio em producao. O CasaSync nunca registra codigo 2FA em logs.
 - `INTEGRATION_TOKEN_ENCRYPTION_KEY`: obrigatoria, forte e separada quando Google Agenda estiver ativo em producao.
 - `ENVIRONMENT=production` para habilitar HSTS/CSP e evitar comportamento de desenvolvimento.
@@ -50,9 +65,9 @@ Atualizada em: 2026-08-05
 - Tokens continuam em `localStorage`; para maior hardening futuro, considerar cookie HttpOnly/Secure/SameSite com CSRF.
 - Recuperacao de senha nao existe no codigo atual; quando adicionada, aplicar token curto, hash, uso unico e rate limit.
 - Imagens persistidas continuam acessiveis por URL opaca para suportar `<img>` sem cookies; revisar URLs assinadas ou proxy autenticado antes de armazenar midia mais sensivel.
-- O `npm audit` aponta um advisory alto do React Router para RSC. O CasaSync e uma SPA Vite sem RSC, e a correcao sugerida pelo npm exige downgrade incompativel; acompanhar uma correcao upstream compativel sem usar `--force`.
+- A cadeia de compilacao Tailwind 3 ainda tem 7 alertas npm. A atualizacao compativel resolveu os alertas de producao, incluindo os antigos de Router/Nodemailer. Migrar Tailwind 4 em lote proprio, com regressao visual, sem `audit fix --force`.
 
-## Validacoes executadas
+## Validacoes historicas (2026-08-05, nao reexecutadas integralmente nesta data)
 
 - `python -m compileall backend/app`
 - `python -m unittest discover -s backend/tests` (116 testes)

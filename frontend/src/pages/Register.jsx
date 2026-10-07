@@ -54,6 +54,8 @@ export default function Register() {
         <input
           className="soft-input"
           placeholder="Nome"
+          aria-label="Nome"
+          autoComplete="name"
           value={form.name}
           onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
           minLength={2}
@@ -76,6 +78,8 @@ export default function Register() {
           className="soft-input"
           type="email"
           placeholder="E-mail"
+          aria-label="E-mail"
+          autoComplete="email"
           value={form.email}
           onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
           required

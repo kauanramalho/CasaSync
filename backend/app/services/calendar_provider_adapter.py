@@ -15,7 +15,7 @@ GOOGLE_CALENDARS_URL = "https://www.googleapis.com/calendar/v3/calendars"
 GOOGLE_CALENDAR_EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events"
 GOOGLE_CALENDAR_SCOPES = (
     "https://www.googleapis.com/auth/calendar.events",
-    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/calendar.app.created",
 )
 
 
@@ -106,7 +106,10 @@ def _json_request(
 ) -> dict:
     try:
         with urlopen(request, timeout=_timeout(timeout_seconds)) as response:
-            return json.loads(response.read().decode("utf-8"))
+            payload = json.loads(response.read().decode("utf-8"))
+            if not isinstance(payload, dict):
+                raise CalendarProviderError("Google Agenda retornou uma resposta invalida.")
+            return payload
     except HTTPError as exc:
         if exc.code == 404:
             raise CalendarProviderNotFoundError("Evento do Google Agenda nao foi encontrado.") from exc

@@ -139,6 +139,25 @@ class AuthDeliveryFallbackTest(unittest.TestCase):
         finally:
             db.close()
 
+    def test_production_without_delivery_never_verifies_email_or_issues_token(self):
+        self.seed_user(email_verified=False)
+        settings = FALLBACK_SETTINGS.model_copy(update={"environment": "production"})
+        with auth_runtime(settings):
+            response = self.client.post("/api/auth/login", json={"identifier": "fallback@example.com", "password": "LegacyPass1"})
+        self.assertEqual(response.status_code, 503)
+        self.assertNotIn("access_token", response.json())
+        with self.SessionLocal() as db:
+            self.assertFalse(db.get(User, "fallback-user").email_verified)
+
+    def test_production_registration_without_delivery_rolls_back(self):
+        settings = FALLBACK_SETTINGS.model_copy(update={"environment": "production"})
+        with auth_runtime(settings):
+            response = self.client.post("/api/auth/register", json={"name": "Teste", "username": "production-test",
+                                                                   "email": "production-test@example.com", "password": "Strong-test-123"})
+        self.assertEqual(response.status_code, 503)
+        with self.SessionLocal() as db:
+            self.assertEqual(db.query(User).count(), 0)
+
     def test_login_with_dev_channel_still_requires_two_factor(self):
         self.seed_user()
         with auth_runtime(DEV_SETTINGS):

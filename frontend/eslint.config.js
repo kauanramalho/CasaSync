@@ -2,6 +2,12 @@ import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 
 const browserGlobals = {
+  AbortController: "readonly",
+  Blob: "readonly",
+  CustomEvent: "readonly",
+  DOMParser: "readonly",
+  Element: "readonly",
+  File: "readonly",
   clearTimeout: "readonly",
   console: "readonly",
   document: "readonly",
@@ -11,7 +17,11 @@ const browserGlobals = {
   FormData: "readonly",
   Image: "readonly",
   localStorage: "readonly",
+  navigator: "readonly",
+  Notification: "readonly",
+  sessionStorage: "readonly",
   setTimeout: "readonly",
+  URL: "readonly",
   URLSearchParams: "readonly",
   window: "readonly"
 };
@@ -35,6 +45,7 @@ export default [
       "react-hooks": reactHooks
     },
     rules: {
+      "no-undef": "error",
       "no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
       "react-hooks/exhaustive-deps": "warn",
       "react-hooks/rules-of-hooks": "error",
@@ -45,5 +56,13 @@ export default [
     settings: {
       react: { version: "detect" }
     }
+  },
+  {
+    files: ["api/**/*.js", "vite.config.js"],
+    languageOptions: { globals: { process: "readonly", Buffer: "readonly" } }
+  },
+  {
+    files: ["public/sw.js"],
+    languageOptions: { globals: { self: "readonly", caches: "readonly" } }
   }
 ];

@@ -1,3 +1,5 @@
+import { cropGeometry } from "./imageCrop";
+
 export const imageFileTypes = ["image/png", "image/jpeg", "image/webp"];
 export const imageFileExtensions = [".png", ".jpg", ".jpeg", ".webp"];
 export const imageFileAccept = [...imageFileTypes, ...imageFileExtensions].join(",");
@@ -107,14 +109,7 @@ export async function cropImageFileToBlob(
       canvas.width = targetWidth;
       canvas.height = targetHeight;
       const ctx = canvas.getContext("2d");
-      const zoom = Math.max(1, Number(crop.zoom) || 1);
-      const scale = Math.max(targetWidth / image.width, targetHeight / image.height) * zoom;
-      const drawWidth = image.width * scale;
-      const drawHeight = image.height * scale;
-      const maxShiftX = Math.max(0, (drawWidth - targetWidth) / 2);
-      const maxShiftY = Math.max(0, (drawHeight - targetHeight) / 2);
-      const dx = (targetWidth - drawWidth) / 2 + ((Number(crop.x) || 0) / 40) * maxShiftX;
-      const dy = (targetHeight - drawHeight) / 2 + ((Number(crop.y) || 0) / 40) * maxShiftY;
+      const { drawWidth, drawHeight, dx, dy } = cropGeometry(image.width, image.height, targetWidth, targetHeight, crop);
 
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";

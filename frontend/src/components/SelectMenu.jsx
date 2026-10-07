@@ -4,6 +4,7 @@ import clsx from "clsx";
 import { Check, ChevronDown } from "lucide-react";
 
 import { CategoryOptionContent } from "./Badges";
+import FamilyAvatar from "./FamilyAvatar";
 
 export default function SelectMenu({ value, options = [], onChange, placeholder = "Selecionar", className, buttonClassName }) {
   const [open, setOpen] = useState(false);
@@ -83,7 +84,9 @@ export default function SelectMenu({ value, options = [], onChange, placeholder 
           buttonClassName
         )}
       >
-        {selectedOption && hasCategoryVisual(selectedOption) ? (
+        {selectedOption?.family ? (
+          <span className="flex min-w-0 items-center gap-3"><FamilyAvatar family={selectedOption.family} /><span className="min-w-0"><span className="block truncate font-semibold">{selectedOption.label}</span><span className="block truncate text-xs text-muted">{selectedOption.helper}</span></span></span>
+        ) : selectedOption && hasCategoryVisual(selectedOption) ? (
           <CategoryOptionContent option={selectedOption} active />
         ) : (
           <span className="min-w-0">
@@ -114,7 +117,9 @@ export default function SelectMenu({ value, options = [], onChange, placeholder 
                   active ? "bg-blush/10 text-blush" : "text-ink hover:bg-slate-50"
                 )}
               >
-                {hasCategoryVisual(option) ? (
+                {option.family ? (
+                  <span className="flex min-w-0 items-center gap-3"><FamilyAvatar family={option.family} /><span className="min-w-0"><span className="block truncate">{option.label}</span><span className="block truncate text-xs text-muted">{option.helper}</span></span></span>
+                ) : hasCategoryVisual(option) ? (
                   <CategoryOptionContent option={option} active={active} />
                 ) : (
                   <span className="min-w-0">

@@ -6,6 +6,7 @@ import { CategoryBadge } from "./Badges";
 import { tasksApi } from "../services/api";
 import { formatDate, priorityLabels, statusLabels } from "../utils/formatters";
 import { getAssigneeNames, getTaskPointLabel, sortTasksForDisplay } from "../utils/tasks";
+import { APP_DATA_CHANGED_EVENT } from "../utils/events";
 
 const statusToTab = {
   concluida: "concluida",
@@ -33,7 +34,7 @@ function searchableText(task) {
     .toLowerCase();
 }
 
-export default function GlobalSearch() {
+export default function GlobalSearch({ className = "" }) {
   const navigate = useNavigate();
   const ref = useRef(null);
   const [query, setQuery] = useState("");
@@ -42,6 +43,17 @@ export default function GlobalSearch() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState("");
+  const [revision, setRevision] = useState(0);
+
+  useEffect(() => {
+    function invalidate() {
+      setLoaded(false);
+      setRevision((current) => current + 1);
+    }
+    window.addEventListener(APP_DATA_CHANGED_EVENT, invalidate);
+    return () => window.removeEventListener(APP_DATA_CHANGED_EVENT, invalidate);
+  }, []);
 
   useEffect(() => {
     function handleClick(event) {
@@ -52,19 +64,24 @@ export default function GlobalSearch() {
   }, []);
 
   useEffect(() => {
-    if (!open || loaded || loading) return;
+    if (!open || loaded) return;
     let alive = true;
     setLoading(true);
+    setError("");
     tasksApi
       .list()
       .then((rows) => {
         if (alive) {
           setTasks(rows);
+          setLoading(false);
           setLoaded(true);
         }
       })
       .catch(() => {
-        if (alive) setTasks([]);
+        if (alive) {
+          setTasks([]);
+          setError("Nao foi possivel carregar a busca. Tente novamente.");
+        }
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -72,7 +89,7 @@ export default function GlobalSearch() {
     return () => {
       alive = false;
     };
-  }, [open, loaded, loading]);
+  }, [open, loaded, revision]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedQuery(query), 180);
@@ -99,12 +116,16 @@ export default function GlobalSearch() {
   }
 
   return (
-    <div ref={ref} className="relative w-full min-w-0 flex-[1_1_240px] sm:min-w-[260px] lg:w-96 lg:flex-none">
+    <div ref={ref} className={`relative w-full min-w-0 flex-[1_1_240px] lg:w-96 lg:flex-none ${className}`}>
       <form onSubmit={handleSubmit}>
         <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted" />
         <input
           className="soft-input h-12 pl-12 pr-16 shadow-card"
           placeholder="Buscar tarefas..."
+          aria-label="Buscar tarefas da familia ativa"
+          aria-expanded={open}
+          aria-controls="global-search-results"
+          onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}
           value={query}
           onFocus={() => setOpen(true)}
           onChange={(event) => {
@@ -123,11 +144,16 @@ export default function GlobalSearch() {
             <p className="text-sm font-bold text-ink">Pesquisa global</p>
             <p className="mt-0.5 text-xs font-medium text-muted">Nome, categoria, responsavel, prioridade, status, prazo e pontos.</p>
           </div>
-          <div className="max-h-96 overflow-y-auto p-2">
+          <div id="global-search-results" className="max-h-[min(24rem,60dvh)] overflow-y-auto p-2" aria-live="polite">
             {loading ? (
               <div className="flex items-center gap-3 rounded-2xl bg-rose-50/70 px-4 py-4 text-sm font-semibold text-blush">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Buscando tarefas...
+              </div>
+            ) : error ? (
+              <div className="px-4 py-5 text-sm text-muted" role="alert">
+                <p>{error}</p>
+                <button type="button" className="mt-3 min-h-11 font-semibold text-blush" onClick={() => setRevision((current) => current + 1)}>Tentar novamente</button>
               </div>
             ) : results.length ? (
               results.map((task) => (
