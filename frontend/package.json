@@ -7,6 +7,7 @@
   },
   "type": "module",
   "scripts": {
+    "icons:generate": "node tools/generate-icons.mjs",
     "dev": "vite",
     "build": "vite build --configLoader runner",
     "preview": "vite preview",
@@ -28,6 +29,7 @@
     "eslint-plugin-react": "^7.37.2",
     "eslint-plugin-react-hooks": "^5.1.0",
     "postcss": "^8.4.49",
+    "sharp": "^0.35.5",
     "tailwindcss": "^3.4.16",
     "vite": "^6.0.3"
   }

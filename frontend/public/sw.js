@@ -1,10 +1,11 @@
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open("casasync-static-v1").then((cache) =>
+    caches.open("casasync-static-v2").then((cache) =>
       cache.addAll([
         "/",
         "/site.webmanifest",
         "/favicon.svg",
+        "/apple-touch-icon.png",
         "/icons/android-chrome-192x192.png",
         "/icons/android-chrome-512x512.png",
         "/icons/apple-touch-icon.png"
@@ -16,7 +17,7 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((key) => key.startsWith("casasync-static-") && key !== "casasync-static-v1").map((key) => caches.delete(key)))
+      Promise.all(keys.filter((key) => key.startsWith("casasync-static-") && key !== "casasync-static-v2").map((key) => caches.delete(key)))
     ).then(() => self.clients.claim())
   );
 });
@@ -38,7 +39,7 @@ self.addEventListener("fetch", (event) => {
         .then((response) => {
           if (response.ok) {
             const copy = response.clone();
-            caches.open("casasync-static-v1").then((cache) => cache.put("/", copy));
+            caches.open("casasync-static-v2").then((cache) => cache.put("/", copy));
           }
           return response;
         })
@@ -48,7 +49,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   const cacheableDestination = ["font", "image", "script", "style"].includes(request.destination);
-  const cacheablePublicFile = url.pathname === "/site.webmanifest" || url.pathname === "/favicon.ico" || url.pathname === "/favicon.svg";
+  const cacheablePublicFile = url.pathname.endsWith("/site.webmanifest") || url.pathname === "/favicon.ico" || url.pathname === "/favicon.svg";
   if (!cacheableDestination && !cacheablePublicFile) return;
 
   event.respondWith(
@@ -56,7 +57,7 @@ self.addEventListener("fetch", (event) => {
       const network = fetch(request).then((response) => {
         if (response.ok) {
           const copy = response.clone();
-          caches.open("casasync-static-v1").then((cache) => cache.put(request, copy));
+          caches.open("casasync-static-v2").then((cache) => cache.put(request, copy));
         }
         return response;
       });
@@ -81,8 +82,8 @@ self.addEventListener("push", (event) => {
   const title = data.title || "CasaSync";
   const options = {
     body: data.body || "Voce tem uma nova notificacao.",
-    icon: "/icons/icon-192.png?v=20260602-purple",
-    badge: "/icons/favicon-32x32.png?v=20260602-purple",
+    icon: "/icons/icon-192.png?v=20261008",
+    badge: "/icons/favicon-32x32.png?v=20261008",
     tag: data.tag || `casasync-${data.taskId || data.timestamp || Date.now()}`,
     renotify: false,
     timestamp: data.timestamp || Date.now(),

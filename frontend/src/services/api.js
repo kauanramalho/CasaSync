@@ -420,6 +420,7 @@ export const uploadsApi = {
 };
 
 export const imageAnalysisApi = {
+  getStatus: () => request("/image-analysis/status"),
   analyzeTaskSuggestions: (files, { imageContext } = {}) => {
     const formData = new FormData();
     const uploadFiles = Array.isArray(files) ? files : [files];

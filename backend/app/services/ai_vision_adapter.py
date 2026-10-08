@@ -332,7 +332,9 @@ class OpenAIVisionAdapter:
             payload = self._build_payload(image, context, reasoning_effort=effort)
             try:
                 response_body = self._call_openai(payload, context)
-                usage_totals = _merge_usage(usage_totals, _usage_from_response(response_body))
+                if not isinstance(response_body, dict):
+                    raise VisionResponseError("schema_invalid", "A OpenAI retornou uma resposta invalida.")
+                usage_totals = merge_analysis_usage(usage_totals, _usage_from_response(response_body))
                 result = self._parse_response(response_body, image, context)
                 quality_reasons = self._quality_reasons(result, context)
                 if quality_reasons and attempt + 1 < max_attempts:
@@ -459,6 +461,8 @@ class OpenAIVisionAdapter:
             raise VisionResponseError("schema_invalid", "A IA nao retornou conteudo util.")
         try:
             parsed = json.loads(content)
+            if not isinstance(parsed, dict):
+                raise TypeError("Expected an object")
             parsed = _sanitize_openai_payload(parsed, context)
             for item in parsed["items"]:
                 item["sourceImageName"] = item.get("sourceImageName") or image.filename
@@ -498,19 +502,39 @@ class OpenAIVisionAdapter:
 
 
 def _responses_text(response_body: dict) -> str:
+    candidates = []
     if isinstance(response_body.get("output_text"), str):
-        return response_body["output_text"]
-    for output in response_body.get("output") or []:
-        for content in output.get("content") or []:
-            if content.get("type") in {"output_text", "text"} and isinstance(content.get("text"), str):
-                return content["text"]
-    return ""
+        candidates.append(response_body["output_text"])
+    # Responses output can include reasoning/commentary before the final JSON.
+    # Join parts within a message, not unrelated messages. Reject conflicting
+    # structured answers rather than silently choosing a different task batch.
+    for output in _as_list(response_body.get("output")):
+        if not isinstance(output, dict) or output.get("type") == "reasoning" or output.get("phase") == "commentary":
+            continue
+        parts = [content["text"] for content in _as_list(output.get("content"))
+                 if isinstance(content, dict) and content.get("type") in {"output_text", "text"}
+                 and isinstance(content.get("text"), str)]
+        if parts:
+            candidates.append("".join(parts))
+    structured = {}
+    for candidate in candidates:
+        try:
+            value = json.loads(candidate)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if isinstance(value, dict) and isinstance(value.get("items"), list):
+            structured[json.dumps(value, sort_keys=True)] = candidate
+    if len(structured) > 1:
+        raise VisionResponseError("schema_invalid", "A IA retornou resultados conflitantes. Revise manualmente.")
+    return next(iter(structured.values())) if structured else (candidates[0] if candidates else "")
 
 
 def _responses_refused(response_body: dict) -> bool:
-    for output in response_body.get("output") or []:
-        for content in output.get("content") or []:
-            if content.get("type") == "refusal" or content.get("refusal"):
+    for output in _as_list(response_body.get("output")):
+        if not isinstance(output, dict):
+            continue
+        for content in _as_list(output.get("content")):
+            if isinstance(content, dict) and (content.get("type") == "refusal" or content.get("refusal")):
                 return True
     return False
 
@@ -530,7 +554,7 @@ def _usage_from_response(response_body: dict):
     )
 
 
-def _merge_usage(current, incoming):
+def merge_analysis_usage(current, incoming):
     if current is None:
         return incoming
     if incoming is None:

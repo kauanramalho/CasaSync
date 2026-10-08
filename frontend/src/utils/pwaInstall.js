@@ -19,7 +19,7 @@ export function getInstallGuide(platform) {
       "Abra o CasaSync pelo novo ícone na Tela de Início. Entre uma vez e marque Manter sessão aberta.",
     ],
     help: "Não encontrou Adicionar à Tela de Início? No menu de compartilhamento, role até Editar Ações e adicione essa opção. Se estiver em navegação privada, abra uma aba normal.",
-    note: "O app e o Safari podem ter sessões separadas. Faça o primeiro login pelo ícone instalado; depois use esse ícone para voltar.",
+    note: "O app e o Safari podem ter sessões separadas. Se o ícone antigo estiver branco, selecione o tema no Safari e adicione o CasaSync novamente à Tela de Início. Remova apenas o atalho antigo, nunca sua conta. Faça o primeiro login pelo novo ícone.",
   };
   if (platform === "android") return {
     title: "Instalar no Android",

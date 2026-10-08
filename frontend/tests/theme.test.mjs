@@ -96,7 +96,7 @@ for (const palette of palettes) {
 
 test("palette application updates mode, native controls and browser/PWA chrome without changing storage", () => {
   let meta;
-  globalThis.document = { documentElement: { dataset: {}, style: {} }, querySelector: () => ({ setAttribute: (_, value) => { meta = value; } }) };
+  globalThis.document = { documentElement: { dataset: {}, style: {} }, querySelector: (selector) => selector.startsWith("meta") ? ({ setAttribute: (_, value) => { meta = value; } }) : null, querySelectorAll: () => [] };
   try {
     assert.equal(applyPalette("gpt-dark"), "gpt-dark");
     assert.equal(document.documentElement.dataset.themeMode, "dark");

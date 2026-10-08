@@ -49,6 +49,15 @@ class ImageAnalysisUsage(BaseModel):
     totalTokens: int | None = Field(default=None, ge=0)
 
 
+class ImageAnalysisStatus(BaseModel):
+    enabled: bool
+    configured: bool
+    provider: str
+    model: str
+    reasoningEffort: str
+    message: str
+
+
 class ImageAnalysisItem(BaseModel):
     type: ImageSuggestionType
     title: str = Field(min_length=2, max_length=180)

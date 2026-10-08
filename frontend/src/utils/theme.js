@@ -52,9 +52,20 @@ export const palettes = [
 ];
 
 export const defaultPaletteId = palettes[0].id;
+export const ICON_RELEASE = "20261008";
 
 export function getPalette(paletteId) {
   return palettes.find((palette) => palette.id === paletteId) ?? palettes[0];
+}
+
+export function getPaletteAssets(paletteId) {
+  const base = `/icons/themes/${getPalette(paletteId).id}`;
+  return {
+    icon: `${base}/icon-192.png?v=${ICON_RELEASE}`,
+    apple: `${base}/apple-touch-icon.png?v=${ICON_RELEASE}`,
+    favicon: `${base}/favicon.svg?v=${ICON_RELEASE}`,
+    manifest: `${base}/site.webmanifest?v=${ICON_RELEASE}`,
+  };
 }
 
 export function getStoredPaletteId() {
@@ -84,5 +95,16 @@ export function applyPalette(paletteId) {
   document.documentElement.dataset.themeMode = palette.dark ? "dark" : "light";
   document.documentElement.style.colorScheme = palette.dark ? "dark" : "light";
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", palette.themeColor);
+  const assets = getPaletteAssets(palette.id);
+  document.querySelector('link[rel="apple-touch-icon"]')?.setAttribute("href", assets.apple);
+  document.querySelector('link[rel="manifest"]')?.setAttribute("href", assets.manifest);
+  document.querySelectorAll('link[rel="icon"], link[rel="alternate icon"]').forEach((link) => {
+    const svg = link.getAttribute("type") === "image/svg+xml";
+    link.setAttribute("href", svg ? assets.favicon : assets.icon);
+    if (!svg) {
+      link.setAttribute("type", "image/png");
+      link.setAttribute("sizes", "192x192");
+    }
+  });
   return palette.id;
 }

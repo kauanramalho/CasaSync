@@ -11,6 +11,7 @@ from app.schemas.image_analysis import (
     ImageAnalysisJobCreated,
     ImageAnalysisJobStatus,
     ImageAnalysisResponse,
+    ImageAnalysisStatus,
     normalize_ai_image_context,
 )
 from app.services.image_analysis_job_service import create_image_analysis_job, get_image_analysis_job_status, process_image_analysis_job
@@ -18,6 +19,25 @@ from app.services.image_analysis_service import parse_images_to_task_suggestions
 
 
 router = APIRouter(prefix="/image-analysis", tags=["image-analysis"])
+
+
+@router.get("/status", response_model=ImageAnalysisStatus)
+def image_analysis_status(
+    current_user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+):
+    # Configuration visibility only, never a credential or live health guarantee.
+    enabled = settings.ai_image_analysis_enabled and settings.ai_vision_enabled
+    configured = settings.ai_vision_provider.strip().lower() == "openai" and settings.openai_vision_configured
+    return ImageAnalysisStatus(
+        enabled=enabled,
+        configured=configured,
+        provider=settings.ai_vision_provider,
+        model=settings.openai_vision_model,
+        reasoningEffort=settings.openai_vision_reasoning_effort,
+        message="IA configurada. Cada análise ainda depende da disponibilidade do provedor."
+        if enabled and configured else "A análise por IA está desativada ou não configurada no servidor.",
+    )
 
 
 @router.post("/task-suggestions", response_model=ImageAnalysisResponse)

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560">
+  <rect width="1200" height="560" fill="white"/>
+  <g fill="#111111" font-family="Arial, sans-serif">
+    <text x="60" y="100" font-size="42" font-weight="bold">Lista de tarefas - teste CasaSync</text>
+    <text x="60" y="205" font-size="38">1. Teste IA: revisar lista de compras</text>
+    <text x="90" y="265" font-size="34">Data: 20/10/2026 - Horario: 10:30</text>
+    <text x="60" y="375" font-size="38">2. Teste IA: organizar documentos</text>
+    <text x="90" y="435" font-size="34">Data: 21/10/2026 - Horario: 15:00</text>
+  </g>
+</svg>

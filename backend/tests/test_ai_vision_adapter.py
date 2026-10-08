@@ -147,6 +147,56 @@ class OpenAIVisionAdapterMockTest(unittest.TestCase):
         self.assertEqual(fake.call_count, 1)
         self.assertEqual(raised.exception.status_code, 502)
 
+    def test_responses_messages_ignore_commentary_and_join_final_parts(self):
+        body = json.dumps(response_payload(valid_item()))
+        response = {"output": [
+            {"type": "reasoning", "summary": []},
+            {"type": "message", "phase": "commentary", "content": [{"type": "output_text", "text": "Preparando analise"}]},
+            {"type": "message", "phase": "final_answer", "content": [
+                {"type": "output_text", "text": body[:90]}, {"type": "output_text", "text": body[90:]},
+            ]},
+        ]}
+        with patch.object(self.adapter, "_call_openai", return_value=response) as call:
+            result = self.adapter.parse_image_to_task_suggestions(self.image, self.context)
+        self.assertEqual(len(result.items), 1)
+        self.assertEqual(call.call_count, 1)
+        self.assertTrue(result.needsUserReview)
+
+    def test_additional_plain_message_does_not_hide_structured_output(self):
+        response = {"output": [
+            {"type": "message", "content": [{"type": "output_text", "text": "Analise concluida"}]},
+            {"type": "message", "content": [{"type": "output_text", "text": json.dumps(response_payload(valid_item()))}]},
+        ]}
+        with patch.object(self.adapter, "_call_openai", return_value=response) as call:
+            result = self.adapter.parse_image_to_task_suggestions(self.image, self.context)
+        self.assertEqual(len(result.items), 1)
+        self.assertEqual(call.call_count, 1)
+
+    def test_conflicting_structured_messages_fail_closed_after_bounded_retry(self):
+        response = {"output": [
+            {"content": [{"type": "output_text", "text": json.dumps(response_payload(valid_item(title="Primeira")))}]},
+            {"content": [{"type": "output_text", "text": json.dumps(response_payload(valid_item(title="Segunda")))}]},
+        ]}
+        with patch.object(self.adapter, "_call_openai", return_value=response) as call:
+            result = self.adapter.parse_image_to_task_suggestions(self.image, self.context)
+        self.assertEqual(result.items, [])
+        self.assertEqual(call.call_count, 2)
+        self.assertTrue(result.needsUserReview)
+
+    def test_malformed_envelope_and_non_object_json_stay_safe(self):
+        for response in [[], {"output_text": "[]"}, {"output": [None, 7]}, {"output_text": "null"}]:
+            with self.subTest(response=response), patch.object(self.adapter, "_call_openai", return_value=response) as call:
+                result = self.adapter.parse_image_to_task_suggestions(self.image, self.context)
+                self.assertEqual(result.items, [])
+                self.assertLessEqual(call.call_count, 2)
+
+    def test_refusal_never_produces_suggestions_or_retries(self):
+        response = {"output": [{"content": [{"type": "refusal", "refusal": "Cannot comply"}]}]}
+        with patch.object(self.adapter, "_call_openai", return_value=response) as call:
+            result = self.adapter.parse_image_to_task_suggestions(self.image, self.context)
+        self.assertEqual(result.items, [])
+        self.assertEqual(call.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -184,6 +184,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
   const [selectedImages, setSelectedImages] = useState([]);
   const [error, setError] = useState("");
   const [analysis, setAnalysis] = useState(null);
+  const [providerStatus, setProviderStatus] = useState(null);
   const [analysisJob, setAnalysisJob] = useState(null);
   const [reviewItems, setReviewItems] = useState([]);
   const [importReport, setImportReport] = useState(null);
@@ -250,11 +251,13 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
     let alive = true;
 
     async function loadPanelSettings() {
-      const [calendarResult, preferencesResult] = await Promise.allSettled([
+      const [calendarResult, preferencesResult, providerResult] = await Promise.allSettled([
         integrationsApi.googleCalendarStatus(),
-        imageAnalysisApi.getPreferences()
+        imageAnalysisApi.getPreferences(),
+        imageAnalysisApi.getStatus()
       ]);
       if (!alive) return;
+      if (providerResult.status === "fulfilled") setProviderStatus(providerResult.value);
       if (calendarResult.status === "fulfilled") setCalendarStatus(calendarResult.value);
       if (calendarResult.status === "rejected") setCalendarStatus(null);
       if (preferencesResult.status === "fulfilled") {
@@ -629,7 +632,11 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
   }
 
   async function handleAnalyze() {
-    if (!selectedImages.length) return;
+    if (!selectedImages.length || analyzing || importing) return;
+    if (providerStatus && (!providerStatus.enabled || !providerStatus.configured)) {
+      setError(providerStatus.message);
+      return;
+    }
     setAnalyzing(true);
     setError("");
     setAnalysis(null);
@@ -1072,7 +1079,14 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
               </label>
             )}
 
-            <Button type="button" className="mt-4 w-full" onClick={handleAnalyze} disabled={!selectedImages.length || analyzing || importing}>
+            <p className="mt-4 text-xs leading-relaxed text-muted" role="status">
+              {providerStatus
+                ? providerStatus.enabled && providerStatus.configured
+                  ? `Modelo: ${providerStatus.model} · raciocínio ${providerStatus.reasoningEffort}. Configuração disponível; o resultado precisa ser revisado.`
+                  : providerStatus.message
+                : "Não foi possível confirmar a configuração da IA. O servidor verificará a disponibilidade ao analisar."}
+            </p>
+            <Button type="button" className="mt-4 w-full" onClick={handleAnalyze} disabled={!selectedImages.length || analyzing || importing || Boolean(providerStatus && (!providerStatus.enabled || !providerStatus.configured))}>
               {analyzing ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImagePlus className="h-5 w-5" />}
               {importing && autoCreateEnabled ? "Criando automaticamente..." : analyzing ? analyzingLabel : analyzeButtonLabel}
             </Button>

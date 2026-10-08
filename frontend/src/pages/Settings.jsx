@@ -21,6 +21,7 @@ import Avatar from "../components/Avatar";
 import Button from "../components/Button";
 import Card from "../components/Card";
 import InstallApp from "../components/InstallApp";
+import AppIcon from "../components/AppIcon";
 import PageHeader from "../components/PageHeader";
 import ProfileModal from "../components/ProfileModal";
 import PasswordInput from "../components/PasswordInput";
@@ -661,7 +662,8 @@ export default function Settings() {
           <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div>
               <h2 className="section-title" id="appearance-title">Escolha o tema do CasaSync</h2>
-              <p className="mt-2 text-sm text-muted">Temas claros e escuros ajustam fundos, cards, botões e gráficos. Cores de alerta e categorias mantêm seu significado.</p>
+              <p className="mt-2 text-sm text-muted">Temas claros e escuros ajustam fundos, cards, botões, gráficos e o ícone do CasaSync. Cores de alerta e categorias mantêm seu significado.</p>
+              <p className="mt-2 text-xs leading-relaxed text-muted">O ícone muda aqui e na aba do navegador. Na Tela de Início, o sistema pode manter o ícone escolhido na instalação. Para trocar no iPhone/iPad, selecione o tema no Safari e adicione novamente o CasaSync à Tela de Início. Não exclua sua conta.</p>
             </div>
             <span role="status" className="rounded-full bg-blush/10 px-3 py-1 text-xs font-bold text-blush">{storageAvailable ? "Preferência deste dispositivo" : "Tema aplicado; armazenamento indisponível"}</span>
           </div>
@@ -681,6 +683,7 @@ export default function Settings() {
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
+                    <AppIcon paletteId={palette.id} className="h-12 w-12" />
                     <div>
                       <p className="font-bold text-ink">{palette.name}</p>
                       <p className="mt-1 text-xs font-semibold text-muted">{palette.dark ? "Escuro" : "Claro"}</p>

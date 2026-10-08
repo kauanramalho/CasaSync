@@ -1,11 +1,11 @@
-import { HeartHandshake } from "lucide-react";
+import { useTheme } from "../hooks/useTheme";
+import AppIcon from "./AppIcon";
 
 export default function LogoMark({ compact = false, subtitle = "Minha familia" }) {
+  const { paletteId } = useTheme();
   return (
     <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-blush/25 via-white to-lavender/25 shadow-lg shadow-blush/10 sm:h-12 sm:w-12">
-        <HeartHandshake className="h-6 w-6 text-blush" />
-      </div>
+      <AppIcon paletteId={paletteId} className="h-10 w-10 shadow-lg shadow-blush/10 sm:h-12 sm:w-12" />
       {!compact && (
         <div className="min-w-0">
           <div className="flex items-center gap-2">

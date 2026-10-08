@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.schemas.image_analysis import ImageAnalysisFileError, ImageAnalysisItem, ImageAnalysisResponse
-from app.services.ai_vision_adapter import VisionAnalysisContext, get_ai_vision_adapter
+from app.services.ai_vision_adapter import VisionAnalysisContext, get_ai_vision_adapter, merge_analysis_usage
 from app.services.ai_task_suggestion_post_processor import (
     AiSuggestionContext,
     build_ai_suggestion_context,
@@ -143,12 +143,18 @@ def parse_validated_images_to_task_suggestions(
     warnings = []
     image_errors: list[ImageAnalysisFileError] = list(initial_image_errors or [])
     processed = 0
+    attempt_count = 0
+    retry_reasons = []
+    usage = None
 
     for image in images:
         filename = (image.filename or "")[:255] or None
         try:
             result = adapter.parse_image_to_task_suggestions(image, context)
             processed += 1
+            attempt_count = max(attempt_count, result.attemptCount)
+            retry_reasons.extend(result.retryReasons)
+            usage = merge_analysis_usage(usage, result.usage)
             items.extend(_apply_custom_instruction_defaults(result.items, combined_instruction_context))
             warnings.extend(result.warnings or [])
         except Exception as exc:  # noqa: BLE001 - batch imports must keep other images alive.
@@ -174,6 +180,9 @@ def parse_validated_images_to_task_suggestions(
         imageErrors=image_errors[:10],
         totalImagesProcessed=processed,
         totalSuggestionsGenerated=len(limited_items),
+        attemptCount=attempt_count,
+        retryReasons=list(dict.fromkeys(retry_reasons))[:10],
+        usage=usage,
     )
     return post_process_image_analysis_response(response, suggestion_context)
 
