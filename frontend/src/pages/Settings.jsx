@@ -20,6 +20,7 @@ import {
 import Avatar from "../components/Avatar";
 import Button from "../components/Button";
 import Card from "../components/Card";
+import InstallApp from "../components/InstallApp";
 import PageHeader from "../components/PageHeader";
 import ProfileModal from "../components/ProfileModal";
 import PasswordInput from "../components/PasswordInput";
@@ -477,6 +478,8 @@ export default function Settings() {
               </div>
             </div>
           </Card>
+
+          <InstallApp />
 
           <Card>
             <div className="flex items-center gap-3">

@@ -6,6 +6,7 @@ import App from "./App";
 import PwaLifecycle from "./components/PwaLifecycle";
 import AppErrorBoundary from "./components/AppErrorBoundary";
 import { AuthProvider } from "./hooks/useAuth";
+import { PwaInstallProvider } from "./hooks/usePwaInstall";
 import { NotificationsProvider } from "./hooks/useNotifications";
 import { ThemeProvider } from "./hooks/useTheme";
 import { ToastProvider } from "./hooks/useToast";
@@ -17,18 +18,20 @@ applyPalette(getStoredPaletteId());
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <AppErrorBoundary>
-    <BrowserRouter>
-      <ThemeProvider>
-        <AuthProvider>
-          <NotificationsProvider>
-            <ToastProvider>
-              <App />
-              <PwaLifecycle />
-            </ToastProvider>
-          </NotificationsProvider>
-        </AuthProvider>
-      </ThemeProvider>
-    </BrowserRouter>
+      <BrowserRouter>
+        <PwaInstallProvider>
+          <ThemeProvider>
+            <AuthProvider>
+              <NotificationsProvider>
+                <ToastProvider>
+                  <App />
+                  <PwaLifecycle />
+                </ToastProvider>
+              </NotificationsProvider>
+            </AuthProvider>
+          </ThemeProvider>
+        </PwaInstallProvider>
+      </BrowserRouter>
     </AppErrorBoundary>
   </React.StrictMode>
 );

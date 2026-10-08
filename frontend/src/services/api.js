@@ -3,6 +3,7 @@ import { shouldInvalidateSession } from "../utils/auth.js";
 
 const TOKEN_KEY = "casasync_token";
 const SESSION_TOKEN_KEY = "casasync_session_token";
+const REMEMBER_SESSION_KEY = "casasync_remember_session";
 const PENDING_TWO_FACTOR_KEY = "casasync_pending_2fa";
 const ACTIVE_FAMILY_ID_KEY = "casasync_active_family_id";
 const AUTH_SESSION_CHANGED_EVENT = "casasync:auth-session-changed";
@@ -91,23 +92,53 @@ export function createApiResponseError(status, data, fallbackMessage) {
 }
 
 export function getToken() {
-  return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(SESSION_TOKEN_KEY);
+  return readStorage("localStorage", TOKEN_KEY) || readStorage("sessionStorage", SESSION_TOKEN_KEY);
 }
 
 export function setToken(token, { remember = true } = {}) {
   clearToken();
-  const storage = remember ? localStorage : sessionStorage;
-  storage.setItem(remember ? TOKEN_KEY : SESSION_TOKEN_KEY, token);
+  const name = remember ? "localStorage" : "sessionStorage";
+  const key = remember ? TOKEN_KEY : SESSION_TOKEN_KEY;
+  try {
+    if (getToken()) throw new Error("Previous session could not be cleared");
+    globalThis[name].setItem(key, token);
+    if (readStorage(name, key) !== token) throw new Error("Storage unavailable");
+  } catch {
+    removeStorage(name, key);
+    throw new Error(remember
+      ? "O navegador não permitiu manter a sessão aberta. Use uma aba normal ou desmarque essa opção e tente novamente."
+      : "O navegador não permitiu salvar a sessão. Habilite o armazenamento do site e tente novamente.");
+  }
+  setRememberSessionPreference(remember);
 }
 
 export function clearToken() {
-  localStorage.removeItem(TOKEN_KEY);
-  sessionStorage.removeItem(SESSION_TOKEN_KEY);
+  removeStorage("localStorage", TOKEN_KEY);
+  removeStorage("sessionStorage", SESSION_TOKEN_KEY);
   clearActiveFamilyId();
 }
 
+function readStorage(name, key) {
+  try { return globalThis[name]?.getItem(key) || null; }
+  catch { return null; }
+}
+
+function removeStorage(name, key) {
+  try { globalThis[name]?.removeItem(key); }
+  catch { /* Storage can be denied by the browser; cleanup must still proceed. */ }
+}
+
+export function getRememberSessionPreference() {
+  return readStorage("localStorage", REMEMBER_SESSION_KEY) !== "false";
+}
+
+export function setRememberSessionPreference(remember) {
+  try { globalThis.localStorage?.setItem(REMEMBER_SESSION_KEY, String(Boolean(remember))); }
+  catch { /* A preference must never block login or logout. */ }
+}
+
 export function getActiveFamilyId() {
-  return localStorage.getItem(ACTIVE_FAMILY_ID_KEY) || "";
+  return readStorage("localStorage", ACTIVE_FAMILY_ID_KEY) || "";
 }
 
 export function setActiveFamilyId(familyId) {
@@ -122,7 +153,7 @@ export function setActiveFamilyId(familyId) {
 }
 
 export function clearActiveFamilyId() {
-  localStorage.removeItem(ACTIVE_FAMILY_ID_KEY);
+  removeStorage("localStorage", ACTIVE_FAMILY_ID_KEY);
   pendingGetRequests.clear();
 }
 
@@ -131,12 +162,12 @@ export function clearApiReadCache() {
 }
 
 export function getPendingTwoFactor() {
-  const raw = sessionStorage.getItem(PENDING_TWO_FACTOR_KEY);
+  const raw = readStorage("sessionStorage", PENDING_TWO_FACTOR_KEY);
   if (!raw) return null;
   try {
     return JSON.parse(raw);
   } catch {
-    sessionStorage.removeItem(PENDING_TWO_FACTOR_KEY);
+    removeStorage("sessionStorage", PENDING_TWO_FACTOR_KEY);
     return null;
   }
 }
@@ -146,7 +177,7 @@ export function setPendingTwoFactor(payload) {
 }
 
 export function clearPendingTwoFactor() {
-  sessionStorage.removeItem(PENDING_TWO_FACTOR_KEY);
+  removeStorage("sessionStorage", PENDING_TWO_FACTOR_KEY);
 }
 
 function shouldAttachActiveFamily(path, auth) {
@@ -367,6 +398,8 @@ export function extractApiErrorMessage(data) {
 export const authApi = {
   register: (payload) => request("/auth/register", { method: "POST", body: payload, auth: false }),
   login: (payload) => request("/auth/login", { method: "POST", body: payload, auth: false }),
+  forgotPassword: (payload) => request("/auth/password/forgot", { method: "POST", body: payload, auth: false }),
+  resetPassword: (payload) => request("/auth/password/reset", { method: "POST", body: payload, auth: false }),
   verifyTwoFactor: (payload) => request("/auth/2fa/verify", { method: "POST", body: payload, auth: false }),
   resendTwoFactor: (payload) => request("/auth/2fa/resend", { method: "POST", body: payload, auth: false }),
   me: () => request("/auth/me"),

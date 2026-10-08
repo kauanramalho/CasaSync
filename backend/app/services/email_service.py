@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 def _purpose_label(purpose: str) -> str:
+    if purpose == "password_reset":
+        return "recuperacao de senha"
     return "cadastro" if purpose == "signup" else "login"
 
 

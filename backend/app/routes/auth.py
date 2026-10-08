@@ -11,7 +11,8 @@ from app.core.security import create_access_token, create_pending_two_factor_tok
 from app.database.session import get_db
 from app.models.user import User
 from app.schemas.token import AuthResponse, TwoFactorRequiredResponse, TwoFactorResendRequest, TwoFactorVerifyRequest
-from app.schemas.user import PasswordConfirmation, PasswordUpdate, UserCreate, UserLogin, UserRead, UserUpdate
+from app.schemas.user import PasswordConfirmation, PasswordUpdate, PasswordResetRequest, PasswordResetConfirm, UserCreate, UserLogin, UserRead, UserUpdate
+from app.services.password_reset_service import REQUEST_MESSAGE, request_password_reset, confirm_password_reset
 from app.services.auth_service import (
     authenticate_user,
     change_user_password,
@@ -207,6 +208,29 @@ def update_me(payload: UserUpdate, current_user: User = Depends(get_current_user
 def update_password(payload: PasswordUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     change_user_password(db, current_user, payload)
     return None
+
+
+@router.post("/password/forgot")
+def forgot_password(payload: PasswordResetRequest, request: Request, db: Session = Depends(get_db)):
+    check_rate_limit(f"auth:reset:request:ip:{client_identifier(request)}", limit=20, window_seconds=3600)
+    check_rate_limit(f"auth:reset:request:account:{_identifier_fingerprint(payload.email)}", limit=5, window_seconds=3600)
+    try:
+        request_password_reset(db, payload.email)
+        return {"message": REQUEST_MESSAGE}
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.post("/password/reset", status_code=204)
+def reset_password(payload: PasswordResetConfirm, request: Request, db: Session = Depends(get_db)):
+    check_rate_limit(f"auth:reset:confirm:ip:{client_identifier(request)}", limit=20, window_seconds=300)
+    check_rate_limit(f"auth:reset:confirm:account:{_identifier_fingerprint(payload.email)}", limit=10, window_seconds=300)
+    try:
+        confirm_password_reset(db, payload)
+    except Exception:
+        db.rollback()
+        raise
 
 
 @router.post("/logout", status_code=204)

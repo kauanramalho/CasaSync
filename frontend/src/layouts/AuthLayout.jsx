@@ -1,4 +1,5 @@
 import LogoMark from "../components/LogoMark";
+import InstallApp from "../components/InstallApp";
 
 export default function AuthLayout({ children, title, subtitle }) {
   return (
@@ -10,7 +11,8 @@ export default function AuthLayout({ children, title, subtitle }) {
             <h1 className="text-3xl font-bold text-ink md:text-4xl">{title}</h1>
             <p className="mt-3 text-muted">{subtitle}</p>
           </div>
-          <div className="mt-8">{children}</div>
+          <div className="mt-6"><InstallApp compact /></div>
+          <div className="mt-6">{children}</div>
         </section>
         <aside className="hidden border-l border-white/80 bg-gradient-to-br from-rose-50 via-white to-violet-50 p-10 lg:flex lg:flex-col lg:justify-center">
           <div className="rounded-[28px] bg-white/75 p-6 shadow-card">

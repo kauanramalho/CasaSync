@@ -12,6 +12,7 @@ const CoupleSpace = lazy(() => import("./pages/CoupleSpace"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Family = lazy(() => import("./pages/Family"));
 const Login = lazy(() => import("./pages/Login"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const NewTask = lazy(() => import("./pages/NewTask"));
 const Ranking = lazy(() => import("./pages/Ranking"));
 const Register = lazy(() => import("./pages/Register"));
@@ -53,6 +54,7 @@ export default function App() {
     <Suspense fallback={<PageLoader />}>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/recuperar-senha" element={<ForgotPassword />} />
         <Route path="/cadastro" element={<Register />} />
         <Route path="/verificacao" element={<VerifyCode />} />
         <Route

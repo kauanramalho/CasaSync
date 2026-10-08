@@ -100,7 +100,12 @@ export default function Register() {
           minLength={8}
           required
         />
-        {error && <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">{error}</p>}
+        {error && <div role="alert" className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">
+          <p>{error}</p>
+          <Link className="mt-2 inline-block font-bold underline" to="/recuperar-senha" state={{ email: form.email }}>
+            Já tem conta? Recupere sua senha
+          </Link>
+        </div>}
         <Button type="submit" className="w-full" disabled={loading}>
           <Sparkles className="h-5 w-5" />
           {loading ? "Criando..." : "Criar conta"}

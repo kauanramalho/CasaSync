@@ -107,6 +107,7 @@ class Settings(BaseSettings):
     two_factor_login_interval_days: int = 30
     two_factor_code_length: int = 6
     two_factor_hmac_secret: str | None = None
+    password_reset_enabled: bool = True
 
     smtp_host: str | None = None
     smtp_port: int = 587

@@ -8,12 +8,13 @@ import AuthLayout from "../layouts/AuthLayout";
 import { useAuth } from "../hooks/useAuth";
 import { normalizeApiError } from "../utils/formatters";
 import { isTwoFactorRequiredResponse } from "../utils/auth";
+import { getRememberSessionPreference, setRememberSessionPreference } from "../services/api";
 
 export default function Login() {
   const navigate = useNavigate();
   const { login, user } = useAuth();
   const [form, setForm] = useState({ identifier: "", password: "" });
-  const [rememberSession, setRememberSession] = useState(true);
+  const [rememberSession, setRememberSession] = useState(getRememberSessionPreference);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -55,6 +56,7 @@ export default function Login() {
           value={form.password}
           onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
           autoComplete="current-password"
+          aria-label="Senha"
           required
         />
         <label className="flex cursor-pointer items-center gap-3 rounded-2xl bg-white/70 px-4 py-3 text-sm font-semibold text-muted transition hover:bg-white">
@@ -62,9 +64,16 @@ export default function Login() {
             type="checkbox"
             className="h-4 w-4 rounded border-slate-300 accent-blush"
             checked={rememberSession}
-            onChange={(event) => setRememberSession(event.target.checked)}
+            aria-describedby="remember-session-help"
+            onChange={(event) => {
+              setRememberSession(event.target.checked);
+              setRememberSessionPreference(event.target.checked);
+            }}
           />
-          Manter conta aberta
+          <span>
+            Manter sessão aberta
+            <span id="remember-session-help" className="mt-1 block text-xs font-normal leading-relaxed">Continue conectado neste dispositivo até sair ou a sessão expirar. Use apenas em um dispositivo seu.</span>
+          </span>
         </label>
         {error && <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">{error}</p>}
         <Button type="submit" className="w-full" disabled={loading}>
@@ -72,6 +81,11 @@ export default function Login() {
           {loading ? "Entrando..." : "Entrar"}
         </Button>
       </form>
+      <p className="mt-4 text-center text-sm">
+        <Link className="font-bold text-blush" to="/recuperar-senha" state={{ email: form.identifier.includes("@") ? form.identifier : "" }}>
+          Esqueci minha senha
+        </Link>
+      </p>
       <p className="mt-6 text-sm text-muted">
         Ainda não tem conta?{" "}
         <Link className="font-bold text-blush" to="/cadastro">

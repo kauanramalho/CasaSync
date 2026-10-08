@@ -91,7 +91,122 @@ Nesse modo, a entrega de e-mail e simulada e o codigo 2FA de desenvolvimento e
 `000000`. O `.env` local nao deve ser commitado. Nao use esse modo em producao;
 o backend rejeita `EMAIL_DEV_MODE=true` quando `ENVIRONMENT=production`.
 
+## Instalacao como aplicativo no iPhone, iPad e Android
+
+O botao **Instalar aplicativo** aparece nas telas de acesso e nas configuracoes,
+e fica oculto quando o CasaSync ja esta aberto como aplicativo. No iPhone/iPad,
+o guia detecta tambem iPads em modo de navegacao desktop e explica o caminho
+Safari → Compartilhar → Adicionar a Tela de Inicio → Adicionar. Se houver
+**Abrir como App da Web**, mantenha essa opcao ativada. O guia inclui recuperacao
+quando a acao nao aparece, instrucao para sair do navegador interno de outros apps
+e escolha manual de plataforma. No Android/Chrome, o botao usa o prompt nativo
+quando disponivel, com instrucoes alternativas quando ele nao e oferecido.
+
+O manifesto `site.webmanifest` ja declara `display: standalone`, `id`, `scope` e
+`start_url`; o HTML inclui os metadados Apple e o icone PNG 180x180. Os recursos
+publicados de manifesto, icone Apple e service worker responderam HTTP 200 na
+verificacao de 2026-10-07. Isso nao comprova instalacao em um iPhone fisico.
+
+**Manter sessao aberta** no login preserva o token no armazenamento local deste
+dispositivo; desmarcada, usa apenas o armazenamento da sessao da aba. A preferencia
+da caixinha e lembrada sem salvar usuario ou senha. A autenticacao existente,
+a verificacao 2FA e a validade do token continuam sendo determinadas pelo servidor.
+Troca de senha, logout, expiracao ou limpeza dos dados do site podem exigir login.
+Falha do navegador ao gravar o token gera orientacao explicita e nao e apresentada
+como sessao persistente. Leituras e limpeza de armazenamento bloqueado nao lancam
+erros brutos no fluxo de autenticacao.
+
+No iOS, o login feito no Safari pode nao acompanhar o aplicativo instalado: o
+CasaSync usa tokens no armazenamento local, que nao e copiado para o app durante
+a instalacao. Abra pelo icone novo e entre uma vez com **Manter sessao aberta**.
+Nao transferir tokens por URL nem alterar autenticacao para cookies apenas para
+contornar essa separacao. Referencias: [guia oficial Apple](https://support.apple.com/pt-br/guide/iphone/iphea86e5236/ios)
+e [separacao de armazenamento documentada pelo WebKit](https://webkit.org/blog/14787/webkit-features-in-safari-17-2/).
+
+Aceitacao em aparelho real apos publicacao autorizada: instalar pelo Safari,
+abrir pelo icone sem barra de endereco, entrar com persistencia marcada, fechar
+e reabrir, e testar logout. Repetir a opcao desmarcada e conferir Android/iPad.
+Interface emulada e testes locais nao substituem esses gestos no dispositivo.
+
+Validacao local desta etapa: 72 testes frontend, 44 testes backend de autenticacao,
+ESLint, build, diff check e Gitleaks aprovados. No Chrome local, foi conferida a
+preferencia da caixinha apos recarga, a abertura/fechamento do guia, retorno do
+foco, rolagem interna e ausencia de overflow horizontal em 320/390 px. Instalacao,
+suspensao e reabertura em iPhone/iPad fisicos continuam pendentes, assim como deploy.
+
+Arquivos desta etapa: `frontend/src/components/InstallApp.jsx`,
+`frontend/src/hooks/usePwaInstall.jsx`, `frontend/src/utils/pwaInstall.js`,
+`frontend/src/layouts/AuthLayout.jsx`, `frontend/src/main.jsx`,
+`frontend/src/pages/Login.jsx`, `frontend/src/pages/Settings.jsx`,
+`frontend/src/services/api.js`, `frontend/tests/pwaInstall.test.mjs`,
+`frontend/tests/sessionPersistence.test.mjs` e este README. Os lotes anteriores
+de recuperacao de senha e os arquivos pre-existentes foram preservados.
+
+Comandos no PowerShell, na raiz canonica do CasaSync:
+
+```powershell
+Push-Location frontend
+node --test tests/*.test.mjs
+npm.cmd run lint
+$env:VITE_API_URL = 'https://casasync-api.onrender.com/api'
+npm.cmd run build
+Pop-Location
+Push-Location backend
+.venv/Scripts/python.exe -m unittest discover -s tests -p 'test_auth*.py'
+Pop-Location
+git diff --check
+```
+
 ## Deploy em Produção
+
+### Recuperacao de senha
+
+Na tela de login, **Esqueci minha senha** abre `/recuperar-senha`. A pessoa informa
+o e-mail da conta, recebe um codigo e define a nova senha. A conta, as familias e
+as tarefas sao preservadas; sessoes e codigos anteriores sao invalidados na troca.
+O fluxo tambem recupera cadastros ativos que ainda aguardam verificacao de e-mail.
+
+O backend expoe `POST /api/auth/password/forgot` (email) e
+`POST /api/auth/password/reset` (email, code, new_password). As solicitacoes nao
+confirmam se uma conta existe. Codigos sao armazenados como HMAC, expiram no prazo
+`TWO_FACTOR_CODE_TTL_MINUTES`, respeitam limite de tentativas e intervalo de reenvio.
+`PASSWORD_RESET_ENABLED=false` desativa os endpoints. Sem canal de e-mail configurado,
+a recuperacao fica indisponivel; nao ha troca de senha sem comprovar o codigo.
+
+Para publicar esta funcionalidade, publique primeiro o frontend/relay que aceita
+`password_reset`, depois o backend. Nao exige migracao de banco nem novas credenciais.
+Teste a chegada do e-mail e a troca completa com uma conta de QA controlada antes de
+considerar o fluxo validado em producao. Em desenvolvimento, a entrega pode ser simulada
+com `EMAIL_DEV_MODE=true`; isso nao comprova envio real. Os limites por IP/e-mail sao
+locais ao processo, enquanto prazo, tentativas e consumo do codigo ficam no banco.
+
+Validacao local desta implementacao: 175 testes backend (11 de recuperacao), 62
+testes frontend, ESLint, build, `git diff --check` e Gitleaks com redacao passaram.
+O link de login e a tela inicial de recuperacao foram conferidos no navegador,
+incluindo largura de celular. Envio real e fluxo completo em producao pendentes.
+Arquivos envolvidos: `backend/app/{core/config.py,routes/auth.py,schemas/user.py,
+services/email_service.py,services/password_reset_service.py}`, teste
+`backend/tests/test_password_reset.py`, `frontend/src/{App.jsx,pages/Login.jsx,
+pages/Register.jsx,pages/ForgotPassword.jsx,services/api.js}`, relay
+`frontend/api/internal/email-delivery.js`, `frontend/tests/emailDelivery.test.mjs`,
+`.env.example` e este README. Nenhuma alteracao de schema ou credenciais.
+
+Comandos de validacao no PowerShell, a partir da raiz canonica do repositorio:
+
+```powershell
+Set-Location 'C:\Users\DeskTop-Kauan\Kauan Ramalho\Programacao\REPOSITORIOS GitHub\CasaSync'
+Push-Location backend
+.venv/Scripts/python.exe -m unittest discover -s tests
+Pop-Location
+Push-Location frontend
+node --test tests/*.test.mjs
+npm.cmd run lint
+# URL explicita usada somente neste processo de validacao do build.
+$env:VITE_API_URL = 'https://casasync-api.onrender.com/api'
+npm.cmd run build
+Pop-Location
+git diff --check
+```
 
 Backend (Render, Docker ou serviço equivalente):
 
