@@ -6,6 +6,7 @@ import nodemailer from "nodemailer";
 const PURPOSE_LABELS = {
   signup: "cadastro",
   login: "login",
+  password_reset: "recuperacao de senha",
 };
 
 export function authorized(request) {

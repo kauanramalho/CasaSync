@@ -35,6 +35,12 @@ test("email relay accepts only the strict 2FA payload", () => {
   }), true);
   assert.equal(validPayload({
     recipient: "person@example.com",
+    code: "654321",
+    purpose: "password_reset",
+    expires_minutes: 10,
+  }), true);
+  assert.equal(validPayload({
+    recipient: "person@example.com",
     code: "654321\r\nBcc: attacker@example.com",
     purpose: "signup",
     expires_minutes: 10,
