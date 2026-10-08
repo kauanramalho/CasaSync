@@ -411,7 +411,7 @@ def remove_member(db: Session, family_id: str, user_id: str, member_id: str) -> 
     refresh_user_active_family(db, removed_user_id)
 
 
-def leave_family(db: Session, family_id: str, user_id: str) -> None:
+def leave_family(db: Session, family_id: str, user_id: str, *, commit: bool = True) -> None:
     member = require_family_member(db, family_id, user_id)
     members = db.query(FamilyMember).filter(FamilyMember.family_id == family_id).all()
     admins = [item for item in members if item.role in [FamilyRole.OWNER.value, FamilyRole.ADMIN.value]]
@@ -419,8 +419,11 @@ def leave_family(db: Session, family_id: str, user_id: str) -> None:
     if len(members) == 1:
         family = get_family(db, family_id)
         db.delete(family)
-        db.commit()
-        refresh_user_active_family(db, user_id)
+        if commit:
+            db.commit()
+            refresh_user_active_family(db, user_id)
+        else:
+            db.flush()
         return
 
     if member.role in [FamilyRole.OWNER.value, FamilyRole.ADMIN.value] and len(admins) <= 1:
@@ -440,8 +443,11 @@ def leave_family(db: Session, family_id: str, user_id: str) -> None:
         db.add(family)
 
     db.delete(member)
-    db.commit()
-    refresh_user_active_family(db, user_id)
+    if commit:
+        db.commit()
+        refresh_user_active_family(db, user_id)
+    else:
+        db.flush()
 
 
 def delete_family(db: Session, family_id: str, user_id: str) -> None:

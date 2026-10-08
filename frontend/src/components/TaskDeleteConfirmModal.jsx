@@ -1,28 +1,22 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CalendarX2, Loader2, Trash2, X } from "lucide-react";
 
 import Button from "./Button";
+import useDialogFocus from "../hooks/useDialogFocus";
 
 function hasGoogleCalendarEvent(task) {
   return Boolean(task?.google_calendar_event_id);
 }
 
 export default function TaskDeleteConfirmModal({ task, deleting = false, onCancel, onConfirm }) {
+  const dialogRef = useRef(null);
+  useDialogFocus(dialogRef, Boolean(task), () => { if (!deleting) onCancel?.(); });
   const showGoogleOption = hasGoogleCalendarEvent(task);
   const [deleteGoogleEvent, setDeleteGoogleEvent] = useState(false);
 
   useEffect(() => {
     setDeleteGoogleEvent(showGoogleOption);
   }, [showGoogleOption, task?.id]);
-
-  useEffect(() => {
-    if (!task) return undefined;
-    function handleKeyDown(event) {
-      if (event.key === "Escape" && !deleting) onCancel?.();
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [deleting, onCancel, task]);
 
   if (!task) return null;
 
@@ -33,10 +27,12 @@ export default function TaskDeleteConfirmModal({ task, deleting = false, onCance
         if (event.target === event.currentTarget && !deleting) onCancel?.();
       }}
       role="dialog"
+      ref={dialogRef}
+      tabIndex={-1}
       aria-modal="true"
       aria-labelledby="task-delete-title"
     >
-      <div className="w-full max-w-lg overflow-hidden rounded-t-[26px] border border-white/80 bg-white shadow-soft animate-in sm:rounded-[26px]" onMouseDown={(event) => event.stopPropagation()}>
+      <div className="max-h-[calc(100dvh-1rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-t-[26px] border border-white/80 bg-white shadow-soft animate-in sm:rounded-[26px]" onMouseDown={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-5">
           <div className="min-w-0">
             <span className="inline-flex items-center gap-2 rounded-full bg-rose-50 px-3 py-1 text-xs font-black uppercase text-rose-600">

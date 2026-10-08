@@ -1,16 +1,17 @@
 from pydantic import BaseModel, Field
 
-from app.schemas.common import ORMModel
+from app.schemas.common import NonBlankName, ORMModel, RequiredFieldsUpdate
 
 
 class CategoryCreate(BaseModel):
-    name: str = Field(min_length=2, max_length=80)
+    name: NonBlankName = Field(max_length=80)
     color: str = Field(default="rose", max_length=40)
     icon: str = Field(default="sparkles", max_length=40)
 
 
-class CategoryUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=2, max_length=80)
+class CategoryUpdate(RequiredFieldsUpdate):
+    non_nullable_fields = frozenset({"name", "color", "icon"})
+    name: NonBlankName | None = Field(default=None, max_length=80)
     color: str | None = Field(default=None, max_length=40)
     icon: str | None = Field(default=None, max_length=40)
 

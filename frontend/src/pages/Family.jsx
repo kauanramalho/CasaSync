@@ -29,6 +29,7 @@ import SelectMenu from "../components/SelectMenu";
 import { useActiveFamily } from "../hooks/useActiveFamily";
 import { useAuth } from "../hooks/useAuth";
 import { useToast } from "../hooks/useToast";
+import useDialogFocus from "../hooks/useDialogFocus";
 import { dashboardApi, familiesApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError, toValidDate } from "../utils/formatters";
@@ -73,6 +74,8 @@ export default function Family() {
   const [leavingFamily, setLeavingFamily] = useState(false);
   const [decidingRequestId, setDecidingRequestId] = useState("");
   const [savingFamily, setSavingFamily] = useState(false);
+  const leaveDialogRef = useRef(null);
+  useDialogFocus(leaveDialogRef, leaveDialogOpen, () => { if (!leavingFamily) setLeaveDialogOpen(false); });
   const [loading, setLoading] = useState(false);
   const [familyAction, setFamilyAction] = useState("");
   const [inviteImage, setInviteImage] = useState(null);
@@ -714,8 +717,8 @@ export default function Family() {
             if (event.target === event.currentTarget && !leavingFamily) setLeaveDialogOpen(false);
           }}
         >
-          <div className="w-full max-w-md rounded-[28px] border border-white/10 bg-surface p-6 shadow-soft" onMouseDown={(event) => event.stopPropagation()}>
-            <h2 className="text-lg font-bold text-ink">Sair da familia?</h2>
+          <div ref={leaveDialogRef} role="dialog" aria-modal="true" aria-labelledby="leave-family-heading" tabIndex={-1} className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-[28px] border border-white/10 bg-surface p-6 shadow-soft" onMouseDown={(event) => event.stopPropagation()}>
+            <h2 id="leave-family-heading" className="text-lg font-bold text-ink">Sair da familia?</h2>
             <p className="mt-3 text-sm leading-relaxed text-muted">
               Tem certeza que deseja sair desta familia? Voce perdera acesso as tarefas, ranking e informacoes compartilhadas desta familia.
             </p>

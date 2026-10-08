@@ -33,6 +33,7 @@ export default function AssigneePicker({ members = [], value = [], onChange }) {
           <button
             key={userId}
             type="button"
+            aria-pressed={active}
             onClick={() => toggle(userId)}
             className={clsx(
               "flex min-w-0 items-center justify-between gap-3 rounded-[20px] border px-3 py-3 text-left shadow-sm transition hover:-translate-y-0.5",

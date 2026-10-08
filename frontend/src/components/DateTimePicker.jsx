@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import clsx from "clsx";
 import { CalendarClock, ChevronLeft, ChevronRight, Clock3, Minus, Plus, X } from "lucide-react";
 
 import { useAppPreferences } from "../hooks/useAppPreferences";
 import { buildMonthDays, getWeekdayLabels } from "../utils/preferences";
+import useDialogFocus from "../hooks/useDialogFocus";
+import { fitPopover } from "../utils/popover.js";
+import { parseLocalDateTime, withSelectedDay } from "../utils/dateTimeInput.js";
 
 const monthFormatter = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" });
 const displayFormatter = new Intl.DateTimeFormat("pt-BR", {
@@ -17,13 +20,6 @@ const displayFormatter = new Intl.DateTimeFormat("pt-BR", {
 
 function pad(value) {
   return String(value).padStart(2, "0");
-}
-
-function parseLocalDateTime(value) {
-  if (!value) return null;
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/);
-  if (!match) return null;
-  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4] ?? 9), Number(match[5] ?? 0));
 }
 
 function formatLocalDateTime(date) {
@@ -78,7 +74,7 @@ function TimeSpinner({ label, value, onIncrement }) {
   );
 }
 
-export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/aaaa --:--" }) {
+export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/aaaa --:--", "aria-label": ariaLabel = "Prazo" }) {
   const { preferences } = useAppPreferences();
   const selectedDate = useMemo(() => parseLocalDateTime(value), [value]);
   const [open, setOpen] = useState(false);
@@ -89,6 +85,8 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
   const wrapperRef = useRef(null);
   const buttonRef = useRef(null);
   const popoverRef = useRef(null);
+  const popoverId = useId();
+  useDialogFocus(popoverRef, open && Boolean(popoverStyle), () => setOpen(false), { modal: false });
   const today = useMemo(() => new Date(), []);
   const weekdays = useMemo(() => getWeekdayLabels(preferences.weekStart), [preferences.weekStart]);
   const days = useMemo(() => buildMonthDays(viewDate, preferences.weekStart), [viewDate, preferences.weekStart]);
@@ -106,14 +104,9 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
     function handleClick(event) {
       if (!wrapperRef.current?.contains(event.target) && !popoverRef.current?.contains(event.target)) setOpen(false);
     }
-    function handleKey(event) {
-      if (event.key === "Escape") setOpen(false);
-    }
     document.addEventListener("mousedown", handleClick);
-    document.addEventListener("keydown", handleKey);
     return () => {
       document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("keydown", handleKey);
     };
   }, []);
 
@@ -123,22 +116,10 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
     function updatePosition() {
       const rect = buttonRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const viewportPadding = 16;
-      const gap = 10;
-      const width = Math.min(380, window.innerWidth - viewportPadding * 2);
-      const left = Math.min(Math.max(viewportPadding, rect.left), window.innerWidth - width - viewportPadding);
-      const roomBelow = window.innerHeight - rect.bottom - viewportPadding;
-      const roomAbove = rect.top - viewportPadding;
-      const openAbove = roomBelow < 430 && roomAbove > roomBelow;
-      const maxHeight = Math.max(360, Math.min(520, openAbove ? roomAbove - gap : roomBelow - gap));
-      const top = openAbove ? Math.max(viewportPadding, rect.top - maxHeight - gap) : rect.bottom + gap;
       setPopoverStyle({
-        left,
-        top,
-        width,
-        maxHeight,
+        ...fitPopover(rect, { width: window.innerWidth, height: window.innerHeight }, { preferredWidth: 380, preferredHeight: 700, gap: 10 }),
         overflowX: "hidden",
-        overflowY: maxHeight < 470 ? "auto" : "visible"
+        overflowY: "auto"
       });
     }
 
@@ -152,8 +133,7 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
   }, [open]);
 
   function commitDate(date) {
-    const base = selectedDate ?? new Date();
-    const nextDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), base.getHours() || 9, base.getMinutes() || 0);
+    const nextDate = withSelectedDay(date, selectedDate);
     onChange?.(formatLocalDateTime(nextDate));
   }
 
@@ -207,7 +187,7 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
           open && "border-blush/60 ring-4 ring-blush/10"
         )}
       >
-        <button ref={buttonRef} type="button" onClick={() => setOpen((current) => !current)} className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left">
+        <button ref={buttonRef} type="button" aria-label={ariaLabel} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? popoverId : undefined} onClick={() => setOpen((current) => !current)} className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left">
           <CalendarClock className="h-5 w-5 shrink-0 text-muted" />
           <span className={clsx("min-w-0 flex-1 truncate font-semibold", selectedDate ? "text-ink" : "text-muted")}>
             {selectedDate ? displayFormatter.format(selectedDate) : placeholder}
@@ -235,6 +215,9 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
         createPortal(
           <div
             ref={popoverRef}
+            id={popoverId}
+            role="dialog"
+            aria-label="Escolher data e horário"
             style={popoverStyle}
             className="fixed z-[110] rounded-[26px] border border-white/80 bg-white/95 p-4 shadow-soft backdrop-blur-xl animate-in"
           >
@@ -276,12 +259,14 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
                     key={day.toISOString()}
                     type="button"
                     onClick={() => commitDate(day)}
+                    aria-label={new Intl.DateTimeFormat("pt-BR", { dateStyle: "full" }).format(day)}
+                    aria-pressed={selected}
                     className={clsx(
                       "grid h-10 place-items-center rounded-2xl text-sm font-bold transition",
                       selected && "bg-blush text-white shadow-card",
                       !selected && isToday && "bg-blush/10 text-blush",
                       !selected && !isToday && !outsideMonth && "text-ink hover:bg-blush/10 hover:text-blush",
-                      !selected && outsideMonth && "text-muted/55 hover:bg-slate-50"
+                      !selected && outsideMonth && "text-muted hover:bg-slate-50"
                     )}
                   >
                     {day.getDate()}
@@ -317,9 +302,9 @@ export default function DateTimePicker({ value, onChange, placeholder = "dd/mm/a
                 />
                 {timeError && <span className="mt-2 block rounded-2xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600">{timeError}</span>}
               </label>
-              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+              <div className="grid grid-cols-1 items-center gap-2 sm:grid-cols-[1fr_auto_1fr]">
                 <TimeSpinner label="Hora" value={(selectedDate ?? new Date(0, 0, 1, 9)).getHours()} onIncrement={(amount) => incrementTime("hour", amount)} />
-                <span className="pt-6 text-xl font-bold text-muted">:</span>
+                <span aria-hidden="true" className="hidden pt-6 text-xl font-bold text-muted sm:block">:</span>
                 <TimeSpinner label="Minuto" value={(selectedDate ?? new Date(0, 0, 1, 9)).getMinutes()} onIncrement={(amount) => incrementTime("minute", amount)} />
               </div>
             </div>

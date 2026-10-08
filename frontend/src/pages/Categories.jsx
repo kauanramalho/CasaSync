@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FolderPlus, Plus, Save } from "lucide-react";
 
 import { categoryIconMap } from "../components/Badges";
@@ -23,6 +23,8 @@ export default function Categories() {
   const [activePalette, setActivePalette] = useState("pastel");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   async function load() {
     try {
@@ -52,6 +54,9 @@ export default function Categories() {
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
     setError("");
     setMessage("");
     try {
@@ -67,6 +72,9 @@ export default function Categories() {
       load();
     } catch (err) {
       setError(normalizeApiError(err));
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
   }
 
@@ -151,9 +159,9 @@ export default function Categories() {
               onIconChange={(icon) => setForm((current) => ({ ...current, icon }))}
             />
 
-            <Button type="submit" className="w-full">
+            <Button type="submit" className="w-full" disabled={saving}>
               {editing ? <Save className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
-              {editing ? "Salvar categoria" : "Criar categoria"}
+              {saving ? "Salvando..." : editing ? "Salvar categoria" : "Criar categoria"}
             </Button>
           </form>
         </Card>

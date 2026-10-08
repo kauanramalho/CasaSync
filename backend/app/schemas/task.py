@@ -6,7 +6,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from app.models.enums import TaskPriority, TaskStatus, TaskType
 from app.schemas.category import CategoryRead
-from app.schemas.common import ORMModel
+from app.schemas.common import NonBlankName, ORMModel, RequiredFieldsUpdate
 from app.schemas.task_attachment import TaskAttachmentRead
 from app.schemas.user import UserSummary
 
@@ -27,7 +27,7 @@ class TaskReminderItemInput(BaseModel):
 
 
 class TaskCreate(TaskReminderInput):
-    title: str = Field(min_length=2, max_length=180)
+    title: NonBlankName = Field(max_length=180)
     description: str | None = Field(default=None, max_length=1200)
     assignee_id: str | None = None
     assignee_ids: list[str] | None = Field(default=None, max_length=20)
@@ -45,10 +45,11 @@ class TaskCreate(TaskReminderInput):
     reminders: list[TaskReminderItemInput] | None = Field(default=None, max_length=5)
 
 
-class TaskUpdate(BaseModel):
+class TaskUpdate(RequiredFieldsUpdate):
+    non_nullable_fields = frozenset({"title", "priority", "status", "task_type"})
     model_config = ConfigDict(populate_by_name=True)
 
-    title: str | None = Field(default=None, min_length=2, max_length=180)
+    title: NonBlankName | None = Field(default=None, max_length=180)
     description: str | None = Field(default=None, max_length=1200)
     assignee_id: str | None = None
     assignee_ids: list[str] | None = Field(default=None, max_length=20)

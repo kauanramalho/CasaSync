@@ -87,6 +87,7 @@ export default function TaskReminderFields({ form, onChange }) {
         <button
           type="button"
           onClick={() => updateReminderEnabled(!enabled)}
+          aria-label="Lembrar desta tarefa"
           disabled={!hasDueDate}
           className={`relative h-7 w-12 rounded-full transition ${
             enabled ? "bg-blue-500" : "bg-slate-200"
@@ -107,6 +108,7 @@ export default function TaskReminderFields({ form, onChange }) {
                 <button
                   key={option.value}
                   type="button"
+                  aria-pressed={selected}
                   onClick={() => toggleReminder(option)}
                   className={`rounded-2xl border px-3 py-2 text-left text-xs font-bold transition ${
                     selected

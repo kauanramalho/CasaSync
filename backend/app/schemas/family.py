@@ -2,13 +2,13 @@ from datetime import datetime
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
-from app.schemas.common import ORMModel
+from app.schemas.common import NonBlankName, ORMModel, RequiredFieldsUpdate
 from app.schemas.image import MAX_IMAGE_URL_LENGTH, validate_image_url
 from app.schemas.user import UserSummary
 
 
 class FamilyCreate(BaseModel):
-    name: str = Field(min_length=2, max_length=140)
+    name: NonBlankName = Field(max_length=140)
 
 
 class FamilyJoin(BaseModel):
@@ -35,8 +35,9 @@ class FamilyListItemRead(FamilyRead):
     current_user_role: str
 
 
-class FamilyUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=2, max_length=140)
+class FamilyUpdate(RequiredFieldsUpdate):
+    non_nullable_fields = frozenset({"name"})
+    name: NonBlankName | None = Field(default=None, max_length=140)
     description: str | None = Field(default=None, max_length=1200)
     image_url: str | None = Field(default=None, max_length=MAX_IMAGE_URL_LENGTH)
 

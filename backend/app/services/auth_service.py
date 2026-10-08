@@ -214,15 +214,22 @@ def delete_user_account(db: Session, user: User, current_password: str) -> None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Senha atual invalida.")
 
     memberships = db.query(FamilyMember).filter(FamilyMember.user_id == user.id).all()
-    for membership in memberships:
-        leave_family(db, membership.family_id, user.id)
+    try:
+        # All families and the account change in one transaction. A refusal in
+        # any family must not silently remove earlier memberships.
+        for membership in memberships:
+            leave_family(db, membership.family_id, user.id, commit=False)
 
-    user.is_active = False
-    user.token_version += 1
-    user.username = None
-    user.email = f"deleted-{user.id}@casasync.invalid"
-    user.name = "Conta excluida"
-    user.avatar_url = None
-    user.hashed_password = hash_password(secrets.token_urlsafe(32))
-    db.add(user)
-    db.commit()
+        user.is_active = False
+        user.token_version += 1
+        user.username = None
+        user.email = f"deleted-{user.id}@casasync.invalid"
+        user.name = "Conta excluida"
+        user.avatar_url = None
+        user.active_family_id = None
+        user.hashed_password = hash_password(secrets.token_urlsafe(32))
+        db.add(user)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise

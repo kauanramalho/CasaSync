@@ -15,6 +15,7 @@ from app.schemas.dashboard import (
     MonthlyWinnerRead,
     RankingItem,
 )
+from app.schemas.task import TaskRead
 from app.services.family_service import list_members
 from app.services.ranking_service import get_current_scores_by_user, get_previous_month_winner, sort_members_by_monthly_score
 from app.services.retention_service import maintain_task_retention
@@ -108,7 +109,8 @@ def get_dashboard(db: Session, family_id: str) -> DashboardRead:
         )
         stat.total += 1
         if len(stat.tasks) < 12:
-            stat.tasks.append(task)
+            # Pydantic does not validate objects appended to an existing list.
+            stat.tasks.append(TaskRead.model_validate(task))
 
     monthly_scores = get_current_scores_by_user(db, family_id)
     ranked_members = sort_members_by_monthly_score(members, monthly_scores)

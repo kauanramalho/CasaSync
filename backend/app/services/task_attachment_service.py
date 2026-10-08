@@ -5,10 +5,12 @@ from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import get_settings
 from app.models.task import Task, TaskAttachment
 from app.services.family_service import require_family_member
+from app.services.image_validation import validate_image_content
 
 
 MAX_TASK_ATTACHMENT_BYTES = 8 * 1024 * 1024
@@ -113,6 +115,8 @@ async def read_validated_task_attachment(file: UploadFile) -> tuple[bytes, str, 
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="O tipo real do arquivo nao confere com o arquivo enviado.")
 
     _validate_extension(file.filename, detected_type)
+    if detected_type.startswith("image/"):
+        await run_in_threadpool(validate_image_content, data, detected_type)
     original_name = _clean_original_name(file.filename, detected_type)
     return data, detected_type, original_name
 

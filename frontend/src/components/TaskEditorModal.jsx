@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Save, X } from "lucide-react";
 
 import AssigneePicker from "./AssigneePicker";
@@ -12,8 +12,11 @@ import { formatDateTimeLocal, toIsoOrNull } from "../utils/formatters";
 import { hasGoogleCalendarDateTime } from "../utils/googleCalendarTasks";
 import { getReminderPayload, getReminderValidationError } from "../utils/taskReminders";
 import { normalizeTaskForForm, priorityPoints } from "../utils/tasks";
+import useDialogFocus from "../hooks/useDialogFocus";
 
 export default function TaskEditorModal({ task, categories = [], members = [], onClose, onSave, saving = false, error = "" }) {
+  const dialogRef = useRef(null);
+  useDialogFocus(dialogRef, Boolean(task), () => { if (!saving) onClose?.(); });
   const [form, setForm] = useState(() => normalizeTaskForForm(task));
   const [localError, setLocalError] = useState("");
   const [pendingFiles, setPendingFiles] = useState([]);
@@ -55,15 +58,6 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
       setSyncGoogleCalendar(true);
     }
   }, [calendarStatus?.can_sync, form.due_date, task?.google_calendar_event_id]);
-
-  useEffect(() => {
-    if (!task) return undefined;
-    function handleKeyDown(event) {
-      if (event.key === "Escape" && !saving) onClose?.();
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, saving, task]);
 
   const selectedMembers = useMemo(() => {
     const selected = new Set(form.assignee_ids);
@@ -143,7 +137,7 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
         if (event.target === event.currentTarget && !saving) onClose?.();
       }}
     >
-      <div role="dialog" aria-modal="true" aria-labelledby="task-editor-heading" className="flex max-h-[calc(100dvh-1rem)] w-full max-w-3xl flex-col overflow-hidden rounded-t-[24px] border border-white/80 bg-white shadow-soft animate-in sm:max-h-[92vh] sm:rounded-[28px]" onMouseDown={(event) => event.stopPropagation()}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="task-editor-heading" tabIndex={-1} className="flex max-h-[calc(100dvh-1rem)] w-full max-w-3xl flex-col overflow-hidden rounded-t-[24px] border border-white/80 bg-white shadow-soft animate-in sm:rounded-[28px]" onMouseDown={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-4 sm:px-6 sm:py-5">
           <div className="min-w-0">
             <h2 id="task-editor-heading" className="section-title">Editar tarefa</h2>
@@ -177,12 +171,13 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
 
               <div>
                 <label className="mb-2 block text-sm font-semibold text-ink">Categoria</label>
-                <SelectMenu value={form.category_id} onChange={(value) => updateField("category_id", value)} options={categoryOptions} />
+                <SelectMenu aria-label="Categoria" value={form.category_id} onChange={(value) => updateField("category_id", value)} options={categoryOptions} />
               </div>
 
               <div>
                 <label className="mb-2 block text-sm font-semibold text-ink">Prioridade</label>
                 <SelectMenu
+                  aria-label="Prioridade"
                   value={form.priority}
                   onChange={(value) => updateField("priority", value)}
                   options={[
@@ -242,6 +237,7 @@ export default function TaskEditorModal({ task, categories = [], members = [], o
               <div>
                 <label className="mb-2 block text-sm font-semibold text-ink">Status</label>
                 <SelectMenu
+                  aria-label="Status"
                   value={form.status}
                   onChange={(value) => updateField("status", value)}
                   options={[

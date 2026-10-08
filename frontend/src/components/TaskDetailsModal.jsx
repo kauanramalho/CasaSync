@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BellRing,
   CalendarCheck,
@@ -24,6 +24,7 @@ import { getStoredPreferences } from "../utils/preferences";
 import { formatReminderList, normalizeReminderList } from "../utils/taskReminders";
 import { getTaskPointLabel } from "../utils/tasks";
 import { formatFileSize } from "../utils/files";
+import useDialogFocus from "../hooks/useDialogFocus";
 
 function formatFullDateTime(value, fallback = "Sem data") {
   if (!value) return fallback;
@@ -77,6 +78,8 @@ function DetailMetric({ icon: Icon, label, value, tone = "slate" }) {
 }
 
 export default function TaskDetailsModal({ task, onClose, onEdit }) {
+  const dialogRef = useRef(null);
+  useDialogFocus(dialogRef, Boolean(task), onClose);
   const [details, setDetails] = useState(task);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -107,15 +110,6 @@ export default function TaskDetailsModal({ task, onClose, onEdit }) {
       alive = false;
     };
   }, [task]);
-
-  useEffect(() => {
-    if (!task) return undefined;
-    function handleKeyDown(event) {
-      if (event.key === "Escape") onClose?.();
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, task]);
 
   useEffect(() => {
     let alive = true;
@@ -195,6 +189,8 @@ export default function TaskDetailsModal({ task, onClose, onEdit }) {
         if (event.target === event.currentTarget) onClose?.();
       }}
       role="dialog"
+      ref={dialogRef}
+      tabIndex={-1}
       aria-modal="true"
       aria-labelledby="task-details-title"
     >

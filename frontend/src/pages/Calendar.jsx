@@ -16,6 +16,7 @@ import { useAppPreferences } from "../hooks/useAppPreferences";
 import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
 import { useToast } from "../hooks/useToast";
+import useDialogFocus from "../hooks/useDialogFocus";
 import { categoriesApi, familiesApi, integrationsApi, tasksApi } from "../services/api";
 import {
   calendarMonthTasks,
@@ -175,6 +176,8 @@ function TaskPreview({ preview, onMouseEnter, onMouseLeave }) {
 }
 
 function DayPanel({ date, tasks, onClose, onComplete, onCompleteAll, onEdit, onOpenDetails }) {
+  const dialogRef = useRef(null);
+  useDialogFocus(dialogRef, true, onClose);
   const orderedTasks = sortCalendarTasks(tasks);
   const openTasks = orderedTasks.filter((task) => task.status !== "concluida");
 
@@ -185,14 +188,14 @@ function DayPanel({ date, tasks, onClose, onComplete, onCompleteAll, onEdit, onO
         if (event.target === event.currentTarget) onClose?.();
       }}
     >
-      <div className="flex h-full w-full flex-col overflow-hidden bg-white shadow-soft animate-in md:max-w-xl md:rounded-[30px]">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="day-panel-heading" tabIndex={-1} className="flex h-full w-full flex-col overflow-hidden bg-white shadow-soft animate-in md:max-w-xl md:rounded-[30px]">
         <div className="border-b border-slate-100 px-4 py-5 pt-[max(1.25rem,env(safe-area-inset-top))] md:px-6 md:pt-5">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="grid h-11 w-11 place-items-center rounded-2xl bg-rose-50 text-blush">
                 <CalendarDays className="h-5 w-5" />
               </div>
-              <h2 className="mt-4 text-2xl font-bold text-ink">{fullDateLabel(date)}</h2>
+              <h2 id="day-panel-heading" className="mt-4 text-2xl font-bold text-ink">{fullDateLabel(date)}</h2>
               <p className="mt-1 text-sm font-semibold text-muted">
                 {orderedTasks.length} {orderedTasks.length === 1 ? "tarefa" : "tarefas"}
               </p>

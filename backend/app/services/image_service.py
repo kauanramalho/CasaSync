@@ -3,8 +3,10 @@ from pathlib import PurePath
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.models.image_asset import ImageAsset
+from app.services.image_validation import validate_image_content
 
 
 MAX_IMAGE_UPLOAD_BYTES = 600 * 1024
@@ -74,6 +76,8 @@ async def read_validated_image_upload(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="O arquivo enviado nao parece ser uma imagem valida.")
     if detected_type != declared_type:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="O tipo real da imagem nao confere com o arquivo enviado.")
+
+    await run_in_threadpool(validate_image_content, data, detected_type)
 
     return ValidatedImageUpload(
         filename=(file.filename or "")[:255] or None,

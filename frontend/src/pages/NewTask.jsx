@@ -181,7 +181,7 @@ export default function NewTask() {
           </div>
           <div>
             <label className="mb-2 block text-sm font-semibold text-ink">Categoria</label>
-            <SelectMenu value={form.category_id} onChange={(value) => updateField("category_id", value)} options={categoryOptions} />
+            <SelectMenu aria-label="Categoria" value={form.category_id} onChange={(value) => updateField("category_id", value)} options={categoryOptions} />
           </div>
           <div>
             <label className="mb-2 block text-sm font-semibold text-ink">Prazo</label>
@@ -217,6 +217,7 @@ export default function NewTask() {
           <div>
             <label className="mb-2 block text-sm font-semibold text-ink">Prioridade</label>
             <SelectMenu
+              aria-label="Prioridade"
               value={form.priority}
               onChange={(value) => updateField("priority", value)}
               options={[
@@ -229,6 +230,7 @@ export default function NewTask() {
           <div>
             <label className="mb-2 block text-sm font-semibold text-ink">Status</label>
             <SelectMenu
+              aria-label="Status"
               value={form.status}
               onChange={(value) => updateField("status", value)}
               options={[

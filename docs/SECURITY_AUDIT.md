@@ -1,8 +1,19 @@
 # Auditoria de Seguranca CasaSync
 
-Atualizada em: 2026-10-07. Correcoes desta revisao ainda locais, nao publicadas.
+Atualizada em: 2026-10-08. Resultados locais e aceitacao em producao sao gates separados.
 
-## Revisao de 2026-10-07
+## Revisao fina de 2026-10-08
+
+- Exclusao de conta agora usa uma unica transacao: recusa por ultima administracao ou falha de commit desfaz todas as saidas de familia e a desativacao. Testes incluem chaves estrangeiras ativas e familia com ultimo membro.
+- Nomes/titulos em branco e PATCH com `null` em colunas obrigatorias sao recusados na API; campos opcionais continuam podendo ser limpos.
+- Uploads de imagem verificam formato real, decodificacao, ate 8000 px por lado e 36 megapixels antes de armazenamento ou envio ao provedor. A validacao ocorre no thread pool, sem editar os bytes nem registrar midia.
+- `postcss-selector-parser` atualizado por override compativel para 7.1.6. Auditoria npm completa caiu de 7 para 5 alertas altos no toolchain Tailwind 3; dependencias de producao npm e ambiente Python auditado sem vulnerabilidades conhecidas.
+
+Validacao desta revisao: **192 testes backend e 110 frontend**, lint, build, Ruff (F821/F823/F401), `uv pip check`, `pip-audit` e `git diff --check`. Bandit: 10.675 linhas, 0 altos, 7 medios e 4 baixos. Achados contextuais nao foram ocultados com `nosec`.
+
+Escopo, arquivos, comandos, testes visuais e riscos: [FINE_AUDIT_20261008.md](FINE_AUDIT_20261008.md). A aceitacao remota deve ser conferida no recibo da release, nao inferida apenas destes testes.
+
+## Revisao de 2026-10-07 (registro historico da validacao local)
 
 - Cadastro e verificacao obrigatoria falham com 503 em producao se nao houver canal de e-mail; nao verificam contas nem emitem sessao completa como fallback. Simulacao local permanece disponivel apenas fora de producao.
 - Excecoes inesperadas de autenticacao registram tipo e fingerprint, nao traceback/parametros SQL com dados da conta.
@@ -13,7 +24,7 @@ Atualizada em: 2026-10-07. Correcoes desta revisao ainda locais, nao publicadas.
 - Headers do frontend foram configurados contra framing, sniffing e vazamento de Referer; verificacao no dominio publicado ainda pendente.
 - PyJWT atualizado para 2.15.1 no ambiente local e requisito minimo 2.15.0. Nodemailer atualizado para 10.0.16; lockfile atualizado sem scripts de instalacao.
 
-Validacao atual: **164 testes backend, 62 frontend, lint e build aprovados**; `pip-audit` e `npm audit --omit=dev` sem vulnerabilidades conhecidas. Auditoria completa npm ainda aponta **7 alertas no toolchain Tailwind 3 (5 altos, 2 moderados)**. Bandit: 10.491 linhas, 0 altos, 7 medios e 4 baixos; achados contextuais revisados, nao equivalentes a 11 vulnerabilidades confirmadas.
+Validacao historica: **164 testes backend, 62 frontend, lint e build aprovados**; `pip-audit` e `npm audit --omit=dev` sem vulnerabilidades conhecidas. Auditoria completa npm entao apontava **7 alertas no toolchain Tailwind 3 (5 altos, 2 moderados)**. Bandit: 10.491 linhas, 0 altos, 7 medios e 4 baixos; achados contextuais revisados, nao equivalentes a 11 vulnerabilidades confirmadas.
 
 Detalhes, comandos, limites e gate de publicacao: [SERVICE_AUDIT_20261007.md](SERVICE_AUDIT_20261007.md).
 
@@ -63,9 +74,9 @@ Detalhes, comandos, limites e gate de publicacao: [SERVICE_AUDIT_20261007.md](SE
 
 - O rate limit continua em memoria e por instancia; para escala horizontal, migrar para Redis ou gateway/API WAF.
 - Tokens continuam em `localStorage`; para maior hardening futuro, considerar cookie HttpOnly/Secure/SameSite com CSRF.
-- Recuperacao de senha nao existe no codigo atual; quando adicionada, aplicar token curto, hash, uso unico e rate limit.
+- Recuperacao de senha existe no codigo atual, com codigo curto, hash, uso unico, expiracao e rate limit; seus testes passaram nesta revisao. Entrega real por e-mail nao foi reexecutada nesta auditoria.
 - Imagens persistidas continuam acessiveis por URL opaca para suportar `<img>` sem cookies; revisar URLs assinadas ou proxy autenticado antes de armazenar midia mais sensivel.
-- A cadeia de compilacao Tailwind 3 ainda tem 7 alertas npm. A atualizacao compativel resolveu os alertas de producao, incluindo os antigos de Router/Nodemailer. Migrar Tailwind 4 em lote proprio, com regressao visual, sem `audit fix --force`.
+- A cadeia de compilacao Tailwind 3 ainda tem 5 alertas altos npm associados a `braces` e dependentes. A atualizacao compativel resolveu os alertas de producao e de `postcss-selector-parser`. Migrar Tailwind 4 em lote proprio, com regressao visual, sem `audit fix --force`.
 
 ## Validacoes historicas (2026-08-05, nao reexecutadas integralmente nesta data)
 

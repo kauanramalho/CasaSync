@@ -6,7 +6,7 @@ import { CategoryBadge, PriorityBadge, StatusBadge } from "./Badges";
 import SelectMenu from "./SelectMenu";
 import { formatDate } from "../utils/formatters";
 import { formatReminderList, normalizeReminderList } from "../utils/taskReminders";
-import { getNextTaskSort, sortTasksForDisplay, taskSortColumns } from "../utils/tasks";
+import { getNextTaskSort, getTaskActivityDate, sortTasksForDisplay, taskSortColumns } from "../utils/tasks";
 
 function SortHeaderButton({ column, activeSort, onSort }) {
   const active = activeSort?.key === column.key;
@@ -138,7 +138,7 @@ function TaskRow({ task, compact, menuOpen, onToggleMenu, onRunAction, onComplet
             <p className="break-words text-base font-semibold leading-snug text-ink">{task.title}</p>
             {!compact && (
               <p className="mt-1 text-xs text-muted">
-                Criado por {task.creator?.name || "CasaSync"} &middot; {task.status === "concluida" ? "Concluida" : "Prazo"}: {formatDate(task.due_date)}
+                Criado por {task.creator?.name || "CasaSync"} &middot; {task.status === "concluida" ? "Concluída" : "Prazo"}: {formatDate(getTaskActivityDate(task), task.status === "concluida" ? "Sem registro" : "Sem prazo")}
               </p>
             )}
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -189,7 +189,7 @@ function TaskRow({ task, compact, menuOpen, onToggleMenu, onRunAction, onComplet
           <p className="truncate font-semibold text-ink">{task.title}</p>
           {!compact && (
             <p className="mt-1 text-xs text-muted">
-              Criado por {task.creator?.name || "CasaSync"} &middot; {task.status === "concluida" ? "Concluida" : "Prazo"}: {formatDate(task.due_date)}
+              Criado por {task.creator?.name || "CasaSync"} &middot; {task.status === "concluida" ? "Concluída" : "Prazo"}: {formatDate(getTaskActivityDate(task), task.status === "concluida" ? "Sem registro" : "Sem prazo")}
             </p>
           )}
           {hasActiveReminder && (

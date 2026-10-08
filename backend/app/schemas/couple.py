@@ -3,21 +3,22 @@ from datetime import datetime
 from pydantic import BaseModel, Field, field_validator
 
 from app.models.enums import GoalStatus
-from app.schemas.common import ORMModel
+from app.schemas.common import NonBlankMessage, NonBlankName, ORMModel, RequiredFieldsUpdate
 from app.schemas.image import MAX_IMAGE_URL_LENGTH, validate_image_url
 from app.schemas.user import UserSummary
 
 
 class CoupleGoalCreate(BaseModel):
-    title: str = Field(min_length=2, max_length=160)
+    title: NonBlankName = Field(max_length=160)
     description: str | None = Field(default=None, max_length=1200)
     target_date: datetime | None = None
     progress: int = Field(default=0, ge=0, le=100)
     pinned: bool = False
 
 
-class CoupleGoalUpdate(BaseModel):
-    title: str | None = Field(default=None, min_length=2, max_length=160)
+class CoupleGoalUpdate(RequiredFieldsUpdate):
+    non_nullable_fields = frozenset({"title", "progress", "status", "pinned"})
+    title: NonBlankName | None = Field(default=None, max_length=160)
     description: str | None = Field(default=None, max_length=1200)
     target_date: datetime | None = None
     progress: int | None = Field(default=None, ge=0, le=100)
@@ -39,7 +40,7 @@ class CoupleGoalRead(ORMModel):
 
 
 class DateIdeaCreate(BaseModel):
-    title: str = Field(min_length=2, max_length=160)
+    title: NonBlankName = Field(max_length=160)
     description: str | None = Field(default=None, max_length=1200)
     location: str | None = Field(default=None, max_length=180)
     budget: str | None = Field(default=None, max_length=80)
@@ -55,8 +56,9 @@ class DateIdeaCreate(BaseModel):
         return validate_image_url(value)
 
 
-class DateIdeaUpdate(BaseModel):
-    title: str | None = Field(default=None, min_length=2, max_length=160)
+class DateIdeaUpdate(RequiredFieldsUpdate):
+    non_nullable_fields = frozenset({"title", "mood", "is_done", "pinned"})
+    title: NonBlankName | None = Field(default=None, max_length=160)
     description: str | None = Field(default=None, max_length=1200)
     location: str | None = Field(default=None, max_length=180)
     budget: str | None = Field(default=None, max_length=80)
@@ -91,13 +93,14 @@ class DateIdeaRead(ORMModel):
 
 
 class QuickNoteCreate(BaseModel):
-    message: str = Field(min_length=1, max_length=1200)
+    message: NonBlankMessage = Field(max_length=1200)
     color: str = Field(default="rose", max_length=40)
     pinned: bool = False
 
 
-class QuickNoteUpdate(BaseModel):
-    message: str | None = Field(default=None, min_length=1, max_length=1200)
+class QuickNoteUpdate(RequiredFieldsUpdate):
+    non_nullable_fields = frozenset({"message", "color", "pinned"})
+    message: NonBlankMessage | None = Field(default=None, max_length=1200)
     color: str | None = Field(default=None, max_length=40)
     pinned: bool | None = None
 

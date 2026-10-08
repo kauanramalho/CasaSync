@@ -28,6 +28,10 @@ export function isTaskCompleted(task) {
   return task?.status === "concluida";
 }
 
+export function getTaskActivityDate(task) {
+  return isTaskCompleted(task) ? task.completed_at : task.due_date;
+}
+
 export function isTaskOpen(task) {
   return !isTaskCompleted(task);
 }

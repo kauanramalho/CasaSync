@@ -11,6 +11,7 @@ export default function PasswordInput({ className = "", inputClassName = "", id,
     <div className={`relative ${className}`}>
       <input
         {...props}
+        aria-label={props["aria-label"] || props.placeholder || "Senha"}
         id={inputId}
         className={`soft-input pr-12 ${inputClassName}`}
         type={visible ? "text" : "password"}

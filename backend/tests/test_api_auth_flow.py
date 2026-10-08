@@ -306,6 +306,26 @@ class ApiAuthFlowTest(unittest.TestCase):
         finally:
             db.close()
 
+    def test_invalid_task_patch_is_422_and_preserves_persisted_data(self):
+        with auth_runtime():
+            session = self.register_and_verify()
+            headers = {"Authorization": f"Bearer {session['access_token']}"}
+            family = self.client.post("/api/families", json={"name": "QA Audit"}, headers=headers)
+            self.assertEqual(family.status_code, 201, family.text)
+            blank = self.client.post("/api/tasks", json={"title": "   "}, headers=headers)
+            self.assertEqual(blank.status_code, 422)
+            created = self.client.post("/api/tasks", json={"title": "  Tarefa valida  "}, headers=headers)
+            self.assertEqual(created.status_code, 201, created.text)
+            self.assertEqual(created.json()["title"], "Tarefa valida")
+            task_id = created.json()["id"]
+            for payload in [{"title": None}, {"title": "  "}, {"status": None}, {"priority": None}]:
+                with self.subTest(payload=payload):
+                    response = self.client.patch(f"/api/tasks/{task_id}", json=payload, headers=headers)
+                    self.assertEqual(response.status_code, 422, response.text)
+            persisted = self.client.get(f"/api/tasks/{task_id}", headers=headers).json()
+            self.assertEqual(persisted["title"], "Tarefa valida")
+            self.assertEqual(persisted["status"], "pendente")
+
     def test_database_failure_is_500_not_false_duplicate(self):
         with (
             auth_runtime(),

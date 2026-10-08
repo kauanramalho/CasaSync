@@ -1,17 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import clsx from "clsx";
 import { Check, ChevronDown } from "lucide-react";
 
 import { CategoryOptionContent } from "./Badges";
 import FamilyAvatar from "./FamilyAvatar";
+import useDialogFocus from "../hooks/useDialogFocus";
+import { fitPopover } from "../utils/popover.js";
 
-export default function SelectMenu({ value, options = [], onChange, placeholder = "Selecionar", className, buttonClassName }) {
+export default function SelectMenu({ value, options = [], onChange, placeholder = "Selecionar", className, buttonClassName, "aria-label": ariaLabel }) {
   const [open, setOpen] = useState(false);
   const [menuStyle, setMenuStyle] = useState(null);
   const ref = useRef(null);
   const buttonRef = useRef(null);
   const menuRef = useRef(null);
+  const menuId = useId();
+  useDialogFocus(menuRef, open && Boolean(menuStyle), () => setOpen(false), { modal: false });
 
   const selectedOption = useMemo(() => options.find((option) => option.value === value), [options, value]);
 
@@ -19,14 +23,9 @@ export default function SelectMenu({ value, options = [], onChange, placeholder 
     function handleClick(event) {
       if (!ref.current?.contains(event.target) && !menuRef.current?.contains(event.target)) setOpen(false);
     }
-    function handleKey(event) {
-      if (event.key === "Escape") setOpen(false);
-    }
     document.addEventListener("mousedown", handleClick);
-    document.addEventListener("keydown", handleKey);
     return () => {
       document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("keydown", handleKey);
     };
   }, []);
 
@@ -36,22 +35,7 @@ export default function SelectMenu({ value, options = [], onChange, placeholder 
     function updatePosition() {
       const rect = buttonRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const gap = 8;
-      const viewportPadding = 16;
-      const roomBelow = window.innerHeight - rect.bottom - viewportPadding;
-      const roomAbove = rect.top - viewportPadding;
-      const openAbove = roomBelow < 220 && roomAbove > roomBelow;
-      const availableHeight = Math.max(160, Math.min(288, openAbove ? roomAbove - gap : roomBelow - gap));
-      const width = Math.min(rect.width, window.innerWidth - viewportPadding * 2);
-      const left = Math.min(Math.max(viewportPadding, rect.left), window.innerWidth - width - viewportPadding);
-      const top = openAbove ? Math.max(viewportPadding, rect.top - availableHeight - gap) : Math.min(window.innerHeight - viewportPadding, rect.bottom + gap);
-
-      setMenuStyle({
-        left,
-        top,
-        width,
-        maxHeight: availableHeight
-      });
+      setMenuStyle(fitPopover(rect, { width: window.innerWidth, height: window.innerHeight }));
     }
 
     updatePosition();
@@ -77,6 +61,10 @@ export default function SelectMenu({ value, options = [], onChange, placeholder 
       <button
         ref={buttonRef}
         type="button"
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
         onClick={() => setOpen((current) => !current)}
         className={clsx(
           "soft-input flex min-h-[48px] items-center justify-between gap-3 text-left",
@@ -102,6 +90,19 @@ export default function SelectMenu({ value, options = [], onChange, placeholder 
         createPortal(
         <div
           ref={menuRef}
+          id={menuId}
+          role="listbox"
+          aria-label={ariaLabel || placeholder}
+          onKeyDown={(event) => {
+            const buttons = [...menuRef.current.querySelectorAll('[role="option"]')];
+            const index = buttons.indexOf(document.activeElement);
+            let next;
+            if (event.key === "ArrowDown") next = (index + 1) % buttons.length;
+            if (event.key === "ArrowUp") next = (index - 1 + buttons.length) % buttons.length;
+            if (event.key === "Home") next = 0;
+            if (event.key === "End") next = buttons.length - 1;
+            if (next !== undefined) { event.preventDefault(); buttons[next]?.focus(); }
+          }}
           style={menuStyle}
           className="fixed z-[100] overflow-y-auto rounded-[22px] border border-white/80 bg-white/95 p-2 shadow-soft backdrop-blur-xl animate-in"
         >
@@ -111,6 +112,8 @@ export default function SelectMenu({ value, options = [], onChange, placeholder 
               <button
                 key={option.value || option.label}
                 type="button"
+                role="option"
+                aria-selected={active}
                 onClick={() => choose(option)}
                 className={clsx(
                   "flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-2.5 text-left text-sm font-semibold transition",
