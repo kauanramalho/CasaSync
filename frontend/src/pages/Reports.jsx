@@ -18,7 +18,7 @@ import WeeklyProductivityChart from "../components/WeeklyProductivityChart";
 import { useAuth } from "../hooks/useAuth";
 import { dashboardApi } from "../services/api";
 import { normalizeApiError } from "../utils/formatters";
-import { getCategoryHex, getCategoryName } from "../utils/tasks";
+import { getCategoryColorKey, getCategoryName, getCategorySemanticStyle } from "../utils/tasks";
 
 const chartColors = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"];
 
@@ -58,7 +58,7 @@ export default function Reports() {
         ...item,
         name: getCategoryName(item),
         icon: item.icon || item.tasks?.[0]?.category?.icon,
-        colorHex: getCategoryHex(item, chartColors[index % chartColors.length]),
+        colorHex: getCategoryColorKey(item) ? getCategorySemanticStyle({ ...item, color: getCategoryColorKey(item) }).color : chartColors[index % chartColors.length],
         percent: totalCategoryTasks ? Math.round((item.total / totalCategoryTasks) * 100) : 0
       })),
     [categoryData, totalCategoryTasks]

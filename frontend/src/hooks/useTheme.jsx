@@ -1,11 +1,12 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
-import { applyPalette, getPalette, getStoredPaletteId, palettes, THEME_STORAGE_KEY } from "../utils/theme";
+import { applyPalette, getPalette, getStoredPaletteId, palettes, persistPalette } from "../utils/theme";
 
 const ThemeContext = createContext(null);
 
 export function ThemeProvider({ children }) {
   const [paletteId, setPaletteId] = useState(getStoredPaletteId);
+  const [storageAvailable, setStorageAvailable] = useState(true);
 
   useEffect(() => {
     applyPalette(paletteId);
@@ -13,7 +14,7 @@ export function ThemeProvider({ children }) {
 
   function selectPalette(nextPaletteId) {
     const nextId = applyPalette(nextPaletteId);
-    window.localStorage.setItem(THEME_STORAGE_KEY, nextId);
+    setStorageAvailable(persistPalette(nextId));
     setPaletteId(nextId);
   }
 
@@ -21,10 +22,11 @@ export function ThemeProvider({ children }) {
     () => ({
       paletteId,
       palette: getPalette(paletteId),
+      storageAvailable,
       palettes,
       selectPalette
     }),
-    [paletteId]
+    [paletteId, storageAvailable]
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

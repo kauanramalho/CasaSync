@@ -212,7 +212,7 @@ const ImageAdjustField = forwardRef(function ImageAdjustField(
     <div className={className}>
       {label && <p className="text-sm font-bold text-ink">{label}</p>}
       <div
-        className={`relative overflow-hidden bg-gradient-to-br from-rose-100 to-violet-100 bg-cover bg-center shadow-card ${previewClassName}`}
+        className={`relative overflow-hidden theme-avatar bg-cover bg-center shadow-card ${previewClassName}`}
         style={previewStyle}
       >
         {draftUrl && <img src={draftUrl} alt="Prévia da foto recortada" className="absolute" style={cropPreviewStyle(dimensions, crop, outputWidth / outputHeight)} />}

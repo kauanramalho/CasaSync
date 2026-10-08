@@ -14,7 +14,7 @@ export default function AuthLayout({ children, title, subtitle }) {
           <div className="mt-6"><InstallApp compact /></div>
           <div className="mt-6">{children}</div>
         </section>
-        <aside className="hidden border-l border-white/80 bg-gradient-to-br from-rose-50 via-white to-violet-50 p-10 lg:flex lg:flex-col lg:justify-center">
+        <aside className="hidden border-l border-white/80 theme-decorative p-10 lg:flex lg:flex-col lg:justify-center">
           <div className="rounded-[28px] bg-white/75 p-6 shadow-card">
             <p className="text-lg font-bold text-ink">Pequenas ações, grandes conexões.</p>
             <p className="mt-2 text-sm text-muted">Organização da casa, estudos, fé, saúde e relacionamento em um só espaço.</p>

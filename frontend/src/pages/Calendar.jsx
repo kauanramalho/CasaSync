@@ -32,7 +32,7 @@ import { formatDate, normalizeApiError } from "../utils/formatters";
 import { syncTaskToGoogleCalendarSafely } from "../utils/googleCalendarTasks";
 import { buildMonthDays, getStoredPreferences, getWeekdayLabels, startOfWeek as getPreferenceStartOfWeek } from "../utils/preferences";
 import { applyTaskAttachmentChanges, hasTaskAttachmentChanges } from "../utils/taskAttachments";
-import { getAssigneeNames, getCategoryHex, getTaskPointLabel, sortTasksForDisplay } from "../utils/tasks";
+import { getAssigneeNames, getCategorySemanticStyle, getTaskPointLabel, sortTasksForDisplay } from "../utils/tasks";
 
 const weekdays = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const viewModes = [
@@ -90,7 +90,6 @@ function clamp(value, min, max) {
 }
 
 function CalendarTaskPill({ task, onPreview, onPreviewLeave, onOpen, compact = false }) {
-  const color = getCategoryHex(task.category, "#7aa5ff");
   const completed = task.status === "concluida";
   const overdue = task.status === "atrasada";
   const dueTime = timeLabel(task.due_date);
@@ -109,12 +108,11 @@ function CalendarTaskPill({ task, onPreview, onPreviewLeave, onOpen, compact = f
         onOpen?.(task, event);
       }}
       className={clsx(
-        "block w-full min-w-0 rounded-xl border px-2 py-1.5 text-left text-xs font-bold transition hover:-translate-y-0.5 hover:shadow-card focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-rose-100",
+        "block w-full min-w-0 rounded-xl border px-2 py-1.5 text-left text-xs font-bold transition hover:-translate-y-0.5 hover:shadow-card",
         compact ? "min-h-9" : "min-h-11",
-        completed && "opacity-70",
         overdue && "ring-1 ring-rose-300/70"
       )}
-      style={{ backgroundColor: `${color}14`, borderColor: `${color}2e`, color }}
+      style={getCategorySemanticStyle(task.category)}
       aria-label={`Ver detalhes de ${task.title}, ${dueTime}, status ${task.status}`}
     >
       <span className="flex min-w-0 items-center gap-1.5">
@@ -123,7 +121,7 @@ function CalendarTaskPill({ task, onPreview, onPreviewLeave, onOpen, compact = f
         <span className={clsx("min-w-0 flex-1 truncate", completed && "line-through")}>{task.title}</span>
         {(completed || overdue) && <span className="shrink-0" title={completed ? "Concluída" : "Atrasada"}>{completed ? "✓" : "!"}</span>}
       </span>
-      <span className="mt-0.5 flex min-w-0 items-center gap-1 text-[10px] font-semibold opacity-80">
+      <span className="mt-0.5 flex min-w-0 items-center gap-1 text-[10px] font-semibold">
         <span className="shrink-0">{dueTime}</span>
         {!compact && assignees && <><span aria-hidden="true">·</span><span className="truncate">{assignees}</span></>}
       </span>

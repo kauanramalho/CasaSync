@@ -8,7 +8,7 @@ export default function Avatar({ user, size = "md" }) {
   };
 
   return (
-    <div className={`${sizes[size]} grid shrink-0 place-items-center rounded-full bg-gradient-to-br from-rose-200 to-violet-200 font-bold text-ink ring-4 ring-white`}>
+    <div className={`${sizes[size]} grid shrink-0 place-items-center rounded-full theme-avatar font-bold text-ink ring-4 ring-white`}>
       {user?.avatar_url ? <img src={user.avatar_url} alt={user.name} className="h-full w-full rounded-full object-cover" /> : initials(user?.name)}
     </div>
   );

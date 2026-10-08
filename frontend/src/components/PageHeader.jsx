@@ -158,7 +158,7 @@ export default function PageHeader({ title, subtitle, action, user }) {
             )}
           </button>
           {openNotifications && (
-            <div className="fixed left-3 right-3 top-[calc(5rem+env(safe-area-inset-top))] z-50 overflow-hidden rounded-[26px] border border-white/80 bg-white/95 shadow-soft backdrop-blur-xl animate-in sm:absolute sm:left-auto sm:right-0 sm:top-14 sm:w-[min(380px,calc(100vw-2rem))]">
+            <div className="absolute right-[-3.75rem] top-14 z-50 w-[min(380px,calc(100vw-1.5rem))] overflow-hidden rounded-[26px] border border-white/80 bg-white/95 shadow-soft backdrop-blur-xl animate-in sm:right-0 sm:w-[min(380px,calc(100vw-2rem))]">
               <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
                 <div>
                   <p className="font-bold text-ink">Notificacoes</p>
@@ -173,7 +173,7 @@ export default function PageHeader({ title, subtitle, action, user }) {
                   </button>
                 </div>
               </div>
-              <div className="max-h-[min(24rem,calc(100dvh-9rem))] overflow-y-auto p-2">
+              <div className="max-h-[min(24rem,50dvh)] overflow-y-auto p-2">
                 {joinRequests.map((request) => (
                   <div key={request.id} className="mb-2 rounded-2xl bg-blush/10 px-3 py-3 text-left">
                     <div className="flex items-start gap-3">
@@ -218,7 +218,7 @@ export default function PageHeader({ title, subtitle, action, user }) {
                     <button
                       key={item.id}
                       onClick={() => handleNotificationClick(item)}
-                      className={`w-full rounded-2xl px-3 py-3 text-left transition hover:bg-rose-50/60 ${item.read ? "opacity-70" : "bg-slate-50/70"}`}
+                      className={`w-full rounded-2xl px-3 py-3 text-left transition hover:bg-white/70 ${item.read ? "" : "theme-surface-soft"}`}
                     >
                       <div className="flex items-start gap-3">
                         <span className={`mt-1 h-2.5 w-2.5 rounded-full ${item.read ? "bg-slate-200" : "bg-blush"}`} />
@@ -270,7 +270,7 @@ export default function PageHeader({ title, subtitle, action, user }) {
           </button>
 
           {openUserMenu && (
-            <div className="fixed left-3 right-3 top-[calc(5rem+env(safe-area-inset-top))] z-50 overflow-hidden rounded-[24px] border border-white/80 bg-white/95 p-2 shadow-soft backdrop-blur-xl animate-in sm:absolute sm:left-auto sm:right-0 sm:top-14 sm:w-64">
+            <div className="absolute right-0 top-14 z-50 w-[min(16rem,calc(100vw-1.5rem))] overflow-hidden rounded-[24px] border border-white/80 bg-white/95 p-2 shadow-soft backdrop-blur-xl animate-in">
               <button
                 type="button"
                 onClick={() => {

@@ -408,10 +408,10 @@ export default function Family() {
       )}
 
       {currentFamily && (
-        <Card className="mb-6 overflow-hidden bg-gradient-to-br from-white via-rose-50/40 to-blue-50/50">
+        <Card className="mb-6 overflow-hidden theme-decorative">
           <div className="grid gap-5 lg:grid-cols-[1fr_360px] lg:items-center">
             <div className="flex min-w-0 flex-col items-start gap-4 sm:flex-row sm:items-center">
-              <div className="h-20 w-20 shrink-0 overflow-hidden rounded-[24px] bg-gradient-to-br from-rose-100 to-violet-100 shadow-card sm:h-24 sm:w-24 sm:rounded-[26px]">
+              <div className="h-20 w-20 shrink-0 overflow-hidden rounded-[24px] theme-avatar shadow-card sm:h-24 sm:w-24 sm:rounded-[26px]">
                 {currentFamily.image_url ? <img src={currentFamily.image_url} alt={currentFamily.name} className="h-full w-full object-cover" /> : <div className="grid h-full w-full place-items-center text-3xl font-bold text-blush">{currentFamily.name?.[0]}</div>}
               </div>
               <div className="min-w-0">

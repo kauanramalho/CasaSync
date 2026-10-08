@@ -1,5 +1,5 @@
-import { findColor } from "./categoryDesign";
-import { normalizeReminderList } from "./taskReminders";
+import { findColor } from "./categoryDesign.js";
+import { normalizeReminderList } from "./taskReminders.js";
 
 const taskSortCollator = new Intl.Collator("pt-BR", { sensitivity: "base", numeric: true });
 
@@ -34,7 +34,7 @@ export function isTaskOpen(task) {
 
 export const categoryToneClasses = {
   rose: "bg-rose-50 text-rose-600 border-rose-100",
-  blush: "bg-rose-50 text-blush border-rose-100",
+  blush: "bg-rose-50 text-rose-600 border-rose-100",
   coral: "bg-red-50 text-red-500 border-red-100",
   peach: "bg-orange-50 text-orange-500 border-orange-100",
   blue: "bg-blue-50 text-blue-600 border-blue-100",
@@ -45,7 +45,7 @@ export const categoryToneClasses = {
   green: "bg-green-50 text-green-600 border-green-100",
   garden: "bg-green-50 text-green-500 border-green-100",
   violet: "bg-violet-50 text-violet-600 border-violet-100",
-  lavender: "bg-violet-50 text-lavender border-violet-100",
+  lavender: "bg-violet-50 text-violet-600 border-violet-100",
   purple: "bg-purple-50 text-purple-600 border-purple-100",
   mauve: "bg-fuchsia-50 text-fuchsia-500 border-fuchsia-100",
   amber: "bg-amber-50 text-amber-600 border-amber-100",
@@ -218,6 +218,15 @@ export function getCategoryTone(category) {
   const color = typeof category === "string" ? null : category?.color;
   const name = typeof category === "string" ? category : category?.name || category?.category;
   return categoryToneClasses[color] || categoryNameToneClasses[name] || "bg-slate-100 text-slate-600 border-slate-200";
+}
+
+export function getCategorySemanticStyle(category) {
+  const tone = getCategoryTone(category).match(/text-([a-z]+)-\d+/)?.[1] || "slate";
+  return {
+    backgroundColor: `rgb(var(--tone-${tone}) / var(--tone-opacity))`,
+    borderColor: `rgb(var(--tone-${tone}) / 0.28)`,
+    color: `rgb(var(--tone-${tone}))`
+  };
 }
 
 export function getCategoryName(category, fallback = "Sem categoria") {

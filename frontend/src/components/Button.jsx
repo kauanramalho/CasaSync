@@ -1,7 +1,7 @@
 import clsx from "clsx";
 
 const variants = {
-  primary: "bg-gradient-to-r from-peach to-blush text-white shadow-lg shadow-blush/20 hover:brightness-105",
+  primary: "theme-primary shadow-lg shadow-blush/20 hover:brightness-105",
   secondary: "border border-slate-200 bg-white/85 text-ink hover:border-blush/35 hover:bg-blush/5",
   ghost: "bg-transparent text-muted hover:bg-white/70 hover:text-ink",
   danger: "bg-rose-50 text-rose-600 hover:bg-rose-100"

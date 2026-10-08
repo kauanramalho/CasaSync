@@ -133,7 +133,7 @@ export default function GlobalSearch({ className = "" }) {
             setOpen(true);
           }}
         />
-        <span className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-xl bg-rose-50 px-2 py-1 text-[11px] font-bold text-blush sm:block">
+        <span className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-xl bg-blush/10 px-2 py-1 text-[11px] font-bold text-blush sm:block">
           Enter
         </span>
       </form>
@@ -146,7 +146,7 @@ export default function GlobalSearch({ className = "" }) {
           </div>
           <div id="global-search-results" className="max-h-[min(24rem,60dvh)] overflow-y-auto p-2" aria-live="polite">
             {loading ? (
-              <div className="flex items-center gap-3 rounded-2xl bg-rose-50/70 px-4 py-4 text-sm font-semibold text-blush">
+              <div className="flex items-center gap-3 rounded-2xl bg-blush/10 px-4 py-4 text-sm font-semibold text-blush">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Buscando tarefas...
               </div>
@@ -161,7 +161,7 @@ export default function GlobalSearch({ className = "" }) {
                   key={task.id}
                   type="button"
                   onClick={() => goToTasks(task)}
-                  className="group w-full rounded-2xl px-3 py-3 text-left transition hover:bg-rose-50/70"
+                  className="group w-full rounded-2xl px-3 py-3 text-left transition hover:bg-blush/10"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">

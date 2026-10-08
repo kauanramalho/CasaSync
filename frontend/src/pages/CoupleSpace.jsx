@@ -290,7 +290,7 @@ export default function CoupleSpace() {
 
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.2fr]">
         <div className="space-y-6">
-          <Card className="bg-gradient-to-br from-rose-50 via-white to-violet-50">
+          <Card className="theme-decorative">
             <div className="flex items-center gap-3">
               <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white text-blush shadow-card">
                 <Heart className="h-6 w-6" />
@@ -405,7 +405,7 @@ export default function CoupleSpace() {
         </div>
 
         <div className="space-y-6">
-          <Card className="bg-gradient-to-br from-white via-rose-50/60 to-violet-50">
+          <Card className="theme-decorative">
             <div className="flex items-center gap-3">
               <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-blush shadow-card">
                 <Target className="h-5 w-5" />
@@ -486,7 +486,7 @@ export default function CoupleSpace() {
               {space.date_ideas.map((idea) => (
                 <div key={idea.id} className="overflow-hidden rounded-[24px] border border-slate-100 bg-white shadow-card transition hover:-translate-y-0.5 hover:shadow-soft">
                   <div
-                    className="h-28 bg-gradient-to-br from-rose-100 via-orange-50 to-violet-100"
+                    className="h-28 theme-decorative"
                     style={idea.image_url ? { backgroundImage: `url(${idea.image_url})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
                   />
                   <div className="p-4">

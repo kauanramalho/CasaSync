@@ -67,7 +67,7 @@ export default function Settings() {
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const { preferences, updatePreference, updatePreferences } = useAppPreferences();
-  const { paletteId, palettes, selectPalette } = useTheme();
+  const { paletteId, palettes, selectPalette, storageAvailable } = useTheme();
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState("general");
   const [calendarStatus, setCalendarStatus] = useState(null);
@@ -660,19 +660,21 @@ export default function Settings() {
         <Card>
           <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div>
-              <h2 className="section-title">Escolha a paleta do CasaSync</h2>
-              <p className="mt-2 text-sm text-muted">A paleta selecionada ajusta fundos, cards, botoes, foco, graficos e destaques da interface.</p>
+              <h2 className="section-title" id="appearance-title">Escolha o tema do CasaSync</h2>
+              <p className="mt-2 text-sm text-muted">Temas claros e escuros ajustam fundos, cards, botões e gráficos. Cores de alerta e categorias mantêm seu significado.</p>
             </div>
-            <span className="rounded-full bg-blush/10 px-3 py-1 text-xs font-bold text-blush">Persistencia automatica</span>
+            <span role="status" className="rounded-full bg-blush/10 px-3 py-1 text-xs font-bold text-blush">{storageAvailable ? "Preferência deste dispositivo" : "Tema aplicado; armazenamento indisponível"}</span>
           </div>
 
-          <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <div role="group" aria-labelledby="appearance-title" className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {palettes.map((palette) => {
               const active = palette.id === paletteId;
               return (
                 <button
                   key={palette.id}
                   type="button"
+                  aria-pressed={active}
+                  aria-label={`${palette.name} — tema ${palette.dark ? "escuro" : "claro"}`}
                   onClick={() => selectPalette(palette.id)}
                   className={`group flex min-h-[220px] flex-col rounded-[24px] border p-4 text-left shadow-card transition duration-300 hover:-translate-y-1 hover:shadow-soft ${
                     active ? "border-blush bg-blush/10 ring-4 ring-blush/10" : "border-white/80 bg-white/80 hover:border-blush/30"
@@ -681,6 +683,7 @@ export default function Settings() {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-bold text-ink">{palette.name}</p>
+                      <p className="mt-1 text-xs font-semibold text-muted">{palette.dark ? "Escuro" : "Claro"}</p>
                       <p className="mt-2 text-sm leading-relaxed text-muted">{palette.description}</p>
                     </div>
                     {active && (
@@ -691,9 +694,9 @@ export default function Settings() {
                   </div>
 
                   <div className="mt-auto pt-5">
-                    <div className="grid grid-cols-4 gap-2">
+                    <div aria-hidden="true" className="grid grid-cols-4 gap-2">
                       {palette.swatches.map((swatch) => (
-                        <span key={swatch} className="h-10 rounded-2xl border border-white/70 shadow-sm" style={{ backgroundColor: swatch }} />
+                        <span key={swatch} className="h-10 rounded-2xl border border-border shadow-sm" style={{ backgroundColor: swatch }} />
                       ))}
                     </div>
                     <div className="mt-4 flex items-center justify-between">

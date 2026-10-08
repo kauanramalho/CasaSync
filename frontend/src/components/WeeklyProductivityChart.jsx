@@ -35,9 +35,9 @@ export default function WeeklyProductivityChart({ productivity = [], compact = f
               <XAxis dataKey="label" interval={0} minTickGap={4} height={34} tickMargin={10} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
               <YAxis width={34} tickMargin={8} allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "var(--chart-muted)", fontSize: 12 }} />
               <Tooltip cursor={{ fill: "rgb(var(--color-blush) / 0.08)" }} content={<WeeklyTasksTooltip />} {...staticChartTooltipProps} />
-              <Bar dataKey="done" stackId="week" radius={[0, 0, 10, 10]} fill="var(--chart-3)" animationDuration={750} minPointSize={3} />
-              <Bar dataKey="pending" stackId="week" fill="var(--chart-4)" animationDuration={900} minPointSize={3} />
-              <Bar dataKey="overdue" stackId="week" radius={[12, 12, 0, 0]} fill="var(--chart-5)" animationDuration={1050} minPointSize={3} />
+              <Bar dataKey="done" stackId="week" radius={[0, 0, 10, 10]} fill="var(--chart-success)" animationDuration={750} minPointSize={3} />
+              <Bar dataKey="pending" stackId="week" fill="var(--chart-warning)" animationDuration={900} minPointSize={3} />
+              <Bar dataKey="overdue" stackId="week" radius={[12, 12, 0, 0]} fill="var(--chart-danger)" animationDuration={1050} minPointSize={3} />
             </BarChart>
           </ResponsiveContainer>
         ) : (

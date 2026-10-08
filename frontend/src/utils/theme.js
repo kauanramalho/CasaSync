@@ -5,35 +5,48 @@ export const palettes = [
     id: "professional-blue",
     name: "Azul Profissional",
     description: "Claro, moderno e confiavel para a rotina da casa.",
-    swatches: ["#2563eb", "#60a5fa", "#f8fbff", "#ffffff"],
+    swatches: ["#1d4ed8", "#1e40af", "#f8fbff", "#ffffff"],
+    themeColor: "#f8fbff",
     dark: false
   },
   {
     id: "nature-green",
     name: "Verde Natureza",
     description: "Calmo, acolhedor e com destaques naturais.",
-    swatches: ["#16a34a", "#84cc16", "#f3fbf5", "#ffffff"],
+    swatches: ["#166534", "#0f766e", "#f3fbf5", "#ffffff"],
+    themeColor: "#f3fbf5",
     dark: false
   },
   {
     id: "elegant-dark",
     name: "Dark Elegante",
     description: "Escuro premium com contraste suave e legivel.",
-    swatches: ["#111827", "#8b5cf6", "#38bdf8", "#1f2937"],
+    swatches: ["#c4b5fd", "#7dd3fc", "#0f172a", "#111827"],
+    themeColor: "#111827",
+    dark: true
+  },
+  {
+    id: "gpt-dark",
+    name: "GPT Escuro",
+    description: "Cinza-grafite, superfícies neutras e contraste limpo, inspirado no GPT.",
+    swatches: ["#f5f5f5", "#d4d4d4", "#212121", "#303030"],
+    themeColor: "#212121",
     dark: true
   },
   {
     id: "minimal-neutral",
     name: "Neutro Minimalista",
     description: "Discreto, corporativo e com pouca saturacao.",
-    swatches: ["#374151", "#94a3b8", "#f8fafc", "#ffffff"],
+    swatches: ["#374151", "#475569", "#f8fafc", "#ffffff"],
+    themeColor: "#f8fafc",
     dark: false
   },
   {
     id: "modern-purple",
     name: "Roxo Moderno",
     description: "Leve, expressivo e com detalhes em lilas.",
-    swatches: ["#7c3aed", "#a855f7", "#f7f2ff", "#ffffff"],
+    swatches: ["#6d28d9", "#9333ea", "#f9f5ff", "#ffffff"],
+    themeColor: "#f9f5ff",
     dark: false
   }
 ];
@@ -46,14 +59,30 @@ export function getPalette(paletteId) {
 
 export function getStoredPaletteId() {
   if (typeof window === "undefined") return defaultPaletteId;
-  const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
-  return getPalette(stored).id;
+  try {
+    return getPalette(window.localStorage.getItem(THEME_STORAGE_KEY)).id;
+  } catch {
+    return defaultPaletteId;
+  }
+}
+
+export function persistPalette(paletteId) {
+  const id = getPalette(paletteId).id;
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, id);
+    return true;
+  } catch {
+    // Restricted browser storage must not prevent changing the current theme.
+    return false;
+  }
 }
 
 export function applyPalette(paletteId) {
   if (typeof document === "undefined") return getPalette(paletteId).id;
   const palette = getPalette(paletteId);
   document.documentElement.dataset.theme = palette.id;
+  document.documentElement.dataset.themeMode = palette.dark ? "dark" : "light";
   document.documentElement.style.colorScheme = palette.dark ? "dark" : "light";
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", palette.themeColor);
   return palette.id;
 }

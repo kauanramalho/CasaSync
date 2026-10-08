@@ -329,7 +329,7 @@ export default function Dashboard() {
         <Card className="border-rose-200 bg-rose-50/70 text-center" role="alert">
           <AlertCircle className="mx-auto h-9 w-9 text-rose-500" />
           <h2 className="mt-3 text-lg font-bold text-ink">Não foi possível carregar sua visão geral</h2>
-          <p className="mx-auto mt-2 max-w-xl text-sm text-muted">{error}</p>
+          <p className="mx-auto mt-2 max-w-xl text-sm text-ink">{error}</p>
           <div className="mt-5 flex flex-wrap justify-center gap-3">
             <Button onClick={load}><RefreshCw className="h-4 w-4" />Tentar novamente</Button>
             <Button as={Link} to="/familia" variant="secondary">Ver família</Button>

@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 
 import { priorityLabels, statusLabels } from "../utils/formatters";
-import { getCategoryHex, getCategoryIconKey, getCategoryMeta, getCategoryName, getCategoryTone } from "../utils/tasks";
+import { getCategoryHex, getCategoryIconKey, getCategoryMeta, getCategoryName, getCategorySemanticStyle, getCategoryTone } from "../utils/tasks";
 
 const categoryClasses = {
   Relacionamento: "bg-rose-50 text-rose-600",
@@ -102,12 +102,12 @@ function Pill({ children, className, style }) {
 
 export function CategoryGlyph({ category, className, iconClassName }) {
   const Icon = categoryIconMap[getCategoryIconKey(category)] ?? FolderPlus;
-  const hex = getCategoryHex(category);
+  const { color } = getCategorySemanticStyle(category);
 
   return (
     <span
       className={clsx("grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/75 shadow-sm", className)}
-      style={{ color: hex }}
+      style={{ color }}
       aria-hidden="true"
     >
       <Icon className={clsx("h-3.5 w-3.5", iconClassName)} />

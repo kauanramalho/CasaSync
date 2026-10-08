@@ -118,7 +118,7 @@ export default function ProfileModal({ user, onClose, onSaved }) {
 
         <form onSubmit={handleSubmit} className="max-h-[calc(92vh-82px)] overflow-y-auto p-4 sm:p-6">
           <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
-            <div className="rounded-[26px] bg-gradient-to-br from-rose-50 via-white to-violet-50 p-5 shadow-card">
+            <div className="rounded-[26px] theme-decorative p-5 shadow-card">
               <ImageAdjustField
                 ref={avatarFieldRef}
                 value={user?.avatar_url || ""}

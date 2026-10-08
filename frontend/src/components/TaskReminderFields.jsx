@@ -56,7 +56,7 @@ export default function TaskReminderFields({ form, onChange }) {
   }
 
   return (
-    <div className="md:col-span-2 rounded-[22px] border border-blue-100 bg-gradient-to-br from-blue-50/80 to-rose-50/50 p-4">
+    <div className="md:col-span-2 rounded-[22px] border border-blue-100 bg-blue-50/80 p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-3">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-white text-blue-600 shadow-card">
