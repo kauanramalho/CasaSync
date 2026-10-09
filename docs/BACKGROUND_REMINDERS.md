@@ -17,6 +17,9 @@ Nao ha um pagamento avulso necessario para ativar este agendador.
 - Web Push continua dependendo de `WEB_PUSH_ENABLED`, VAPID e preferencias
   e inscricoes de cada dispositivo. Nenhuma credencial de banco, SMTP ou VAPID
   precisa ser copiada para o GitHub.
+- `VAPID_SUBJECT` precisa ser uma URI de contato `mailto:` ou `https:` valida,
+  nao um email sem prefixo. Em producao foi corrigido para o dominio oficial
+  HTTPS, preservando as chaves existentes. Ver [RFC 8292](https://www.rfc-editor.org/rfc/rfc8292#section-2.1).
 
 A tela de notificacoes confirma a inscricao deste dispositivo no servidor para
 a conta e familia ativas. Permissao local ou uma inscricao antiga nao comprovam
@@ -101,10 +104,29 @@ Fontes: [GitHub Actions billing](https://docs.github.com/en/billing/concepts/pro
   foi corretamente recusado pelo guardrail existente.
 - Validacao em telefone fisico e exibicao do balao pelo sistema operacional
   devem ser registradas separadamente; nao inferir entrega a partir de HTTP 200.
+- O envio real revelou `VapidException`: `VAPID_SUBJECT` estava sem prefixo URI.
+  A configuracao foi corrigida sem rotacionar chaves. Logs seguros registram
+  somente classe de erro/status; `alembic/env.py` preserva os loggers existentes
+  depois das migracoes de startup (`disable_existing_loggers=False`).
+- Configuracao corrigida no Render `dep-db44v1jl550s73aj3f9g` LIVE; frontend
+  `dpl_6buRm9yL8MdKEBtT8JSJAsvF97NF` READY no alias oficial, commit `b312e17`.
+- Teste real [37874495212](https://github.com/kauanramalho/CasaSync/actions/runs/37874495212):
+  `scanned=1`, `created=1`, `push_sent=1`, `push_failed=0`, sem aba CasaSync aberta
+  na conta testada. A repeticao [37874528644](https://github.com/kauanramalho/CasaSync/actions/runs/37874528644)
+  retornou todos os contadores zero: nenhum envio duplicado.
+- O usuario informou que o balao ainda nao apareceu. Diagnostico local somente
+  leitura confirmou `Notifications\\Settings\\Chrome: Enabled=0` no Windows.
+  Orientado a ativar Chrome/banners nas configuracoes do sistema; nao houve
+  alteracao automatica dessas preferencias. Exibicao visual continua pendente.
+  O usuario confirmou que estavam desativadas e informou que as ativou;
+  reteste apos essa mudanca deve ser registrado separadamente.
+- Workflow ativo e schedule configurado; evento automatico `schedule` ainda nao
+  observado nesta sessao. Os testes acima foram `workflow_dispatch`, nao cron.
 
 Arquivos alterados: `.env.example`, `.github/workflows/reminders.yml`,
 `backend/reminder_scheduler.py`, `backend/app/core/config.py`,
 `backend/app/routes/notifications.py`, `backend/app/services/notification_service.py`,
 `backend/app/services/reminder_lock.py`, `backend/tests/test_reminder_scheduler.py`,
 `backend/tests/test_push_security.py`, `frontend/src/services/api.js`,
-`frontend/src/pages/Settings.jsx` e este documento. Sem migracao de banco.
+`frontend/src/pages/Settings.jsx`, `backend/alembic/env.py`,
+`backend/tests/test_migrations.py` e este documento. Sem migracao de banco.
