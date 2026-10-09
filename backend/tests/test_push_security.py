@@ -113,7 +113,7 @@ class PushSubscriptionOwnershipTest(unittest.TestCase):
         sender.assert_not_called()
         self.assertEqual(result, "failed")
 
-    def test_push_has_a_bounded_network_timeout(self):
+    def test_push_has_bounded_timeout_and_offline_delivery_window(self):
         from app.models import Task
 
         save_web_push_subscription(self.db, family_id=self.family.id, user_id=self.creator.id, payload=push_payload())
@@ -124,3 +124,5 @@ class PushSubscriptionOwnershipTest(unittest.TestCase):
                                             task=Task(id="test-task", title="Teste", family_id=self.family.id))
         self.assertEqual(result, "sent")
         self.assertEqual(sender.call_args.kwargs["timeout"], 20)
+        self.assertEqual(sender.call_args.kwargs["ttl"], 3600)
+        self.assertEqual(sender.call_args.kwargs["headers"], {"Urgency": "high"})

@@ -49,6 +49,10 @@ da proxima verificacao; cada chamada Web Push tem timeout de 20 segundos.
 Lotes restantes continuam pendentes para a proxima chamada. Preferencias por
 usuario, familia, tarefas concluidas/arquivadas e membros ativos sao respeitados.
 Polling no frontend e notificacoes internas permanecem como fallback.
+O push usa `TTL=3600` (uma hora) e `Urgency: high` para lembretes: a validade zero
+padrao da biblioteca descartava mensagens para dispositivos indisponiveis.
+O provedor pode reduzir essa janela e o sistema controla a exibicao; nao e um
+retry da aplicacao, nem ignora Modo Foco/permissoes. Ver [RFC 8030](https://www.rfc-editor.org/rfc/rfc8030#section-5.2).
 
 ## Limites operacionais
 

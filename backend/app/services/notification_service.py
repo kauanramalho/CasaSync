@@ -237,6 +237,10 @@ def send_task_reminder_push(db: Session, *, user_id: str, family_id: str, task: 
                 data=_push_payload(task, reminder_id),
                 vapid_private_key=settings.vapid_private_key,
                 vapid_claims={"sub": settings.vapid_subject},
+                # TTL=0 (library default) drops messages for unavailable devices.
+                # Keep reminders briefly for offline/idle phones, not indefinitely.
+                ttl=3600,
+                headers={"Urgency": "high"},
                 timeout=20,
             )
             delivered = True
