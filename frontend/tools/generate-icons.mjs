@@ -2,10 +2,12 @@ import { mkdir, writeFile, copyFile, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import { palettes, defaultPaletteId, ICON_RELEASE } from "../src/utils/theme.js";
-import { iconArtwork } from "./iconArtwork.mjs";
+import { iconArtwork, notificationBadgeArtwork } from "./iconArtwork.mjs";
 
 const publicDir = new URL("../public/", import.meta.url);
 const template = JSON.parse(await readFile(new URL("site.webmanifest", publicDir), "utf8"));
+// Badge differs from opaque home-screen/app icons: preserve transparency.
+await sharp(Buffer.from(notificationBadgeArtwork())).png().toFile(fileURLToPath(new URL("icons/notification-badge-96.png", publicDir)));
 for (const palette of palettes) {
   const base = `/icons/themes/${palette.id}`;
   const dir = new URL(`.${base}/`, publicDir);

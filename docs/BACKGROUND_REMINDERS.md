@@ -217,3 +217,49 @@ Arquivos desta mudanca: `backend/app/schemas/notification.py`,
 `frontend/src/pages/Settings.jsx`, `frontend/tests/pushDeviceApi.test.mjs` e este
 documento. Rollback: reverter o commit desta mudanca e republicar; sem migracao
 ou alteracao de dados existentes (exceto desativacao segura de inscricao expirada).
+
+## Icone pequeno da notificacao Android — 2026-10-09
+
+O usuario confirmou recepcao do teste direto com captura do Android: o icone
+grande estava correto, mas o pequeno junto ao nome do app aparecia como quadrado.
+O service worker usava o favicon opaco de 32 px como `badge`. Nesse campo o Android
+aplica uma mascara: fundo opaco vira uma silhueta quadrada, nao a marca.
+Fontes: [Google/web.dev](https://web.dev/articles/push-notifications-display-a-notification#badge)
+e [MDN](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration/showNotification).
+
+- Novo `notification-badge-96.png`: marca existente branca sobre transparencia,
+  96x96, com margem; gerada deterministicamente pelo gerador de icones atual.
+- `sw.js` usa o badge dedicado versionado, precache e cache `casasync-static-v3`.
+  Mantem icone grande, tag/dedupe, `renotify=false`, payload e comportamento de clique.
+  Remove apenas caches antigos do proprio CasaSync, preservando outros caches.
+- Nao muda autenticacao, familia, inscricoes, preferencias, VAPID ou agendador.
+  Icones opacos de instalacao/iOS e seis temas continuam identicos no Git.
+- Cinco testes novos validam pixels transparentes/monocromaticos, tamanho,
+  reproducibilidade, opcoes de push, fallback malformado, precache e upgrade.
+  Suite frontend: 125 OK; backend de notificacoes: 38 OK; ESLint, build e diff OK.
+- Confirmada recepcao Android do teste anterior; a nova aparencia precisa de
+  reteste fisico apos atualizar o worker. Notificacoes antigas ja exibidas nao
+  mudam. Abrir o app e tocar `Atualizar` no aviso de nova versao, depois testar.
+- iOS continua sem aparelho disponivel, portanto nao verificado fisicamente.
+- O aviso Render da captura pertence ao site alternativo `casasync.onrender.com`
+  (`CasaSync`, static site), com erro `API nao configurada. Defina VITE_API_URL`.
+  API principal `CasaSync-api` estava LIVE em `c537295`. Nenhuma configuracao do
+  site alternativo foi modificada; ele nao e o dominio oficial Vercel.
+
+Arquivos: `frontend/public/sw.js`, `frontend/public/icons/notification-badge-96.png`,
+`frontend/tools/iconArtwork.mjs`, `frontend/tools/generate-icons.mjs`,
+`frontend/tests/notificationBadge.test.mjs` e este documento. Rollback: reverter
+o commit e publicar no mesmo projeto Vercel; nenhuma migracao ou chave nova.
+
+Comandos PowerShell, em `frontend`:
+
+```powershell
+npm.cmd run icons:generate
+node --test tests/*.test.mjs
+npm.cmd run lint
+$env:VITE_API_URL='https://casasync-api.onrender.com/api'
+npm.cmd run build
+git diff --check
+```
+
+Em `backend`: `.venv/Scripts/python.exe -m unittest tests.test_push_device_test tests.test_push_security tests.test_notifications tests.test_reminder_scheduler`.

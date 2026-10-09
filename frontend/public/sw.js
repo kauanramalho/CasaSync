@@ -1,6 +1,6 @@
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open("casasync-static-v2").then((cache) =>
+    caches.open("casasync-static-v3").then((cache) =>
       cache.addAll([
         "/",
         "/site.webmanifest",
@@ -8,6 +8,7 @@ self.addEventListener("install", (event) => {
         "/apple-touch-icon.png",
         "/icons/android-chrome-192x192.png",
         "/icons/android-chrome-512x512.png",
+        "/icons/notification-badge-96.png?v=20261009",
         "/icons/apple-touch-icon.png"
       ])
     )
@@ -17,7 +18,7 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((key) => key.startsWith("casasync-static-") && key !== "casasync-static-v2").map((key) => caches.delete(key)))
+      Promise.all(keys.filter((key) => key.startsWith("casasync-static-") && key !== "casasync-static-v3").map((key) => caches.delete(key)))
     ).then(() => self.clients.claim())
   );
 });
@@ -39,7 +40,7 @@ self.addEventListener("fetch", (event) => {
         .then((response) => {
           if (response.ok) {
             const copy = response.clone();
-            caches.open("casasync-static-v2").then((cache) => cache.put("/", copy));
+            caches.open("casasync-static-v3").then((cache) => cache.put("/", copy));
           }
           return response;
         })
@@ -57,7 +58,7 @@ self.addEventListener("fetch", (event) => {
       const network = fetch(request).then((response) => {
         if (response.ok) {
           const copy = response.clone();
-          caches.open("casasync-static-v2").then((cache) => cache.put(request, copy));
+          caches.open("casasync-static-v3").then((cache) => cache.put(request, copy));
         }
         return response;
       });
@@ -83,7 +84,9 @@ self.addEventListener("push", (event) => {
   const options = {
     body: data.body || "Voce tem uma nova notificacao.",
     icon: "/icons/icon-192.png?v=20261008",
-    badge: "/icons/favicon-32x32.png?v=20261008",
+    // Android turns this alpha mask into the small system notification icon.
+    // Do not use opaque favicon/app tiles here: they render as solid squares.
+    badge: "/icons/notification-badge-96.png?v=20261009",
     tag: data.tag || `casasync-${data.taskId || data.timestamp || Date.now()}`,
     renotify: false,
     timestamp: data.timestamp || Date.now(),
