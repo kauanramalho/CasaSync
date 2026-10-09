@@ -190,6 +190,13 @@ Arquivos alterados: `.env.example`, `.github/workflows/reminders.yml`,
 - iOS fisico pendente: usuario informou nao ter iPhone disponivel agora. Nao
   considerar simulacao de layout ou teste Windows como validacao de Web Push iOS.
 - Nenhum pagamento, plano ou recurso pago novo necessario para esta mudanca.
+- Publicacao do codigo `c537295`: Render `dep-db45kfs9v7es73aairdg` LIVE,
+  Vercel `dpl_9HWA5V4Cc3BWypmpsBXZosKdt94w` READY no alias oficial. Readiness
+  HTTP 200 e teste sem login HTTP 401. Botao acionado no Chrome real: resposta
+  `Teste aceito pelo provedor`; nenhum erro de transporte encontrado na consulta
+  especifica de logs apos o deploy. Isso nao comprova nova recepcao visual.
+- Suite frontend completa: 120 testes aprovados. Android aguarda ativacao e
+  confirmacao do usuario; iOS permanece nao verificado sem aparelho disponivel.
 
 Comandos adicionais (PowerShell):
 
