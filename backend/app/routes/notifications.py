@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from hashlib import sha256
+from secrets import compare_digest
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -27,6 +30,27 @@ from app.services.notification_service import (
 
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
+
+
+def require_reminder_scheduler(authorization: str | None = Header(default=None)) -> None:
+    settings = get_settings()
+    expected = settings.reminder_scheduler_token_sha256 or ""
+    if not settings.reminder_scheduler_enabled or len(expected) != 64:
+        raise HTTPException(status_code=404, detail="Recurso indisponivel.")
+    scheme, _, supplied = (authorization or "").partition(" ")
+    supplied_hash = sha256(supplied.encode()).hexdigest()
+    if scheme.lower() != "bearer" or len(supplied) < 32 or not compare_digest(supplied_hash, expected):
+        raise HTTPException(status_code=401, detail="Credenciais do agendador invalidas.")
+
+
+@router.post("/reminders/scheduled", response_model=ReminderProcessResult, include_in_schema=False)
+def scheduled_reminders(
+    _: None = Depends(require_reminder_scheduler),
+    db: Session = Depends(get_db),
+):
+    # Only the single-purpose scheduler credential can process across families.
+    # Responses contain aggregate counts, never users, tasks, or subscriptions.
+    return process_due_task_reminders(db, batch_limit=25, max_duration_seconds=45)
 
 
 @router.get("", response_model=list[NotificationRead])

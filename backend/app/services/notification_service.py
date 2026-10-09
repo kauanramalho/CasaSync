@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import datetime, timedelta, timezone
+from time import monotonic
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import HTTPException, status
@@ -16,6 +17,7 @@ from app.models.user import User
 from app.schemas.notification import ReminderProcessResult, WebPushSubscriptionIn
 from app.services.email_service import send_task_reminder_email
 from app.services.family_service import require_family_member
+from app.services.reminder_lock import reminder_delivery_lock
 from app.services.task_metrics import get_task_assignee_ids, unique_user_ids
 logger = logging.getLogger(__name__)
 SAO_PAULO_FALLBACK_TZ = timezone(timedelta(hours=-3), name="America/Sao_Paulo")
@@ -329,7 +331,22 @@ def _record_push(notification: Notification, status_value: str, result: Reminder
         result.push_failed += 1
 
 
-def process_due_task_reminders(db: Session, *, family_id: str | None = None, now: datetime | None = None) -> ReminderProcessResult:
+def process_due_task_reminders(
+    db: Session, *, family_id: str | None = None, now: datetime | None = None,
+    batch_limit: int = 100, max_duration_seconds: float | None = None,
+) -> ReminderProcessResult:
+    with reminder_delivery_lock(db) as acquired:
+        if not acquired:
+            return ReminderProcessResult()
+        deadline = monotonic() + max_duration_seconds if max_duration_seconds is not None else None
+        return _process_due_task_reminders(db, family_id=family_id, now=now,
+                                          batch_limit=batch_limit, deadline=deadline)
+
+
+def _process_due_task_reminders(
+    db: Session, *, family_id: str | None = None, now: datetime | None = None,
+    batch_limit: int = 100, deadline: float | None = None,
+) -> ReminderProcessResult:
     from app.services.task_service import refresh_overdue_tasks
 
     current_time = now or _utcnow()
@@ -354,14 +371,18 @@ def process_due_task_reminders(db: Session, *, family_id: str | None = None, now
     if family_id:
         query = query.filter(Task.family_id == family_id)
 
-    due_reminders = query.order_by(TaskReminder.reminder_at.asc()).limit(100).all()
-    result = ReminderProcessResult(scanned=len(due_reminders))
+    due_reminders = query.order_by(TaskReminder.reminder_at.asc()).limit(batch_limit).all()
+    result = ReminderProcessResult()
 
     for reminder in due_reminders:
+        if deadline is not None and monotonic() >= deadline:
+            break
+        result.scanned += 1
         task = reminder.task
         if not task:
             reminder.sent = True
             result.skipped += 1
+            db.commit()
             continue
 
         recipients = _active_recipients(db, task)
@@ -369,6 +390,7 @@ def process_due_task_reminders(db: Session, *, family_id: str | None = None, now
             reminder.sent = True
             task.reminder_sent = all(item.sent for item in task.reminders)
             result.skipped += 1
+            db.commit()
             continue
 
         family_name = _family_name(db, task.family_id)
@@ -422,16 +444,21 @@ def process_due_task_reminders(db: Session, *, family_id: str | None = None, now
         task.reminder_sent = all(item.sent for item in task.reminders)
         db.add(task)
         db.add(reminder)
-
-    if due_reminders:
+        # Keep progress durable if a later reminder or provider fails.
         db.commit()
-    legacy_result = _process_due_task_reminders_legacy(db, family_id=family_id, now=current_time)
+
+    remaining = max(0, batch_limit - result.scanned)
+    legacy_result = _process_due_task_reminders_legacy(db, family_id=family_id, now=current_time,
+                                                      batch_limit=remaining, deadline=deadline)
     for field in ReminderProcessResult.model_fields:
         setattr(result, field, getattr(result, field) + getattr(legacy_result, field))
     return result
 
 
-def _process_due_task_reminders_legacy(db: Session, *, family_id: str | None = None, now: datetime | None = None) -> ReminderProcessResult:
+def _process_due_task_reminders_legacy(
+    db: Session, *, family_id: str | None = None, now: datetime | None = None,
+    batch_limit: int = 100, deadline: float | None = None,
+) -> ReminderProcessResult:
     current_time = now or _utcnow()
     query = db.query(Task).filter(
         Task.archived_at.is_(None),
@@ -445,14 +472,18 @@ def _process_due_task_reminders_legacy(db: Session, *, family_id: str | None = N
     if family_id:
         query = query.filter(Task.family_id == family_id)
 
-    tasks = query.order_by(Task.reminder_at.asc()).limit(100).all()
-    result = ReminderProcessResult(scanned=len(tasks))
+    tasks = query.order_by(Task.reminder_at.asc()).limit(batch_limit).all()
+    result = ReminderProcessResult()
 
     for task in tasks:
+        if deadline is not None and monotonic() >= deadline:
+            break
+        result.scanned += 1
         recipients = _active_recipients(db, task)
         if not recipients:
             task.reminder_sent = True
             result.skipped += 1
+            db.commit()
             continue
 
         family_name = _family_name(db, task.family_id)
@@ -504,7 +535,6 @@ def _process_due_task_reminders_legacy(db: Session, *, family_id: str | None = N
 
         task.reminder_sent = True
         db.add(task)
-
-    if tasks:
         db.commit()
+
     return result

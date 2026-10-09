@@ -1,6 +1,7 @@
 import json
 import re
 from functools import lru_cache
+from hashlib import sha256
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -158,6 +159,8 @@ class Settings(BaseSettings):
     ai_image_job_storage_dir: Path = BACKEND_DIR / "storage" / "ai_image_jobs"
 
     web_push_enabled: bool = False
+    reminder_scheduler_enabled: bool = False
+    reminder_scheduler_token_sha256: str | None = None
     vapid_public_key: str | None = None
     vapid_private_key: str | None = None
     vapid_subject: str | None = None
@@ -230,6 +233,7 @@ class Settings(BaseSettings):
         "vapid_public_key",
         "vapid_private_key",
         "vapid_subject",
+        "reminder_scheduler_token_sha256",
         mode="before",
     )
     @classmethod
@@ -278,6 +282,13 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_security(self):
+        if self.reminder_scheduler_enabled:
+            token_hash = self.reminder_scheduler_token_sha256 or ""
+            if not re.fullmatch(r"[0-9a-f]{64}", token_hash):
+                raise ValueError("REMINDER_SCHEDULER_TOKEN_SHA256 deve conter o hash SHA-256 do segredo exclusivo do agendador.")
+            other_secrets = (self.jwt_secret_key, self.two_factor_hmac_secret, self.integration_token_encryption_key)
+            if token_hash in {sha256(value.encode()).hexdigest() for value in other_secrets if value}:
+                raise ValueError("A credencial do agendador deve usar um segredo separado.")
         if not self.is_production:
             return self
 
