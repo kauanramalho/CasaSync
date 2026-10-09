@@ -29,7 +29,7 @@ from app.database.session import get_db
 from app.models import Category, Family, FamilyMember, User
 from app.routes import auth, categories, couple, dashboard, families, image_analysis, integrations, notifications, planner, tasks, uploads
 from app.schemas.task import TaskCreate
-from app.services.task_service import create_task
+from app.services.task_service import complete_task, create_task
 
 engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
 Base.metadata.create_all(engine)
@@ -49,6 +49,11 @@ with Session() as db:
         db.add(Category(family_id=families_data[0].id, name=name, color=color, icon=icon, is_default=False))
     db.commit()
     create_task(db, family_id=families_data[0].id, creator_id=user.id, payload=TaskCreate(title="Compromisso de teste no calendário", due_date=datetime.now(timezone.utc) + timedelta(hours=2)))
+    home_category = db.query(Category).filter(Category.family_id == families_data[0].id, Category.name == "Casa").first()
+    create_task(db, family_id=families_data[0].id, creator_id=user.id, payload=TaskCreate(title="Tarefa sem prazo para testar listas", category_id=home_category.id))
+    create_task(db, family_id=families_data[0].id, creator_id=user.id, payload=TaskCreate(title="Tarefa em andamento de teste", status="em_andamento", category_id=home_category.id))
+    done_task = create_task(db, family_id=families_data[0].id, creator_id=user.id, payload=TaskCreate(title="Tarefa concluída de teste"))
+    complete_task(db, family_id=families_data[0].id, task_id=done_task.id)
 
 def fixture_db():
     with Session() as db:

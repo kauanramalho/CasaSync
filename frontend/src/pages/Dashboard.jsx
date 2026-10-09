@@ -7,6 +7,7 @@ import Avatar from "../components/Avatar";
 import { CategoryBadge } from "../components/Badges";
 import Button from "../components/Button";
 import Card from "../components/Card";
+import CollapsibleSection from "../components/CollapsibleSection";
 import PageHeader from "../components/PageHeader";
 import StatCard from "../components/StatCard";
 import TaskDeleteConfirmModal from "../components/TaskDeleteConfirmModal";
@@ -21,6 +22,7 @@ import { APP_RESUMED_EVENT, emitAppDataChanged } from "../utils/events";
 import { formatDate, normalizeApiError, toValidDate } from "../utils/formatters";
 import { getHiddenRecentTaskIds, hideRecentTask } from "../utils/recentTasks";
 import { isTaskOpen, sortTasksForDisplay } from "../utils/tasks";
+import { dashboardStatDestinations } from "../utils/taskStatusFilters";
 
 const statMeta = {
   done: { icon: CheckCircle2, tone: "emerald" },
@@ -299,131 +301,120 @@ export default function Dashboard() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
             {stats.map((item) => {
               const meta = statMeta[item.key] ?? statMeta.pending;
-              return <StatCard key={item.key} icon={meta.icon} tone={meta.tone} label={item.label} value={item.value} hint={item.hint} emphasis={item.key === "overdue" && item.value > 0} />;
+              return <StatCard key={item.key} icon={meta.icon} tone={meta.tone} label={item.key === "done" ? "Concluídas" : item.key === "points" ? "Pontos do mês" : item.label} value={item.value} hint={item.hint} compact to={dashboardStatDestinations[item.key]} emphasis={item.key === "overdue" && item.value > 0} />;
             })}
           </div>
 
-          <Card className="mt-6 overflow-hidden p-0 sm:p-0">
-            <div className="grid xl:grid-cols-2">
-              <section className="min-w-0 border-b border-border/70 p-4 sm:p-5 xl:border-b-0 xl:border-r">
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <div className="min-w-0 break-words"><p className="text-xs font-bold uppercase tracking-[0.16em] text-rose-600">Precisa de atenção</p><h2 className="mt-1 text-lg font-bold text-ink">Tarefas atrasadas</h2></div>
-                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-rose-50 text-rose-500"><AlertCircle className="h-5 w-5" /></span>
-                </div>
+          <div className="mt-4 grid items-start gap-3 xl:grid-cols-2">
+            <Card className="!p-0">
+              <CollapsibleSection title="Tarefas atrasadas" icon={AlertCircle} count={overdueTasks.length} defaultOpen={overdueTasks.length > 0}>
                 <FocusTaskList tasks={overdueTasks} tone="danger" emptyTitle="Tudo em dia por aqui" emptyDescription="Quando uma tarefa passar do prazo, ela aparecerá nesta área." onComplete={handleComplete} onOpenDetails={setDetailsTask} />
-                {overdueTasks.length > 0 && <Link to="/tarefas" className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-rose-600">Ver todas as tarefas <ArrowRight className="h-4 w-4" /></Link>}
-              </section>
-              <section className="min-w-0 p-4 sm:p-5">
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <div><p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-600">Próximos passos</p><h2 className="mt-1 text-lg font-bold text-ink">Tarefas com prazo</h2></div>
-                  <span className="grid h-11 w-11 place-items-center rounded-2xl bg-blue-50 text-blue-500"><CalendarClock className="h-5 w-5" /></span>
-                </div>
+                {overdueTasks.length > 0 && <Link to="/tarefas?status=atrasada" className="mt-3 inline-flex min-h-11 items-center gap-2 text-xs font-bold text-rose-600">Ver todas as atrasadas <ArrowRight className="h-4 w-4" /></Link>}
+              </CollapsibleSection>
+            </Card>
+            <Card className="!p-0">
+              <CollapsibleSection title="Tarefas com prazo" icon={CalendarClock} count={upcomingTasks.length} defaultOpen={upcomingTasks.length > 0}>
                 <FocusTaskList tasks={upcomingTasks} tone="upcoming" emptyTitle="Nenhum prazo chegando" emptyDescription="Adicione uma data às tarefas para acompanhar os próximos compromissos." onComplete={handleComplete} onOpenDetails={setDetailsTask} />
-                {upcomingTasks.length > 0 && <Link to="/calendario" className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-blue-600">Abrir calendário <ArrowRight className="h-4 w-4" /></Link>}
-              </section>
-            </div>
-          </Card>
+                {upcomingTasks.length > 0 && <Link to="/calendario" className="mt-3 inline-flex min-h-11 items-center gap-2 text-xs font-bold text-blue-600">Abrir calendário <ArrowRight className="h-4 w-4" /></Link>}
+              </CollapsibleSection>
+            </Card>
+          </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[1.15fr_1fr]">
-        <Card>
-          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div><h2 className="section-title">Tarefas recentes</h2><p className="mt-1 text-sm text-muted">Continue de onde a família parou.</p></div>
-            <Link to="/tarefas" className="inline-flex items-center gap-2 text-sm font-bold text-blush">Ver todas <ArrowRight className="h-4 w-4" /></Link>
-          </div>
-          <TaskList
-            tasks={recentTasks}
-            onComplete={handleComplete}
-            onRemoveRecent={handleRemoveRecent}
-            onDelete={requestTaskDelete}
-            onOpenDetails={setDetailsTask}
-            compact
-            emptyMessage="Nenhuma tarefa pendente. Crie a primeira para organizar a rotina."
-          />
-        </Card>
+          <div className="mt-3 grid items-start gap-3">
+            <Card className="!p-0">
+              <CollapsibleSection title="Tarefas recentes" icon={Clock3} count={recentTasks.length} defaultOpen={recentTasks.length > 0}>
+                <TaskList
+                  tasks={recentTasks}
+                  onComplete={handleComplete}
+                  onRemoveRecent={handleRemoveRecent}
+                  onDelete={requestTaskDelete}
+                  onOpenDetails={setDetailsTask}
+                  compact
+                  emptyMessage="Nenhuma tarefa pendente. Crie a primeira para organizar a rotina."
+                />
+                <Link to="/tarefas" className="mt-3 inline-flex min-h-11 items-center gap-2 text-xs font-bold text-blush">Ver todas <ArrowRight className="h-4 w-4" /></Link>
+              </CollapsibleSection>
+            </Card>
 
-        <Card>
-          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div><h2 className="section-title">Produtividade da semana</h2><p className="mt-1 text-sm text-muted">O ritmo da família nos últimos sete dias.</p></div>
-            <div className="flex flex-wrap items-center justify-end gap-2 text-[11px] font-bold">
-              <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">{weeklyTotals.done} concluídas</span>
-              <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">{weeklyTotals.pending} pendentes</span>
-              <span className="rounded-full bg-rose-50 px-2.5 py-1 text-rose-700">{weeklyTotals.overdue} atrasadas</span>
-            </div>
-          </div>
-          <WeeklyProductivityChart productivity={productivity} />
-        </Card>
-      </div>
-
-      <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_1fr_1.1fr]">
-        <Card>
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="section-title">Categorias</h2>
-            <Link to="/categorias" className="text-sm font-semibold text-muted">
-              Ver todas
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {categories.slice(0, 6).map((item) => (
-              <div key={item.category} className="rounded-2xl border border-slate-100 bg-white/70 p-4 shadow-sm">
-                <CategoryBadge category={item} className="max-w-full" />
-                <p className="mt-1 text-sm opacity-80">{item.total} tarefas</p>
-              </div>
-            ))}
-            {!categories.length && <p className="empty-state col-span-2">Crie categorias para enxergar melhor a rotina da família.</p>}
-          </div>
-        </Card>
-
-        <Card>
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="section-title">Espaço do Casal</h2>
-            <Link to="/espaco-do-casal" className="text-sm font-semibold text-muted">
-              Ver mais
-            </Link>
-          </div>
-          <div className="rounded-[24px] border border-border/70 bg-gradient-to-br from-surface-soft/80 via-surface/80 to-blush/10 p-3 shadow-card">
-            {couplePreviewItems.length ? (
-              <div className="grid gap-3">
-                {couplePreviewItems.map((item) => (
-                  <CouplePreviewItem key={item.id} item={item} />
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-[22px] border border-dashed border-blush/25 bg-surface/70 px-4 py-6 text-center">
-                <Heart className="mx-auto h-8 w-8 text-rose-200" />
-                <p className="mt-3 font-semibold text-ink">Nosso cantinho esta esperando novidades.</p>
-                <Link to="/espaco-do-casal" className="mt-2 inline-flex text-sm font-bold text-blush">
-                  Adicionar recado
-                </Link>
-              </div>
-            )}
-          </div>
-        </Card>
-
-        <Card>
-          <div className="mb-4 flex items-center justify-between">
-            <div><h2 className="section-title">Resumo por membro</h2><p className="mt-1 text-xs text-muted">Contribuição neste mês</p></div>
-            <Link to="/ranking" className="text-sm font-semibold text-muted">
-              Ver ranking
-            </Link>
-          </div>
-          <div className="space-y-4">
-            {ranking.slice(0, 4).map((item) => (
-              <div key={item.user.id} className="flex min-w-0 items-center gap-3 rounded-2xl border border-border/60 bg-surface/70 p-3">
-                <Avatar user={item.user} size="sm" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-bold text-ink">{item.user.name}</p>
-                  <p className="text-xs text-muted">{item.completed_tasks} {item.completed_tasks === 1 ? "tarefa concluída" : "tarefas concluídas"}</p>
+            <Card className="!p-0">
+              <CollapsibleSection title="Produtividade da semana" icon={CalendarClock} lazy>
+                <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px] font-bold">
+                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700">{weeklyTotals.done} concluídas</span>
+                  <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">{weeklyTotals.pending} pendentes</span>
+                  <span className="rounded-full bg-rose-50 px-2.5 py-1 text-rose-700">{weeklyTotals.overdue} atrasadas</span>
                 </div>
-                <p className="shrink-0 rounded-xl bg-violet-50 px-2.5 py-1.5 text-xs font-bold text-violet-700">{item.points} pts</p>
-              </div>
-            ))}
-            {!ranking.length && <p className="empty-state">Convide membros para acompanhar a contribuição da família.</p>}
+                <WeeklyProductivityChart productivity={productivity} />
+              </CollapsibleSection>
+            </Card>
           </div>
-        </Card>
-      </div>
+
+          <div className="mt-3 grid items-start gap-3 xl:grid-cols-[1fr_1fr_1.1fr]">
+            <Card className="!p-0">
+              <CollapsibleSection title="Categorias" count={categories.length}>
+                <Link to="/categorias" className="mb-3 inline-flex min-h-11 items-center text-xs font-bold text-blush">
+                  Ver todas
+                </Link>
+                <div className="grid grid-cols-2 gap-3">
+                  {categories.slice(0, 6).map((item) => (
+                    <div key={item.category} className="rounded-2xl border border-slate-100 bg-white/70 p-4 shadow-sm">
+                      <CategoryBadge category={item} className="max-w-full" />
+                      <p className="mt-1 text-sm opacity-80">{item.total} tarefas</p>
+                    </div>
+                  ))}
+                  {!categories.length && <p className="empty-state col-span-2">Crie categorias para enxergar melhor a rotina da família.</p>}
+                </div>
+              </CollapsibleSection>
+            </Card>
+
+            <Card className="!p-0">
+              <CollapsibleSection title="Espaço do Casal" icon={Heart} count={couplePreviewItems.length}>
+                <Link to="/espaco-do-casal" className="mb-3 inline-flex min-h-11 items-center text-xs font-bold text-blush">
+                  Ver mais
+                </Link>
+                <div className="rounded-[24px] border border-border/70 bg-gradient-to-br from-surface-soft/80 via-surface/80 to-blush/10 p-3 shadow-card">
+                  {couplePreviewItems.length ? (
+                    <div className="grid gap-3">
+                      {couplePreviewItems.map((item) => (
+                        <CouplePreviewItem key={item.id} item={item} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-[22px] border border-dashed border-blush/25 bg-surface/70 px-4 py-6 text-center">
+                      <Heart className="mx-auto h-8 w-8 text-rose-200" />
+                      <p className="mt-3 font-semibold text-ink">Nosso cantinho esta esperando novidades.</p>
+                      <Link to="/espaco-do-casal" className="mt-2 inline-flex text-sm font-bold text-blush">
+                        Adicionar recado
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              </CollapsibleSection>
+            </Card>
+
+            <Card className="!p-0">
+              <CollapsibleSection title="Resumo por membro" count={ranking.length}>
+                <Link to="/ranking" className="mb-3 inline-flex min-h-11 items-center text-xs font-bold text-blush">
+                  Ver ranking
+                </Link>
+                <div className="space-y-4">
+                  {ranking.slice(0, 4).map((item) => (
+                    <div key={item.user.id} className="flex min-w-0 items-center gap-3 rounded-2xl border border-border/60 bg-surface/70 p-3">
+                      <Avatar user={item.user} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-bold text-ink">{item.user.name}</p>
+                        <p className="text-xs text-muted">{item.completed_tasks} {item.completed_tasks === 1 ? "tarefa concluída" : "tarefas concluídas"}</p>
+                      </div>
+                      <p className="shrink-0 rounded-xl bg-violet-50 px-2.5 py-1.5 text-xs font-bold text-violet-700">{item.points} pts</p>
+                    </div>
+                  ))}
+                  {!ranking.length && <p className="empty-state">Convide membros para acompanhar a contribuição da família.</p>}
+                </div>
+              </CollapsibleSection>
+            </Card>
+          </div>
         </>
       )}
 
@@ -446,14 +437,14 @@ export default function Dashboard() {
 function DashboardSkeleton() {
   return (
     <div className="animate-pulse" aria-label="Carregando visão geral" aria-busy="true">
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
         {Array.from({ length: 4 }, (_, index) => (
-          <div key={index} className="glass-panel h-32 rounded-[24px] bg-surface/70" />
+          <div key={index} className="glass-panel h-[88px] rounded-[24px] bg-surface/70 sm:h-[100px]" />
         ))}
       </div>
-      <div className="mt-6 grid gap-6 xl:grid-cols-2">
-        <div className="glass-panel h-72 rounded-[28px] bg-surface/70" />
-        <div className="glass-panel h-72 rounded-[28px] bg-surface/70" />
+      <div className="mt-4 grid gap-3 xl:grid-cols-2">
+        <div className="glass-panel h-14 rounded-[28px] bg-surface/70" />
+        <div className="glass-panel h-14 rounded-[28px] bg-surface/70" />
       </div>
       <span className="sr-only">Carregando dados do dashboard...</span>
     </div>
@@ -461,14 +452,9 @@ function DashboardSkeleton() {
 }
 
 function FocusTaskList({ tasks, emptyTitle, emptyDescription, tone, onComplete, onOpenDetails }) {
-  const emptyIconClasses = tone === "danger" ? "bg-rose-50 text-rose-500" : "bg-blue-50 text-blue-500";
-
   if (!tasks.length) {
     return (
-      <div className="empty-state flex min-h-44 flex-col items-center justify-center">
-        <span className={`mb-3 grid h-11 w-11 place-items-center rounded-2xl ${emptyIconClasses}`}>
-          <CheckCircle2 className="h-5 w-5" />
-        </span>
+      <div className="rounded-2xl bg-surface-soft p-3 text-sm">
         <p className="font-bold text-ink">{emptyTitle}</p>
         <p className="mt-1 max-w-sm text-xs leading-relaxed text-muted">{emptyDescription}</p>
       </div>

@@ -1,9 +1,10 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Clock3, ListFilter, Plus, Rows3, Search } from "lucide-react";
+import { AlertCircle, CheckCircle2, Clock3, ListFilter, Plus, Rows3, Search } from "lucide-react";
 
 import Button from "../components/Button";
 import Card from "../components/Card";
+import CollapsibleSection from "../components/CollapsibleSection";
 import PageHeader from "../components/PageHeader";
 import SelectMenu from "../components/SelectMenu";
 import StatCard from "../components/StatCard";
@@ -22,13 +23,7 @@ import { syncTaskToGoogleCalendarSafely } from "../utils/googleCalendarTasks";
 import { applyTaskAttachmentChanges, hasTaskAttachmentChanges } from "../utils/taskAttachments";
 import { formatReminderList, normalizeReminderList } from "../utils/taskReminders";
 import { getAssigneeNames, getTaskAssigneeIds, getTaskPointLabel, isTaskCompleted, isTaskOpen, sortTasksForDisplay } from "../utils/tasks";
-
-const statusTabs = [
-  { key: "all", label: "Todas" },
-  { key: "pendente", label: "Pendentes" },
-  { key: "concluida", label: "Concluidas" },
-  { key: "atrasada", label: "Atrasadas" }
-];
+import { matchesTaskStatusFilter, normalizeTaskStatusFilter, taskStatusFilters } from "../utils/taskStatusFilters";
 
 function taskSearchText(task) {
   return [
@@ -56,18 +51,19 @@ export default function Tasks() {
   const [tasks, setTasks] = useState([]);
   const [categories, setCategories] = useState([]);
   const [members, setMembers] = useState([]);
-  const [status, setStatus] = useState(searchParams.get("status") || "all");
+  const [status, setStatus] = useState(normalizeTaskStatusFilter(searchParams.get("status")));
   const [category, setCategory] = useState("");
   const [assignee, setAssignee] = useState("");
   const [search, setSearch] = useState(searchParams.get("search") || "");
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [editError, setEditError] = useState("");
   const [detailsTask, setDetailsTask] = useState(null);
   const [editingTask, setEditingTask] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
-  const [completedExpanded, setCompletedExpanded] = useState(true);
 
   const load = useCallback(async function load() {
+    setLoading(true);
     setError("");
     try {
       const [taskRows, categoryRows, memberRows] = await Promise.all([tasksApi.list(), categoriesApi.list(), familiesApi.members()]);
@@ -78,6 +74,8 @@ export default function Tasks() {
       const message = normalizeApiError(err);
       setError(message);
       showToast({ type: "error", message });
+    } finally {
+      setLoading(false);
     }
   }, [showToast]);
 
@@ -89,7 +87,7 @@ export default function Tasks() {
 
   useEffect(() => {
     const nextSearch = searchParams.get("search") || "";
-    const nextStatus = searchParams.get("status") || "all";
+    const nextStatus = normalizeTaskStatusFilter(searchParams.get("status"));
     setSearch(nextSearch);
     setStatus(nextStatus);
   }, [searchParams]);
@@ -101,7 +99,7 @@ export default function Tasks() {
     const normalizedSearch = deferredSearch.trim().toLowerCase();
     const matches = indexedTasks.reduce((acc, item) => {
       const task = item.task;
-      const matchesStatus = status === "all" || (status === "pendente" ? ["pendente", "em_andamento"].includes(task.status) : task.status === status);
+      const matchesStatus = matchesTaskStatusFilter(task, status);
       const matchesCategory = !category || task.category_id === category;
       const matchesAssignee = !assignee || getTaskAssigneeIds(task).includes(assignee);
       const matchesSearch = !normalizedSearch || item.searchText.includes(normalizedSearch);
@@ -226,6 +224,31 @@ export default function Tasks() {
     setSearchParams({});
   }, [setSearchParams]);
 
+  const selectStatus = useCallback(function selectStatus(value) {
+    const nextStatus = normalizeTaskStatusFilter(value);
+    setStatus(nextStatus);
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      if (nextStatus === "all") next.delete("status");
+      else next.set("status", nextStatus);
+      return next;
+    });
+  }, [setSearchParams]);
+
+  const updateSearch = useCallback(function updateSearch(value) {
+    setSearch(value);
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      if (value) next.set("search", value);
+      else next.delete("search");
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  const advancedFilterCount = Number(Boolean(category)) + Number(Boolean(assignee));
+  const hasFilters = status !== "all" || Boolean(search || category || assignee);
+  const selectedStatusLabel = taskStatusFilters.find((filter) => filter.key === status)?.label;
+
   const openEditor = useCallback(function openEditor(task) {
     setEditError("");
     setEditingTask(task);
@@ -255,99 +278,64 @@ export default function Tasks() {
 
       {error && <p className="mb-5 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</p>}
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-        <StatCard icon={Rows3} label="Todas" value={counts.all} hint="tarefas registradas" tone="blue" />
-        <StatCard icon={Clock3} label="Pendentes" value={counts.pendente} hint="em aberto" tone="orange" />
-        <StatCard icon={CheckCircle2} label="Concluidas" value={counts.concluida} hint="com pontos" tone="emerald" />
-        <StatCard icon={AlertCircle} label="Atrasadas" value={counts.atrasada} hint="atencao hoje" tone="rose" />
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4" aria-label="Filtrar tarefas por status">
+        <StatCard icon={Rows3} label="Todas" value={counts.all} tone="blue" compact active={status === "all"} onClick={() => selectStatus("all")} />
+        <StatCard icon={Clock3} label="Pendentes" value={counts.pendente} tone="orange" compact active={status === "pendente"} onClick={() => selectStatus("pendente")} />
+        <StatCard icon={CheckCircle2} label="Concluídas" value={counts.concluida} tone="emerald" compact active={status === "concluida"} onClick={() => selectStatus("concluida")} />
+        <StatCard icon={AlertCircle} label="Atrasadas" value={counts.atrasada} tone="rose" compact active={status === "atrasada"} onClick={() => selectStatus("atrasada")} />
       </div>
 
-      <Card className="mt-6">
-        <div className="mb-5 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
-            {statusTabs.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setStatus(tab.key)}
-                className={`shrink-0 rounded-2xl px-4 py-2 text-sm font-semibold transition hover:-translate-y-0.5 ${
-                  status === tab.key ? "bg-rose-50 text-blush shadow-card" : "bg-white text-muted hover:text-ink"
-                }`}
-              >
-                {tab.label} <span className="ml-2 rounded-full bg-white px-2 py-0.5">{counts[tab.key]}</span>
-              </button>
-            ))}
-          </div>
-          <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:flex xl:flex-wrap">
-            <div className="relative sm:col-span-2 xl:w-64">
-              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-              <input className="soft-input pl-10" placeholder="Buscar por nome, status, pontos..." value={search} onChange={(event) => setSearch(event.target.value)} />
-            </div>
-            <SelectMenu className="xl:w-48" value={category} onChange={setCategory} options={categoryOptions} />
-            <SelectMenu className="xl:w-48" value={assignee} onChange={setAssignee} options={memberOptions} />
-            <Button variant="secondary" className="w-full sm:w-auto" onClick={clearFilters}>
-              <ListFilter className="h-4 w-4" />
-              Limpar
-            </Button>
-          </div>
+      <Card className="mt-4 !p-3 sm:!p-4">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <input aria-label="Buscar nesta lista" className="soft-input pl-10" placeholder="Buscar nesta lista..." value={search} onChange={(event) => updateSearch(event.target.value)} />
         </div>
-        <div className="space-y-6">
-          <section>
-            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="section-title">Tarefas pendentes</h2>
-                <p className="mt-1 text-sm font-semibold text-muted">Abertas, em andamento e atrasadas.</p>
-              </div>
-              <span className="inline-flex w-fit rounded-full bg-orange-50 px-3 py-1 text-xs font-bold text-orange-600">
-                {pendingTasks.length} {pendingTasks.length === 1 ? "tarefa" : "tarefas"}
-              </span>
-            </div>
-            <TaskList
-              tasks={pendingTasks}
-              onComplete={handleComplete}
-              onEdit={openEditor}
-              onDelete={requestTaskDelete}
-              onOpenDetails={openDetails}
-              emptyMessage="Nenhuma tarefa pendente encontrada."
-            />
-          </section>
-
-          <section>
-            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="section-title">Tarefas concluidas</h2>
-                <p className="mt-1 text-sm font-semibold text-muted">Finalizadas pela familia.</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-600">
-                  {completedTasks.length} {completedTasks.length === 1 ? "tarefa" : "tarefas"}
-                </span>
-                <Button
-                  variant="secondary"
-                  className="px-3 py-2 text-sm"
-                  onClick={() => setCompletedExpanded((current) => !current)}
-                  aria-expanded={completedExpanded}
-                  aria-controls="completed-tasks-section"
-                >
-                  {completedExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                  {completedExpanded ? "Recolher" : "Expandir"}
-                </Button>
-              </div>
-            </div>
-            {completedExpanded && (
-              <div id="completed-tasks-section">
-                <TaskList
-                  tasks={completedTasks}
-                  onComplete={handleComplete}
-                  onEdit={openEditor}
-                  onDelete={requestTaskDelete}
-                  onOpenDetails={openDetails}
-                  emptyMessage="Nenhuma tarefa concluida encontrada."
-                />
-              </div>
-            )}
-          </section>
+        <CollapsibleSection title="Mais filtros" icon={ListFilter} count={advancedFilterCount || undefined}>
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+            <SelectMenu aria-label="Filtrar por categoria" value={category} onChange={setCategory} options={categoryOptions} />
+            <SelectMenu aria-label="Filtrar por responsável" value={assignee} onChange={setAssignee} options={memberOptions} />
+          </div>
+        </CollapsibleSection>
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
+          <p className="text-xs font-semibold text-muted" role="status">{loading ? "Carregando tarefas..." : `${selectedStatusLabel}: ${filteredTasks.length} de ${counts.all} tarefas`}</p>
+          {hasFilters && <button type="button" onClick={clearFilters} className="min-h-11 rounded-xl px-2 text-xs font-bold text-blush">Limpar filtros</button>}
         </div>
+        {advancedFilterCount > 0 && (
+          <p className="mt-2 break-words text-xs text-muted">{[categories.find((item) => item.id === category)?.name, members.find((item) => item.user_id === assignee)?.user.name].filter(Boolean).join(" · ")}</p>
+        )}
       </Card>
+
+      <div className="mt-4 space-y-3" aria-busy={loading}>
+        {status !== "concluida" && (
+          <Card className="!p-0">
+            <CollapsibleSection key={`pending-${status}`} title={status === "atrasada" ? "Tarefas atrasadas" : "Tarefas em aberto"} icon={Clock3} count={pendingTasks.length} defaultOpen={pendingTasks.length > 0}>
+              <TaskList
+                tasks={pendingTasks}
+                onComplete={handleComplete}
+                onEdit={openEditor}
+                onDelete={requestTaskDelete}
+                onOpenDetails={openDetails}
+                emptyMessage="Nenhuma tarefa em aberto com estes filtros."
+              />
+            </CollapsibleSection>
+          </Card>
+        )}
+
+        {(status === "all" || status === "concluida") && (
+          <Card className="!p-0">
+            <CollapsibleSection key={`completed-${status}`} title="Tarefas concluídas" icon={CheckCircle2} count={completedTasks.length} defaultOpen={status === "concluida" && completedTasks.length > 0}>
+              <TaskList
+                tasks={completedTasks}
+                onComplete={handleComplete}
+                onEdit={openEditor}
+                onDelete={requestTaskDelete}
+                onOpenDetails={openDetails}
+                emptyMessage="Nenhuma tarefa concluída com estes filtros."
+              />
+            </CollapsibleSection>
+          </Card>
+        )}
+      </div>
 
       <TaskDetailsModal
         task={detailsTask}
