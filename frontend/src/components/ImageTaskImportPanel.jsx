@@ -756,7 +756,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
           onPaste={handlePaste}
           tabIndex={0}
           aria-label="Selecionar, arrastar ou colar imagens para importacao por IA"
-          className={`min-h-72 rounded-[28px] border border-dashed p-4 shadow-sm transition ${
+          className={`min-h-40 rounded-2xl border border-dashed p-3 shadow-sm transition ${
             dragging ? "border-blush bg-blush/10 ring-4 ring-blush/10" : "border-slate-200 bg-white/75"
           } focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blush/10`}
         >
@@ -810,13 +810,13 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
             <button
               type="button"
               onClick={() => inputRef.current?.click()}
-              className="flex h-full min-h-64 w-full flex-col items-center justify-center rounded-[22px] bg-white/80 px-4 py-8 text-center transition hover:bg-blush/5"
+              className="flex h-full min-h-36 w-full flex-col items-center justify-center rounded-xl bg-white/80 px-3 py-4 text-center transition hover:bg-blush/5"
             >
-              <span className="grid h-14 w-14 place-items-center rounded-2xl bg-blush/10 text-blush">
-                <UploadCloud className="h-7 w-7" />
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-blush/10 text-blush">
+                <UploadCloud className="h-5 w-5" />
               </span>
-              <span className="mt-4 text-base font-black text-ink">Selecionar, arrastar ou colar imagem</span>
-              <span className="mt-2 text-sm font-semibold text-muted">Use Ctrl+V para colar um print. PNG, JPG, JPEG ou WEBP ate 8 MB.</span>
+              <span className="mt-2 text-sm font-bold text-ink">Escolher imagens</span>
+              <span className="mt-1 text-xs text-muted">PNG, JPG ou WEBP · até 8 MB. Arraste ou cole um print.</span>
             </button>
           )}
 
@@ -825,21 +825,19 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
 
         <div className="min-w-0 space-y-4">
           <div className="rounded-[24px] border border-white/80 bg-white/80 p-4 shadow-sm">
-            <div className="flex items-start gap-3">
+            {selectedImages.length > 0 && <div className="flex items-start gap-3">
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
                 <FileImage className="h-5 w-5" />
               </span>
               <div className="min-w-0">
                 <p className="text-sm font-black text-ink">
-                  {selectedImages.length ? `${selectedImages.length} imagem(ns) pronta(s) para analise` : "Nenhuma imagem selecionada"}
+                  {selectedImages.length} imagem(ns) pronta(s)
                 </p>
                 <p className="mt-1 text-xs font-semibold text-muted">
-                  {selectedImages.length
-                    ? `Total selecionado: ${formatFileSize(selectedImages.reduce((total, image) => total + image.file.size, 0))}`
-                    : "Escolha uma imagem e revise as sugestões antes de criar."}
+                  {formatFileSize(selectedImages.reduce((total, image) => total + image.file.size, 0))}
                 </p>
               </div>
-            </div>
+            </div>}
 
             {error && (
               <div className="mt-4">
@@ -890,34 +888,25 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
               </div>
             )}
 
-            <div className="mt-4 rounded-[22px] border border-blue-100 bg-blue-50/60 p-3">
-              <div className="flex items-start gap-3">
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white text-blue-600 shadow-sm">
-                  <FileImage className="h-4 w-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p id="ai-image-context-label" className="text-sm font-black text-ink">Contexto (opcional)</p>
-                  <p className="mt-1 text-xs font-semibold text-muted">
-                    Explique a imagem ou dê orientações para esta análise.
-                  </p>
-                </div>
-              </div>
+            <div className={selectedImages.length ? "mt-4" : ""}>
+              <label id="ai-image-context-label" htmlFor="ai-image-context" className="text-sm font-semibold text-ink">Contexto (opcional)</label>
               <textarea
+                id="ai-image-context"
                 aria-labelledby="ai-image-context-label"
-                className="soft-input mt-3 min-h-24 resize-none bg-white/90 text-sm"
+                className="soft-input mt-2 min-h-20 resize-y text-sm"
                 value={imageContext}
                 maxLength={imageContextMaxLength}
                 onChange={(event) => setImageContext(event.target.value)}
-                placeholder="Ex.: Essa imagem e meu calendario de provas da faculdade. Crie tarefas para cada prova usando materia, data e horario. Responsavel: Kauan."
+                placeholder="Ex.: Provas da faculdade. Uma tarefa por prova, para Kauan."
               />
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              {imageContext.length > 0 && <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs font-bold text-muted">{imageContext.length}/{imageContextMaxLength} caracteres</span>
                 {imageContext.trim() && (
                   <button type="button" className="min-h-10 rounded-xl px-3 py-1.5 text-xs font-bold text-muted transition hover:bg-white hover:text-ink" onClick={() => setImageContext("")}>
                     Limpar contexto
                   </button>
                 )}
-              </div>
+              </div>}
             </div>
 
             <Link to="/configuracoes?tab=ai" className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-blush hover:underline">Preferências da IA</Link>
@@ -926,13 +915,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
               <GoogleCalendarOptIn plural checked={syncGoogleCalendar} canSync={calendarStatus.can_sync} busy={analyzing || importing} onChange={(value) => { setCalendarPreferenceTouched(true); setSyncGoogleCalendar(value); }} />
             )}
 
-            <p className="mt-4 text-xs leading-relaxed text-muted" role="status">
-              {providerStatus
-                ? providerStatus.enabled && providerStatus.configured
-                  ? `Modelo: ${providerStatus.model} · raciocínio ${providerStatus.reasoningEffort}. Configuração disponível; o resultado precisa ser revisado.`
-                  : providerStatus.message
-                : "Não foi possível confirmar a configuração da IA. O servidor verificará a disponibilidade ao analisar."}
-            </p>
+            {(!providerStatus || !providerStatus.enabled || !providerStatus.configured) && <p className="mt-3 text-xs leading-relaxed text-muted" role="status">{providerStatus?.message || "Disponibilidade da IA será verificada ao analisar."}</p>}
             <Button type="button" className="mt-4 w-full" onClick={handleAnalyze} disabled={!selectedImages.length || analyzing || importing || Boolean(providerStatus && (!providerStatus.enabled || !providerStatus.configured))}>
               {analyzing ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImagePlus className="h-5 w-5" />}
               {analyzing ? analyzingLabel : analyzeButtonLabel}

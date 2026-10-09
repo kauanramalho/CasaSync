@@ -6,7 +6,7 @@ import { CategoryBadge, PriorityBadge, StatusBadge } from "./Badges";
 import SelectMenu from "./SelectMenu";
 import { formatDate } from "../utils/formatters";
 import { formatReminderList, normalizeReminderList } from "../utils/taskReminders";
-import { getNextTaskSort, getTaskActivityDate, sortTasksForDisplay, taskSortColumns } from "../utils/tasks";
+import { getAssigneeNames, getNextTaskSort, sortTasksForDisplay, taskSortColumns } from "../utils/tasks";
 
 function SortHeaderButton({ column, activeSort, onSort }) {
   const active = activeSort?.key === column.key;
@@ -131,29 +131,16 @@ function TaskRow({ task, compact, menuOpen, onToggleMenu, onRunAction, onComplet
         clickable ? "cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-rose-100" : ""
       }`}
     >
-      <div className="md:hidden">
-        <div className="flex min-w-0 items-start gap-3">
+      <div className="md:hidden" data-compact-task>
+        <div className="flex min-w-0 items-start gap-2">
           <CompleteTaskButton task={task} onComplete={onComplete} className="mt-0.5 h-11 w-11" />
           <div className="min-w-0 flex-1">
-            <p className="break-words text-base font-semibold leading-snug text-ink">{task.title}</p>
-            {!compact && (
-              <p className="mt-1 text-xs text-muted">
-                Criado por {task.creator?.name || "CasaSync"} &middot; {task.status === "concluida" ? "Concluída" : "Prazo"}: {formatDate(getTaskActivityDate(task), task.status === "concluida" ? "Sem registro" : "Sem prazo")}
-              </p>
-            )}
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {hasActiveReminder && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-600">
-                  <BellRing className="h-3 w-3" />
-                  Lembrete: {reminderSummary}
-                </span>
-              )}
-              {attachmentCount > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-muted">
-                  <Paperclip className="h-3 w-3" />
-                  {attachmentCount} {attachmentCount === 1 ? "anexo" : "anexos"}
-                </span>
-              )}
+            <p className={`line-clamp-2 break-words text-sm font-semibold leading-snug text-ink ${task.status === "concluida" ? "line-through opacity-75" : ""}`}>{task.title}</p>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+              <span>{formatDate(task.due_date, "Sem prazo")}</span>
+              <StatusBadge status={task.status} />
+              {hasActiveReminder && <span title={`Lembrete: ${reminderSummary}`} aria-label={`Lembrete: ${reminderSummary}`}><BellRing className="h-3.5 w-3.5 text-blue-500" /></span>}
+              {attachmentCount > 0 && <span title={`${attachmentCount} anexos`} aria-label={`${attachmentCount} anexos`} className="inline-flex items-center gap-0.5"><Paperclip className="h-3.5 w-3.5" />{attachmentCount}</span>}
             </div>
           </div>
           <TaskActionMenu
@@ -170,42 +157,22 @@ function TaskRow({ task, compact, menuOpen, onToggleMenu, onRunAction, onComplet
           />
         </div>
 
-        <div className="mt-3 grid gap-2">
-          <CategoryBadge category={task.category} className="max-w-full justify-start" />
-          <div className="flex flex-wrap items-center gap-2">
-            <PriorityBadge priority={task.priority} />
-            <StatusBadge status={task.status} />
-            <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-muted shadow-sm">{formatDate(task.due_date)}</span>
-          </div>
-          <div className="rounded-2xl bg-slate-50/80 px-3 py-2">
-            <AssigneeStack task={task} />
-          </div>
+        <div className="mt-2 flex min-w-0 items-center justify-between gap-3 pl-[52px]">
+          <CategoryBadge category={task.category} compact className="min-w-0 max-w-full" />
+          <span className="shrink-0" title={getAssigneeNames(task)} aria-label={`Responsáveis: ${getAssigneeNames(task)}`}><AssigneeStack task={task} showName={false} max={2} emptyText="" /></span>
         </div>
       </div>
 
-      <div className="hidden min-w-0 grid-cols-[44px_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,1fr)_44px] gap-4 px-5 py-4 md:grid md:items-center">
+      <div className="hidden min-w-0 grid-cols-[44px_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,1fr)_44px] gap-3 px-4 py-3 md:grid md:items-center">
         <CompleteTaskButton task={task} onComplete={onComplete} className="h-10 w-10" />
         <div className="min-w-0">
           <p className="truncate font-semibold text-ink">{task.title}</p>
-          {!compact && (
-            <p className="mt-1 text-xs text-muted">
-              Criado por {task.creator?.name || "CasaSync"} &middot; {task.status === "concluida" ? "Concluída" : "Prazo"}: {formatDate(getTaskActivityDate(task), task.status === "concluida" ? "Sem registro" : "Sem prazo")}
-            </p>
-          )}
-          {hasActiveReminder && (
-            <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-600">
-              <BellRing className="h-3 w-3" />
-              Lembrete: {reminderSummary}
-            </span>
-          )}
-          {attachmentCount > 0 && (
-            <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-muted">
-              <Paperclip className="h-3 w-3" />
-              {attachmentCount} {attachmentCount === 1 ? "anexo" : "anexos"}
-            </span>
-          )}
+          {!compact && <div className="mt-1 flex items-center gap-2 text-xs text-muted">
+            {hasActiveReminder && <span title={`Lembrete: ${reminderSummary}`} aria-label={`Lembrete: ${reminderSummary}`}><BellRing className="h-3.5 w-3.5 text-blue-500" /></span>}
+            {attachmentCount > 0 && <span className="inline-flex items-center gap-1" aria-label={`${attachmentCount} anexos`}><Paperclip className="h-3.5 w-3.5" />{attachmentCount}</span>}
+          </div>}
         </div>
-        <CategoryBadge category={task.category} className="w-full min-w-0 justify-start" />
+        <CategoryBadge category={task.category} compact className="w-full min-w-0 justify-start" />
         <div className="min-w-0">
           <AssigneeStack task={task} />
         </div>
@@ -305,7 +272,7 @@ function TaskList({ tasks = [], onComplete, onEdit, onDelete, onRemoveRecent, on
           </button>
         </div>
       </div>
-      <div className="hidden min-w-0 grid-cols-[44px_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,1fr)_44px] gap-4 border-b border-slate-100 px-5 py-4 text-sm font-medium text-muted md:grid">
+      <div className="hidden min-w-0 grid-cols-[44px_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,1fr)_44px] gap-3 border-b border-slate-100 px-4 py-3 text-sm font-medium text-muted md:grid">
         <span />
         {taskSortColumns.map((column) => (
           <SortHeaderButton key={column.key} column={column} activeSort={activeSort} onSort={changeSort} />

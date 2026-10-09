@@ -54,6 +54,8 @@ with Session() as db:
     create_task(db, family_id=families_data[0].id, creator_id=user.id, payload=TaskCreate(title="Tarefa em andamento de teste", status="em_andamento", category_id=home_category.id))
     done_task = create_task(db, family_id=families_data[0].id, creator_id=user.id, payload=TaskCreate(title="Tarefa concluída de teste"))
     complete_task(db, family_id=families_data[0].id, task_id=done_task.id)
+    for index in range(4):
+        create_task(db, family_id=families_data[0].id, creator_id=user.id, payload=TaskCreate(title=f"Compromisso do dia {index + 1}", due_date=datetime.now(timezone.utc) + timedelta(hours=3 + index), category_id=home_category.id, assignee_ids=[user.id]))
 
 def fixture_db():
     with Session() as db:

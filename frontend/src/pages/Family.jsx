@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { createPortal } from "react-dom";
 import {
   Activity,
   Camera,
@@ -16,7 +17,8 @@ import {
   Trophy,
   UserPlus,
   Users,
-  XCircle
+  XCircle,
+  X
 } from "lucide-react";
 
 import Avatar from "../components/Avatar";
@@ -53,6 +55,9 @@ export default function Family() {
   const { user } = useAuth();
   const { activeFamily, families: myFamilies, refreshFamilies, switchFamily, switching } = useActiveFamily();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const settingsFamilyId = searchParams.get("edit");
+  const settingsDialogRef = useRef(null);
   const { showToast } = useToast();
   const familyImageRef = useRef(null);
   const loadInFlightRef = useRef(false);
@@ -81,6 +86,25 @@ export default function Family() {
   const [inviteImage, setInviteImage] = useState(null);
   const [sharing, setSharing] = useState(false);
   const [deletingFamily, setDeletingFamily] = useState(false);
+  const settingsOpen = Boolean(settingsFamilyId && families[0]?.id === settingsFamilyId);
+  const closeSettings = useCallback(() => {
+    if (savingFamily || deletingFamily) return;
+    setSearchParams((current) => { const next = new URLSearchParams(current); next.delete("edit"); return next; }, { replace: true });
+  }, [deletingFamily, savingFamily, setSearchParams]);
+  useDialogFocus(settingsDialogRef, settingsOpen, closeSettings);
+
+  async function openFamilySettings(family) {
+    if (switching) return;
+    setError("");
+    if (family.id === currentFamily?.id) setFamilyForm({ name: currentFamily.name || "", description: currentFamily.description || "", image_url: currentFamily.image_url || "" });
+    setSearchParams((current) => { const next = new URLSearchParams(current); next.set("edit", family.id); return next; });
+    try {
+      await switchFamily(family.id);
+    } catch (err) {
+      closeSettings();
+      setError(normalizeApiError(err));
+    }
+  }
   useEffect(() => {
     let alive = true;
     fetch("/icons/icon-512.png").then((response) => { if (!response.ok) throw new Error(); return response.blob(); }).then((blob) => {
@@ -250,6 +274,7 @@ export default function Family() {
         image_url: updated.image_url || ""
       });
       familyImageRef.current?.resetDraft();
+      setSearchParams((current) => { const next = new URLSearchParams(current); next.delete("edit"); return next; }, { replace: true });
       setMessage("Configuracoes da familia atualizadas.");
       showToast({ type: "success", message: "Configuracoes da familia atualizadas." });
       await refreshFamilies();
@@ -387,9 +412,9 @@ export default function Family() {
       <PageHeader title="Famílias" subtitle="Veja seus grupos, sua liderança e gerencie membros e convites." user={user} />
       <Card className="mb-6">
         <h2 className="section-title">Minhas famílias</h2>
-        <p className="mt-2 text-sm text-muted">Selecione uma família para acessar suas configurações. Só o líder pode excluí-la.</p>
+        <p className="mt-2 text-sm text-muted">Toque em uma família para acessar e ver os detalhes.</p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {myFamilies.map((family) => <button type="button" key={family.id} disabled={switching} onClick={() => switchFamily(family.id).catch((err) => setError(normalizeApiError(err)))} className={`flex min-w-0 items-center gap-3 rounded-2xl border p-4 text-left disabled:opacity-50 ${family.id === activeFamily?.id ? "border-blush bg-blush/10" : "border-border hover:bg-blush/5"}`}>
+          {myFamilies.map((family) => <button type="button" key={family.id} disabled={switching} onClick={() => openFamilySettings(family)} aria-label={`Ver configurações de ${family.name}`} className={`flex min-w-0 items-center gap-3 rounded-2xl border p-3 text-left disabled:opacity-50 ${family.id === activeFamily?.id ? "border-blush bg-blush/10" : "border-border hover:bg-blush/5"}`}>
             <FamilyAvatar family={family} className="h-12 w-12" />
             <span className="min-w-0"><span className="block break-words font-bold text-ink">{family.name}</span><span className="mt-1 block text-xs font-semibold text-muted">{roleLabel(family.current_user_role)}{family.id === activeFamily?.id ? " · Ativa" : ""}</span></span>
             {family.current_user_role === "owner" && <Crown className="ml-auto h-5 w-5 shrink-0 text-blush" aria-label="Você é líder" />}
@@ -525,48 +550,6 @@ export default function Family() {
             </form>
           </Card>
 
-          {currentFamily && (
-            <Card>
-              <h2 className="section-title">Configuracoes da familia</h2>
-              <form onSubmit={updateFamily} className="mt-5 space-y-4">
-                {!canAdmin && (
-                  <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
-                    Somente administradores podem alterar estas configuracoes.
-                  </p>
-                )}
-                <ImageAdjustField
-                  ref={familyImageRef}
-                  value={familyForm.image_url}
-                  label="Imagem da familia"
-                  chooseLabel="Escolher imagem"
-                  removeLabel="Remover imagem"
-                  previewClassName="h-20 w-20 rounded-2xl"
-                  emptyLabel={<Camera className="h-7 w-7 text-blush" />}
-                  outputWidth={768}
-                  outputHeight={768}
-                  uploadScope="family"
-                  disabled={!canAdmin}
-                  onError={(message) => {
-                    setError(message);
-                    showToast({ type: "error", message });
-                  }}
-                  onRemove={() => setFamilyForm((current) => ({ ...current, image_url: "" }))}
-                />
-                <input className="soft-input" value={familyForm.name} onChange={(event) => setFamilyForm((current) => ({ ...current, name: event.target.value }))} disabled={!canAdmin} />
-                <textarea className="soft-input min-h-28 resize-none" placeholder="Descricao" value={familyForm.description} onChange={(event) => setFamilyForm((current) => ({ ...current, description: event.target.value }))} disabled={!canAdmin} />
-                <Button type="submit" className="w-full" disabled={!canAdmin || savingFamily || familyForm.name.trim().length < 2}>
-                  <ImagePlus className="h-5 w-5" />
-                  {savingFamily ? "Salvando..." : "Salvar configuracoes"}
-                </Button>
-                {canOwner && (
-                  <Button type="button" variant="danger" className="w-full" onClick={deleteFamily} disabled={deletingFamily}>
-                    <Trash2 className="h-5 w-5" />
-                    Excluir familia
-                  </Button>
-                )}
-              </form>
-            </Card>
-          )}
         </div>
 
         <div className="space-y-6">
@@ -709,6 +692,27 @@ export default function Family() {
           </div>
         </div>
       </div>
+
+      {settingsOpen && currentFamily && createPortal(
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) closeSettings(); }}>
+          <div ref={settingsDialogRef} role="dialog" aria-modal="true" aria-labelledby="family-settings-heading" tabIndex={-1} className="max-h-[calc(100dvh-1.5rem)] w-full max-w-lg overflow-y-auto rounded-3xl border border-border bg-surface p-4 shadow-soft sm:p-6">
+            <div className="flex items-center gap-3">
+              <FamilyAvatar family={currentFamily} className="h-11 w-11" />
+              <div className="min-w-0 flex-1"><h2 id="family-settings-heading" className="break-words text-lg font-bold text-ink">{currentFamily.name}</h2><p className="text-xs text-muted">{roleLabel(currentMember?.role)} · Família ativa</p></div>
+              <button type="button" onClick={closeSettings} disabled={savingFamily || deletingFamily} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-muted hover:bg-surface-soft" aria-label="Fechar configurações da família"><X className="h-5 w-5" /></button>
+            </div>
+            <form onSubmit={updateFamily} className="mt-4 space-y-4" aria-busy={savingFamily}>
+              {!canAdmin && <p className="text-sm text-muted">Somente o líder e administradores podem editar.</p>}
+              <ImageAdjustField ref={familyImageRef} value={familyForm.image_url} label="Imagem da família" chooseLabel="Escolher imagem" removeLabel="Remover imagem" previewClassName="h-20 w-20 rounded-2xl" emptyLabel={<Camera className="h-7 w-7 text-blush" />} outputWidth={768} outputHeight={768} uploadScope="family" disabled={!canAdmin || savingFamily || deletingFamily} onError={(message) => { setError(message); showToast({ type: "error", message }); }} onRemove={() => setFamilyForm((current) => ({ ...current, image_url: "" }))} />
+              <label className="block text-sm font-semibold text-ink">Nome<input className="soft-input mt-1" value={familyForm.name} onChange={(event) => setFamilyForm((current) => ({ ...current, name: event.target.value }))} disabled={!canAdmin || savingFamily || deletingFamily} /></label>
+              <label className="block text-sm font-semibold text-ink">Descrição<textarea className="soft-input mt-1 min-h-24 resize-none" placeholder="Sobre a família" value={familyForm.description} onChange={(event) => setFamilyForm((current) => ({ ...current, description: event.target.value }))} disabled={!canAdmin || savingFamily || deletingFamily} /></label>
+              {error && <p className="text-sm text-rose-600" role="alert">{error}</p>}
+              {canAdmin && <Button type="submit" className="w-full" disabled={savingFamily || deletingFamily || familyForm.name.trim().length < 2}><ImagePlus className="h-5 w-5" />{savingFamily ? "Salvando..." : "Salvar configurações"}</Button>}
+              {canOwner && <Button type="button" variant="danger" className="w-full" onClick={deleteFamily} disabled={deletingFamily || savingFamily}><Trash2 className="h-5 w-5" />Excluir família</Button>}
+            </form>
+          </div>
+        </div>, document.body
+      )}
 
       {leaveDialogOpen && (
         <div

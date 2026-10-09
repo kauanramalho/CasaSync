@@ -8,6 +8,8 @@ import AssigneeStack from "../components/AssigneeStack";
 import { CategoryBadge, CategoryGlyph, PriorityBadge, StatusBadge } from "../components/Badges";
 import Button from "../components/Button";
 import Card from "../components/Card";
+import CollapsibleSection from "../components/CollapsibleSection";
+import MonthCalendarGrid from "../components/MonthCalendarGrid";
 import PageHeader from "../components/PageHeader";
 import SelectMenu from "../components/SelectMenu";
 import TaskDetailsModal from "../components/TaskDetailsModal";
@@ -402,6 +404,7 @@ export default function Calendar() {
   }, []);
 
   const showPreview = useCallback(function showPreview(task, event) {
+    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
     window.clearTimeout(previewTimer.current);
     setPreview({ task, rect: event.currentTarget.getBoundingClientRect() });
   }, []);
@@ -555,72 +558,10 @@ export default function Calendar() {
   }
 
   function renderMonthView() {
-    const monthDays = days.filter((day) => day.getMonth() === baseDate.getMonth());
-
     return (
-      <>
-      {renderMobileAgendaDays(monthDays, emptyMessage("Nenhuma tarefa com data neste mês."))}
-      <Card className="hidden p-0 md:block">
-        <div className="overflow-x-auto">
-          <div className="min-w-[760px]">
-            <div className="calendar-weekday-row grid grid-cols-7">
-              {weekdayLabels.map((day) => (
-                <div key={day} className="px-3 py-4 text-center text-sm font-semibold text-muted">
-                  {day}
-                </div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7">
-              {days.map((day) => {
-                const key = dateKey(day);
-                const dayTasks = tasksByDay[key] || [];
-                const visibleTasks = dayTasks.slice(0, 3);
-                const hiddenCount = Math.max(0, dayTasks.length - visibleTasks.length);
-                const isCurrentMonth = day.getMonth() === baseDate.getMonth();
-                const isToday = key === dateKey(new Date());
-                const isSelected = selectedDate && key === dateKey(selectedDate);
-
-                return (
-                  <div
-                    key={key}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => openDay(day)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") openDay(day);
-                    }}
-                    className={clsx(
-                      "calendar-day-cell min-h-[132px] cursor-pointer border-b border-r p-3 transition",
-                      isCurrentMonth ? "calendar-day-current" : "calendar-day-outside",
-                      isSelected && "calendar-day-selected"
-                    )}
-                  >
-                    <div
-                      className={clsx(
-                        "mb-3 grid h-8 w-8 place-items-center rounded-full text-sm font-semibold",
-                        isToday ? "bg-blush text-white shadow-card" : isCurrentMonth ? "text-ink" : "calendar-day-number-outside"
-                      )}
-                    >
-                      {day.getDate()}
-                    </div>
-                    <div className="space-y-1.5">
-                      {visibleTasks.map((task) => (
-                        <CalendarTaskPill key={task.id} task={task} compact onPreview={showPreview} onPreviewLeave={schedulePreviewClose} onOpen={openTaskDetails} />
-                      ))}
-                      {hiddenCount > 0 && (
-                        <button type="button" onClick={(event) => { event.stopPropagation(); openDay(day); }} className="text-xs font-bold text-blush hover:underline">
-                          +{hiddenCount} {hiddenCount === 1 ? "tarefa" : "tarefas"}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+      <Card className="overflow-hidden !p-0">
+        <MonthCalendarGrid days={days} baseDate={baseDate} weekdayLabels={weekdayLabels} tasksByDay={tasksByDay} selectedDate={selectedDate} onOpenDay={openDay} onOpenTask={openTaskDetails} onPreview={showPreview} onPreviewLeave={schedulePreviewClose} timeLabel={timeLabel} />
       </Card>
-      </>
     );
   }
 
@@ -628,7 +569,7 @@ export default function Calendar() {
     return (
       <>
       {renderMobileAgendaDays(week, emptyMessage("Nenhuma tarefa nesta semana."), { showEmptyDays: !hasActiveFilters })}
-      <Card className="hidden p-0 md:block">
+      <Card className="hidden !p-0 md:block">
         <div className="overflow-x-auto">
           <div className="grid min-w-[860px] grid-cols-7 divide-x divide-slate-100">
             {week.map((day, index) => {
@@ -678,7 +619,7 @@ export default function Calendar() {
                 <button type="button" onClick={() => openDay(new Date(`${key}T12:00:00`))} className="mb-3 flex w-full items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-3 text-left hover:bg-rose-50">
                   <div>
                     <p className="font-bold text-ink">{fullDateLabel(new Date(`${key}T12:00:00`))}</p>
-                    <p className="text-xs font-semibold text-muted">{listGroups[key].length} tarefas</p>
+                    <p className="text-xs font-semibold text-muted">{listGroups[key].length} {listGroups[key].length === 1 ? "tarefa" : "tarefas"}</p>
                   </div>
                   <ChevronRight className="h-4 w-4 text-muted" />
                 </button>
@@ -727,16 +668,16 @@ export default function Calendar() {
         </div>
       )}
 
-      <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <div className="grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-3 sm:flex sm:flex-wrap">
+      <div className="mb-3 flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+        <div className="grid grid-cols-[44px_minmax(0,1fr)_44px_auto] items-center gap-1 sm:flex sm:flex-wrap sm:gap-3">
           <button type="button" onClick={() => movePeriod(-1)} className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-muted shadow-card" aria-label="Período anterior">
             <ChevronLeft className="h-5 w-5" />
           </button>
-          <h2 className="min-w-0 flex-1 text-xl font-bold capitalize text-ink sm:min-w-52 sm:flex-none">{periodLabel(baseDate, viewMode, preferences.weekStart)}</h2>
+          <h2 className="min-w-0 flex-1 text-sm font-bold capitalize text-ink sm:min-w-52 sm:flex-none sm:text-xl">{periodLabel(baseDate, viewMode, preferences.weekStart)}</h2>
           <button type="button" onClick={() => movePeriod(1)} className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-muted shadow-card" aria-label="Próximo período">
             <ChevronRight className="h-5 w-5" />
           </button>
-          <Button variant="secondary" className="col-span-3 w-full sm:col-span-1 sm:w-auto" onClick={() => setBaseDate(new Date())}>
+          <Button variant="secondary" className="px-2 text-xs sm:px-4 sm:text-sm" onClick={() => setBaseDate(new Date())}>
             Hoje
           </Button>
         </div>
@@ -755,15 +696,15 @@ export default function Calendar() {
         </div>
       </div>
 
-      <Card className="mb-6">
+      <Card className="mb-3 !p-0">
+        <CollapsibleSection title={hasActiveFilters ? "Filtros ativos" : "Filtrar calendário"} icon={Filter} count={datedTaskCount}>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-blush/10 text-blush">
               <Filter className="h-5 w-5" />
             </span>
             <div className="min-w-0">
-              <h2 className="font-bold text-ink">Filtrar calendário</h2>
-              <p className="mt-1 text-sm text-muted">{datedTaskCount} {datedTaskCount === 1 ? "tarefa com data" : "tarefas com data"} em exibição</p>
+              <p className="text-sm text-muted">{datedTaskCount} {datedTaskCount === 1 ? "tarefa com data" : "tarefas com data"} na família</p>
             </div>
           </div>
           <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:w-[min(100%,620px)]">
@@ -783,23 +724,24 @@ export default function Calendar() {
             </Button>
           )}
         </div>
+        </CollapsibleSection>
       </Card>
 
       {loading && !tasks.length ? (
-        <div className="grid animate-pulse gap-6 xl:grid-cols-[1fr_340px]" aria-label="Carregando calendário" aria-busy="true">
+        <div className="grid animate-pulse gap-6" aria-label="Carregando calendário" aria-busy="true">
           <div className="glass-panel h-[520px] rounded-[28px]" />
-          <div className="glass-panel h-[420px] rounded-[28px]" />
+          <div className="glass-panel h-14 rounded-[28px]" />
         </div>
-      ) : <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
+      ) : <div className="grid gap-6">
         <div className="min-w-0">
           {viewMode === "month" && renderMonthView()}
           {viewMode === "week" && renderWeekView()}
           {viewMode === "list" && renderListView()}
         </div>
 
-        <Card className="xl:sticky xl:top-8 xl:self-start">
-          <h2 className="section-title">Próximos compromissos</h2>
-          <div className="mt-5 max-h-[640px] space-y-4 overflow-y-auto pr-1">
+        <Card className="!p-0">
+          <CollapsibleSection title="Próximos compromissos" icon={CalendarDays} count={upcoming.length}>
+          <div className="max-h-[640px] space-y-4 overflow-y-auto pr-1">
             {upcoming.map((task) => (
               <div key={task.id} className="border-b border-slate-100 pb-4 last:border-0">
                 <button type="button" onClick={() => setDetailsTask(task)} className="w-full rounded-2xl px-2 py-2 text-left transition hover:bg-rose-50/70">
@@ -841,6 +783,7 @@ export default function Calendar() {
             ))}
             {!upcoming.length && <p className="empty-state">{emptyMessage("Nenhum compromisso pendente.")}</p>}
           </div>
+          </CollapsibleSection>
         </Card>
       </div>}
 
