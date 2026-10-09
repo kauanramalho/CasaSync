@@ -1,4 +1,5 @@
 import io
+import logging
 import tempfile
 import unittest
 from pathlib import Path
@@ -43,7 +44,10 @@ class MigrationTest(unittest.TestCase):
             database_url = f"sqlite:///{database_path.as_posix()}"
             config = migration_config(database_url)
 
+            notification_logger = logging.getLogger("app.services.notification_service")
+            notification_logger.disabled = False
             command.upgrade(config, "head")
+            self.assertFalse(notification_logger.disabled)
             engine = create_engine(database_url)
             try:
                 self.assertEqual(set(inspect(engine).get_table_names()), EXPECTED_TABLES)

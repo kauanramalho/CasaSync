@@ -10,7 +10,8 @@ from app.database.base import Base
 
 config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # Startup migrations must not disable API/notification failure diagnostics.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 CONFIG_URL_PLACEHOLDER = "postgresql+psycopg2://unused:unused@localhost/unused"
 configured_url = config.get_main_option("sqlalchemy.url")

@@ -245,8 +245,9 @@ def send_task_reminder_push(db: Session, *, user_id: str, family_id: str, task: 
                 subscription.is_active = False
                 db.add(subscription)
             logger.warning("Web Push delivery failed for subscription id=%s status=%s", subscription.id, getattr(exc.response, "status_code", None))
-        except Exception:
-            logger.warning("Web Push delivery failed for subscription id=%s", subscription.id)
+        except Exception as exc:
+            # Class only: exception bodies can contain keys/provider responses.
+            logger.warning("Web Push delivery failed for subscription id=%s error_type=%s", subscription.id, type(exc).__name__)
     if delivered:
         return "sent"
     return "failed"
