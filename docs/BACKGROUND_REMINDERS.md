@@ -16,6 +16,8 @@ Nao ha um pagamento avulso necessario para ativar este agendador.
 - A intencao de push e persistida na transacao da tarefa. Rotas registram um
   BackgroundTask com nova sessao depois da resposta; falha externa nao transforma
   uma tarefa ja salva em erro de criacao. Agendador/polling drenam o saldo pendente.
+  Log de lote informa apenas contadores `recipient_accepted`, `skipped`, `failed`;
+  nao registra titulo, pessoas, imagem, endpoints, credenciais ou resposta externa.
 - Lembretes existentes e legados passam a notificar os membros ativos da mesma
   familia. Opt-in individual, dispositivos registrados para essa familia e flags
   continuam obrigatorios para push. Email preserva sua preferencia separada.

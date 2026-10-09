@@ -25,6 +25,7 @@ from app.services.family_service import require_family_member
 from app.services.reminder_lock import reminder_delivery_lock
 from app.services.task_metrics import unique_user_ids
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 SAO_PAULO_FALLBACK_TZ = timezone(timedelta(hours=-3), name="America/Sao_Paulo")
 
 
@@ -554,6 +555,11 @@ def _deliver_pending_task_push(db: Session, *, family_id: str | None = None,
         if notification.push_status == "failed" and previous_status == "pending":
             notification.push_status = "retry"
         db.commit()
+    if result.push_sent or result.push_skipped or result.push_failed:
+        # Recipient-level provider acceptance, not a device display receipt.
+        # No task titles, identities, images, endpoints or provider bodies.
+        logger.info("Task push batch recipient_accepted=%d skipped=%d failed=%d",
+                    result.push_sent, result.push_skipped, result.push_failed)
     return result
 
 
