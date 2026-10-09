@@ -89,6 +89,7 @@ export default function Settings() {
   const [savingFamily, setSavingFamily] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
   const callbackHandled = useRef(false);
+  const pushTestInFlight = useRef(false);
 
   useEffect(() => {
     function onFamilyChanged() {
@@ -240,6 +241,30 @@ export default function Settings() {
       setNotificationMessage(message);
       showToast({ type: "error", message });
     } finally {
+      setNotificationBusy("");
+    }
+  }
+
+  async function testBrowserPush() {
+    if (pushTestInFlight.current || notificationBusy) return;
+    pushTestInFlight.current = true;
+    setNotificationBusy("push-test");
+    setNotificationMessage("");
+    try {
+      const subscription = await getBrowserPushSubscription();
+      if (!subscription || getNotificationPermission() !== "granted") {
+        setDevicePushEnabled(false);
+        throw new Error("Ative as notificacoes neste dispositivo antes de testar.");
+      }
+      const response = await notificationsApi.testPushSubscription(subscription);
+      setNotificationMessage(response.message);
+      showToast({ type: "info", message: response.message });
+    } catch (err) {
+      const message = normalizeApiError(err);
+      setNotificationMessage(message);
+      showToast({ type: "error", message });
+    } finally {
+      pushTestInFlight.current = false;
       setNotificationBusy("");
     }
   }
@@ -623,7 +648,7 @@ export default function Settings() {
             <div className="mt-6 flex flex-wrap gap-3">
               <Button
                 disabled={
-                  notificationBusy === "preferences" ||
+                  Boolean(notificationBusy) ||
                   (!notificationSettings?.email_task_reminders_enabled &&
                     (!notificationSettings?.email_feature_enabled || !notificationSettings?.email_configured))
                 }
@@ -649,7 +674,8 @@ export default function Settings() {
                   : "Push esta desativado por configuracao."}
               </p>
               <p>Permissao do navegador: {getNotificationPermissionLabel(pushPermission)}.</p>
-              <p>{devicePushEnabled ? "Dispositivo registrado para a familia ativa." : "Ative neste dispositivo para registrar os lembretes da familia ativa."}</p>
+              <p>{devicePushEnabled ? "Dispositivo registrado para a familia ativa." : "Este dispositivo ainda nao esta registrado para a familia ativa. A permissao do navegador, sozinha, nao ativa os lembretes: toque em Ativar neste dispositivo."}</p>
+              {devicePushEnabled && <p>Use Testar notificacao para enviar um alerta somente a este aparelho, sem criar tarefas nem avisar outros membros. Depois, confira a central de notificacoes do telefone.</p>}
               <p>Alertas em segundo plano dependem do Web Push ativo, de um lembrete configurado e da permissão deste dispositivo. No iPhone/iPad, adicione o CasaSync à Tela de Início e ative as notificações dentro do app instalado (iOS/iPadOS 16.4 ou superior).</p>
               <p>O formato do balão e o som são controlados pelo telefone. Modo Foco, economia de bateria e permissões podem silenciar os alertas.</p>
               {!pushSupported && <p className="rounded-2xl bg-amber-50 px-4 py-3 font-semibold text-amber-700">Este navegador nao oferece suporte completo a Web Push.</p>}
@@ -662,16 +688,22 @@ export default function Settings() {
             <div className="mt-6 flex flex-wrap gap-3">
               {!devicePushEnabled ? (
                 <Button
-                  disabled={notificationBusy === "push" || !pushSupported || pushPermission === "denied" || !notificationSettings?.push_feature_enabled || !notificationSettings?.push_configured}
+                  disabled={Boolean(notificationBusy) || !pushSupported || pushPermission === "denied" || !notificationSettings?.push_feature_enabled || !notificationSettings?.push_configured}
                   onClick={enableBrowserPush}
                 >
                   <Smartphone className="h-4 w-4" />
                   {notificationBusy === "push" ? "Solicitando..." : "Ativar neste dispositivo"}
                 </Button>
               ) : (
-                <Button variant="secondary" disabled={notificationBusy === "push"} onClick={disableBrowserPush}>
+                <Button variant="secondary" disabled={Boolean(notificationBusy)} onClick={disableBrowserPush}>
                   <Unplug className="h-4 w-4" />
                   {notificationBusy === "push" ? "Desativando..." : "Desativar neste dispositivo"}
+                </Button>
+              )}
+              {devicePushEnabled && (
+                <Button disabled={Boolean(notificationBusy) || pushPermission !== "granted"} onClick={testBrowserPush}>
+                  <BellRing className="h-4 w-4" />
+                  {notificationBusy === "push-test" ? "Enviando teste..." : "Testar notificacao"}
                 </Button>
               )}
             </div>

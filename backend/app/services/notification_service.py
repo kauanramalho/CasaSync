@@ -9,12 +9,13 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import get_settings
 from app.core.push_security import validate_push_endpoint
+from app.core.rate_limit import check_rate_limit
 from app.models.enums import TaskStatus
 from app.models.family import Family, FamilyMember
 from app.models.notification import Notification, WebPushSubscription
 from app.models.task import Task, TaskReminder
 from app.models.user import User
-from app.schemas.notification import ReminderProcessResult, WebPushSubscriptionIn
+from app.schemas.notification import ReminderProcessResult, WebPushSubscriptionIn, WebPushTestRead
 from app.services.email_service import send_task_reminder_email
 from app.services.family_service import require_family_member
 from app.services.reminder_lock import reminder_delivery_lock
@@ -175,15 +176,20 @@ def has_active_web_push_subscription(db: Session, *, user_id: str) -> bool:
 
 def is_device_push_subscription_active(db: Session, *, user_id: str, family_id: str,
                                        payload: WebPushSubscriptionIn) -> bool:
+    return _get_device_push_subscription(db, user_id=user_id, family_id=family_id, payload=payload) is not None
+
+
+def _get_device_push_subscription(db: Session, *, user_id: str, family_id: str,
+                                 payload: WebPushSubscriptionIn) -> WebPushSubscription | None:
     require_family_member(db, family_id, user_id)
-    return db.query(WebPushSubscription.id).filter(
+    return db.query(WebPushSubscription).filter(
         WebPushSubscription.user_id == user_id,
         WebPushSubscription.family_id == family_id,
         WebPushSubscription.endpoint == payload.endpoint,
         WebPushSubscription.p256dh == payload.keys.p256dh,
         WebPushSubscription.auth == payload.keys.auth,
         WebPushSubscription.is_active.is_(True),
-    ).first() is not None
+    ).first()
 
 
 def _push_payload(task: Task, reminder_id: str | None = None) -> str:
@@ -218,6 +224,12 @@ def send_task_reminder_push(db: Session, *, user_id: str, family_id: str, task: 
     if not subscriptions:
         return "no_subscription"
 
+    return _send_push_to_subscriptions(db, subscriptions, data=_push_payload(task, reminder_id))
+
+
+def _send_push_to_subscriptions(db: Session, subscriptions: list[WebPushSubscription],
+                                *, data: str, ttl: int = 3600) -> str:
+    settings = get_settings()
     try:
         from pywebpush import WebPushException, webpush
     except Exception:
@@ -234,12 +246,12 @@ def send_task_reminder_push(db: Session, *, user_id: str, family_id: str, task: 
                     "endpoint": subscription.endpoint,
                     "keys": {"p256dh": subscription.p256dh, "auth": subscription.auth},
                 },
-                data=_push_payload(task, reminder_id),
+                data=data,
                 vapid_private_key=settings.vapid_private_key,
                 vapid_claims={"sub": settings.vapid_subject},
                 # TTL=0 (library default) drops messages for unavailable devices.
                 # Keep reminders briefly for offline/idle phones, not indefinitely.
-                ttl=3600,
+                ttl=ttl,
                 headers={"Urgency": "high"},
                 timeout=20,
             )
@@ -255,6 +267,35 @@ def send_task_reminder_push(db: Session, *, user_id: str, family_id: str, task: 
     if delivered:
         return "sent"
     return "failed"
+
+
+def send_device_test_push(db: Session, *, user: User, family_id: str,
+                          payload: WebPushSubscriptionIn) -> WebPushTestRead:
+    settings = get_settings()
+    if not settings.web_push_enabled or not settings.web_push_configured:
+        raise HTTPException(status_code=400, detail="Notificacoes do navegador estao desativadas ou nao configuradas.")
+    subscription = _get_device_push_subscription(db, user_id=user.id, family_id=family_id, payload=payload)
+    if not user.push_task_reminders_enabled or not subscription:
+        raise HTTPException(status_code=409, detail="Ative este dispositivo para a familia atual antes de testar.")
+    # One attempt per account/minute across devices and families. Same-minute tag
+    # also replaces duplicates at the device. No tasks or inbox records created.
+    check_rate_limit(f"push-test:{user.id}", limit=1, window_seconds=60)
+    now = _utcnow()
+    data = json.dumps({
+        "title": "Teste de notificacao CasaSync",
+        "body": "Se este alerta apareceu, este aparelho recebeu o teste. Abra o CasaSync para continuar.",
+        "url": "/configuracoes",
+        "tag": f"casasync-push-test-{int(now.timestamp()) // 60}",
+        "timestamp": int(now.timestamp() * 1000),
+    })
+    result = _send_push_to_subscriptions(db, [subscription], data=data, ttl=300)
+    # Persist provider-expired registrations even when the attempt fails.
+    db.commit()
+    if result != "sent":
+        raise HTTPException(status_code=502, detail="Nao foi possivel enviar o teste. Reative este dispositivo e tente novamente em um minuto.")
+    return WebPushTestRead(accepted=True, message=(
+        "Teste aceito pelo provedor. Confira a notificacao neste aparelho; o envio nao confirma a exibicao do balao. Aguarde um minuto para repetir."
+    ))
 
 
 def _active_recipients(db: Session, task: Task) -> list[User]:

@@ -56,6 +56,11 @@ class WebPushSubscriptionStatus(BaseModel):
     message: str
 
 
+class WebPushTestRead(BaseModel):
+    accepted: bool
+    message: str
+
+
 class ReminderProcessResult(BaseModel):
     scanned: int = 0
     created: int = 0

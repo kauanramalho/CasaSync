@@ -161,3 +161,52 @@ Arquivos alterados: `.env.example`, `.github/workflows/reminders.yml`,
 `backend/tests/test_push_security.py`, `frontend/src/services/api.js`,
 `frontend/src/pages/Settings.jsx`, `backend/alembic/env.py`,
 `backend/tests/test_migrations.py` e este documento. Sem migracao de banco.
+
+## Teste direto por dispositivo — 2026-10-09
+
+- A captura Android enviada pelo usuario mostra permissao `permitida`, mas a
+  tela pede `Ativar neste dispositivo`: registro para a conta/familia atual nao
+  confirmado. Permissao do sistema nao equivale a inscricao ativa no servidor.
+- Novo botao `Testar notificacao` em Configuracoes > Notificacoes, disponivel
+  depois da ativacao. `POST /api/notifications/push-subscriptions/test` exige
+  usuario autenticado, membro da familia ativa, opt-in, feature flag/VAPID e
+  inscricao ativa com endpoint e ambas as chaves correspondentes.
+- Somente essa inscricao recebe um payload fixo, sem dados de tarefas ou familia.
+  Nao cria tarefas, notificacoes internas nem modifica preferencias. Usa o mesmo
+  transporte seguro dos lembretes, timeout 20 s, TTL 300 s e urgencia alta.
+- Limite de uma tentativa por conta/minuto, inclusive tentativas com falha,
+  usando o limitador em memoria existente. Vale por processo; escala horizontal
+  ou reinicio requerem revisao desse limite. Tag por minuto substitui duplicatas
+  no aparelho. Nao promete exatamente um envio em falhas de rede/reinicio.
+- Aceitacao do provedor nao prova exibicao: mensagem da tela deixa essa diferenca
+  explicita. Inscricoes expiradas (404/410) sao desativadas; erros nao divulgam
+  respostas, endpoints ou credenciais. Testar nao reinscreve outros aparelhos.
+- Backend: 228 testes aprovados (13 novos), Ruff F821/F823/F401 aprovado.
+  Frontend: dois testes novos exercitam POST autenticado/familia, resposta de
+  aceitacao e falhas 409/429/502 sem reenvio automatico; lint e build aprovados.
+- Recepcao Android ainda depende de ativar e confirmar o alerta no aparelho.
+  Teste direto pode chegar com app em primeiro plano: depois, testar um lembrete
+  futuro com o app em segundo plano para validar a entrega pelo agendador.
+- iOS fisico pendente: usuario informou nao ter iPhone disponivel agora. Nao
+  considerar simulacao de layout ou teste Windows como validacao de Web Push iOS.
+- Nenhum pagamento, plano ou recurso pago novo necessario para esta mudanca.
+
+Comandos adicionais (PowerShell):
+
+```powershell
+Set-Location backend
+.venv/Scripts/python.exe -m unittest tests.test_push_device_test tests.test_push_security tests.test_notifications tests.test_reminder_scheduler
+uvx --offline ruff check app/routes/notifications.py app/schemas/notification.py app/services/notification_service.py tests/test_push_device_test.py --select F821,F823,F401
+Set-Location ../frontend
+node --test tests/*.test.mjs
+npm.cmd run lint
+$env:VITE_API_URL='https://casasync-api.onrender.com/api'
+npm.cmd run build
+```
+
+Arquivos desta mudanca: `backend/app/schemas/notification.py`,
+`backend/app/services/notification_service.py`, `backend/app/routes/notifications.py`,
+`backend/tests/test_push_device_test.py`, `frontend/src/services/api.js`,
+`frontend/src/pages/Settings.jsx`, `frontend/tests/pushDeviceApi.test.mjs` e este
+documento. Rollback: reverter o commit desta mudanca e republicar; sem migracao
+ou alteracao de dados existentes (exceto desativacao segura de inscricao expirada).

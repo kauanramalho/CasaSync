@@ -15,6 +15,7 @@ from app.schemas.notification import (
     ReminderProcessResult,
     WebPushSubscriptionIn,
     WebPushSubscriptionStatus,
+    WebPushTestRead,
 )
 from app.services.notification_service import (
     clear_user_notifications,
@@ -26,6 +27,7 @@ from app.services.notification_service import (
     mark_notification_read,
     process_due_task_reminders,
     save_web_push_subscription,
+    send_device_test_push,
     update_notification_preferences,
 )
 
@@ -159,6 +161,16 @@ def device_push_status(
         "Dispositivo registrado para lembretes desta familia." if enabled
         else "Ative este dispositivo para receber lembretes desta familia."
     ))
+
+
+@router.post("/push-subscriptions/test", response_model=WebPushTestRead)
+def test_device_push(
+    payload: WebPushSubscriptionIn,
+    current_user: User = Depends(get_current_user),
+    family_id: str = Depends(get_family_id),
+    db: Session = Depends(get_db),
+):
+    return send_device_test_push(db, user=current_user, family_id=family_id, payload=payload)
 
 
 @router.post("/push-subscriptions", response_model=WebPushSubscriptionStatus)
