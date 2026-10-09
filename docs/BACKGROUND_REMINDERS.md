@@ -1,10 +1,85 @@
 # Agendador de lembretes em segundo plano
 
-O workflow `.github/workflows/reminders.yml` chama a API oficial a cada cinco
+O workflow `.github/workflows/reminders.yml` solicita execucoes a cada cinco
 minutos (minutos 2, 7, 12, ... 57, UTC), independentemente de uma aba aberta.
+Isso e a configuracao, nao uma garantia da frequencia realmente executada.
 O GitHub Actions usa um runner Linux padrao: gratuito enquanto este repositorio
 continuar publico. Nao cria Cron pago, worker, banco, armazenamento ou plano novo.
 Nao ha um pagamento avulso necessario para ativar este agendador.
+
+## Eventos reais e destinatarios — 2026-10-09
+
+- Criacao manual, sugestoes revisadas de IA, planner e automacao usam o mesmo
+  service: uma notificacao `task_created` por membro ativo da familia, inclusive
+  o criador e quem nao e responsavel pela tarefa. Nao ha um segundo aviso de
+  atribuicao na criacao. Novas atribuicoes na edicao continuam separadas.
+- A intencao de push e persistida na transacao da tarefa. Rotas registram um
+  BackgroundTask com nova sessao depois da resposta; falha externa nao transforma
+  uma tarefa ja salva em erro de criacao. Agendador/polling drenam o saldo pendente.
+- Lembretes existentes e legados passam a notificar os membros ativos da mesma
+  familia. Opt-in individual, dispositivos registrados para essa familia e flags
+  continuam obrigatorios para push. Email preserva sua preferencia separada.
+- Um alerta `overdue` avisa uma vez quando o prazo vence, mesmo sem lembrete
+  antecipado. Processamento recupera prazos das ultimas 24 horas, nao todo o
+  historico. Tarefas concluidas, arquivadas, sem prazo, familias sem usuarios
+  ativos e tarefas cujo criador saiu da familia nao geram esse alerta.
+- A limpeza da central remove texto/visibilidade, preservando chaves de evento
+  para impedir reenvio do prazo vencido. As notificacoes de outras contas ou
+  familias nao sao afetadas. Essas chaves somem com a exclusao em cascata da
+  tarefa/conta/familia; nao foi adicionada coluna ou migracao.
+- Falha de push pode ter uma segunda tentativa, apos pelo menos um minuto, com
+  a mesma tag. Depois falha terminal: nada de retry infinito. Eventos pendentes
+  com mais de 24 horas ou invalidos por conclusao, arquivamento, remarcacao de
+  prazo/lembrete, saida da familia ou opt-out sao descartados. Aceitacao parcial
+  entre varios aparelhos continua sem garantia de entrega em todos eles.
+- Payload e central identificam o criador, titulo, prazo, responsaveis e
+  prioridade. Nao incluem descricao privada completa, anexos ou credenciais.
+  UTF-8 evita inflar nomes/titulos com emoji alem do limite de Web Push.
+- Fotos opcionais sao somente uploads de avatar existentes, pertencentes ao
+  criador ainda membro, no endpoint HTTPS oficial. Nada de URL arbitraria,
+  SVG/data URL, query com token ou fetch de terceiros. App icon e badge ficam
+  preservados; foto usa `image`, cuja exibicao/posicao depende do navegador/OS
+  ([MDN](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration/showNotification)).
+- Aviso local de criacao foi removido de NewTask para nao duplicar o evento do
+  servidor. A central recebe nome/foto opcionais, compativeis com registros antigos.
+
+### Evidencia e limite do agendador
+
+Usuario confirmou que o Android recebeu o teste e agora mostrou o icone correto.
+Isso nao valida todos os eventos reais. Execucao automatica
+[37902538857](https://github.com/kauanramalho/CasaSync/actions/runs/37902538857),
+09/10/2026 08:02 UTC, completou com `scanned=1`, `created=1`, `push_sent=1`,
+`push_failed=0` no codigo anterior. A consulta posterior ainda mostrou esse como
+ultimo `schedule`, apesar da configuracao de cinco minutos. Nao anunciar cadencia
+real comprovada. GitHub documenta atrasos e possibilidade de descarte
+([fonte oficial](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)).
+Trocar de infraestrutura exige respeitar o teto de US$1 mensal autorizado:
+o minimo de um Cron Render nao e um teto de gastos. Nenhum recurso pago novo
+foi criado nesta correcao. Validacao fisica de iOS segue pendente sem aparelho.
+
+### Qualidade e rollback desta correcao
+
+PowerShell na raiz do repositorio canonico:
+
+```powershell
+Set-Location backend
+.venv/Scripts/python.exe -m unittest discover -s tests
+uvx --offline ruff check app/services/notification_service.py app/services/task_service.py app/routes/tasks.py app/routes/planner.py app/routes/automation.py app/models/notification.py app/schemas/notification.py tests/test_task_event_notifications.py tests/test_multi_family_context.py --select F821,F823,F401
+Set-Location ../frontend
+node --test tests/*.test.mjs
+npm.cmd run lint
+$env:VITE_API_URL='https://casasync-api.onrender.com/api'
+npm.cmd run build
+Set-Location ..
+git diff --check
+```
+
+Testes cobrem ambos os criadores, destinatario nao responsavel, isolamento,
+opt-out, multiplos lembretes, prazos, idempotencia apos limpar a central,
+conclusao/arquivamento, remarcacao, retry limitado e tags estaveis, fotos de
+origem/ownership validos, budget UTF-8, background com sessao propria e lock.
+Rollback: reverter o commit desta correcao e republicar backend/frontend juntos;
+sem migracao. Nao resetar `sent` em massa nem reenviar o historico.
 
 ## Configuracao
 

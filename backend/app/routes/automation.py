@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, get_family_id
 from app.database.session import get_db
 from app.models.user import User
+from app.services.notification_service import deliver_task_events_in_background
 from app.schemas.automation import (
     AutomationTaskInput,
     AutomationTaskOperationResponse,
@@ -25,21 +26,27 @@ router = APIRouter(prefix="/automation", tags=["automation"])
 @router.post("/tasks", response_model=AutomationTasksResponse, status_code=201)
 def create_tasks(
     payload: list[AutomationTaskInput],
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     family_id: str = Depends(get_family_id),
     db: Session = Depends(get_db),
 ):
-    return create_automation_tasks(db, family_id, current_user.id, payload)
+    result = create_automation_tasks(db, family_id, current_user.id, payload)
+    background_tasks.add_task(deliver_task_events_in_background, family_id)
+    return result
 
 
 @router.post("/appointments", response_model=AutomationTasksResponse, status_code=201)
 def create_appointments(
     payload: list[AutomationTaskInput],
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     family_id: str = Depends(get_family_id),
     db: Session = Depends(get_db),
 ):
-    return create_automation_tasks(db, family_id, current_user.id, payload)
+    result = create_automation_tasks(db, family_id, current_user.id, payload)
+    background_tasks.add_task(deliver_task_events_in_background, family_id)
+    return result
 
 
 @router.patch("/tasks/{task_id}", response_model=AutomationTaskOperationResponse)

@@ -12,7 +12,7 @@ from app.models.user import User
 from app.schemas.task import TaskCreate, TaskUpdate
 from app.services.category_service import get_category_by_name
 from app.services.family_service import require_family_member
-from app.services.notification_service import create_task_assignment_notifications
+from app.services.notification_service import create_task_assignment_notifications, create_task_created_notifications
 from app.services.ranking_service import record_task_score, revoke_task_score
 from app.services.retention_service import maintain_task_retention
 from app.services.task_attachment_service import collect_attachment_file_paths, delete_attachment_paths
@@ -409,13 +409,7 @@ def create_task(db: Session, family_id: str, creator_id: str, payload: TaskCreat
     else:
         task.status = payload.status.value
 
-    create_task_assignment_notifications(
-        db,
-        task=task,
-        assignee_ids=assignee_ids,
-        actor_id=creator_id,
-        event_key="created",
-    )
+    create_task_created_notifications(db, task=task)
 
     db.commit()
     return get_task(db, family_id, task.id)

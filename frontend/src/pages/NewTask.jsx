@@ -12,18 +12,16 @@ import SelectMenu from "../components/SelectMenu";
 import TaskAttachmentField from "../components/TaskAttachmentField";
 import TaskReminderFields from "../components/TaskReminderFields";
 import { useAuth } from "../hooks/useAuth";
-import { useNotifications } from "../hooks/useNotifications";
 import { useToast } from "../hooks/useToast";
 import { categoriesApi, familiesApi, integrationsApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
 import { normalizeApiError, toIsoOrNull } from "../utils/formatters";
 import { hasGoogleCalendarDateTime, syncTaskToGoogleCalendarSafely } from "../utils/googleCalendarTasks";
 import { applyTaskAttachmentChanges } from "../utils/taskAttachments";
-import { formatReminderList, getReminderPayload, getReminderValidationError, normalizeReminderList } from "../utils/taskReminders";
+import { getReminderPayload, getReminderValidationError } from "../utils/taskReminders";
 
 export default function NewTask() {
   const { user } = useAuth();
-  const { addNotification } = useNotifications();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const [categories, setCategories] = useState([]);
@@ -131,18 +129,7 @@ export default function NewTask() {
           }
         }
       }
-      const reminderSummary = formatReminderList(normalizeReminderList(created));
-      const notificationDescription = reminderSummary
-        ? `Lembrete ativado para ${reminderSummary}.`
-        : pendingFiles.length
-          ? `${created.title} entrou na lista da casa com anexo.`
-          : `${created.title} entrou na lista da casa.`;
-      addNotification({
-        title: "Nova tarefa criada",
-        description: notificationDescription,
-        type: reminderSummary ? "reminder" : "task",
-        actor: user?.name
-      });
+      // The canonical family notification is persisted by the backend.
       showToast({
         type: "success",
         message: calendarMessage ? `Tarefa criada com sucesso. ${calendarMessage}` : "Tarefa criada com sucesso."

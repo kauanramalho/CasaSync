@@ -18,6 +18,8 @@ const notificationTone = {
   reopened: "bg-orange-50 text-orange-600",
   reminder: "bg-blue-50 text-blue-600",
   task_assigned: "bg-violet-50 text-violet-600",
+  task_created: "bg-violet-50 text-violet-600",
+  overdue: "bg-orange-50 text-orange-600",
   couple: "bg-rose-50 text-blush",
   info: "bg-slate-100 text-muted"
 };
@@ -28,6 +30,8 @@ const notificationLabels = {
   reopened: "Reaberta",
   reminder: "Lembrete",
   task_assigned: "Nova tarefa",
+  task_created: "Nova tarefa",
+  overdue: "Prazo vencido",
   couple: "Casal",
   info: "Info"
 };
@@ -221,6 +225,7 @@ export default function PageHeader({ title, subtitle, action, user }) {
                       className={`w-full rounded-2xl px-3 py-3 text-left transition hover:bg-white/70 ${item.read ? "" : "theme-surface-soft"}`}
                     >
                       <div className="flex items-start gap-3">
+                        {item.creator_name && <Avatar user={{ name: item.creator_name, avatar_url: item.creator_avatar_url }} size="sm" />}
                         <span className={`mt-1 h-2.5 w-2.5 rounded-full ${item.read ? "bg-slate-200" : "bg-blush"}`} />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">

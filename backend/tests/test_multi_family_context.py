@@ -2,7 +2,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -278,6 +278,7 @@ class MultiFamilyContextTest(unittest.TestCase):
         with patch("app.routes.tasks.import_task_suggestions", return_value=expected) as import_service:
             result = import_suggestions_route(
                 payload=payload,
+                background_tasks=BackgroundTasks(),
                 current_user=self.user,
                 family_id=self.family_b.id,
                 db=self.db,

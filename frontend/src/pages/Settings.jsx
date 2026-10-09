@@ -623,7 +623,7 @@ export default function Settings() {
               <div className="rounded-2xl bg-white/75 px-4 py-4">
                 <p className="font-semibold text-ink">Barra de notificacoes</p>
                 <p className="mt-1 text-sm text-muted">
-                  Os lembretes internos sao gerados pelo backend e aparecem no sino do CasaSync quando a tarefa chega na hora configurada.
+                  Novas tarefas, lembretes nos horarios configurados e prazos vencidos aparecem no sino para os membros da familia. Tarefas concluidas ou arquivadas nao geram novos alertas de prazo.
                 </p>
               </div>
               <Button variant="secondary" onClick={runReminderCheck} disabled={notificationBusy === "reminders"}>
@@ -676,7 +676,8 @@ export default function Settings() {
               <p>Permissao do navegador: {getNotificationPermissionLabel(pushPermission)}.</p>
               <p>{devicePushEnabled ? "Dispositivo registrado para a familia ativa." : "Este dispositivo ainda nao esta registrado para a familia ativa. A permissao do navegador, sozinha, nao ativa os lembretes: toque em Ativar neste dispositivo."}</p>
               {devicePushEnabled && <p>Use Testar notificacao para enviar um alerta somente a este aparelho, sem criar tarefas nem avisar outros membros. Depois, confira a central de notificacoes do telefone.</p>}
-              <p>Alertas em segundo plano dependem do Web Push ativo, de um lembrete configurado e da permissão deste dispositivo. No iPhone/iPad, adicione o CasaSync à Tela de Início e ative as notificações dentro do app instalado (iOS/iPadOS 16.4 ou superior).</p>
+              <p>Este dispositivo recebe novas tarefas da familia, os lembretes escolhidos na tarefa e um aviso quando o prazo vence, inclusive de tarefas de outros membros. Cada pessoa precisa ativar seus proprios aparelhos. O agendador gratuito pode atrasar os alertas de horario; nao ha garantia de envio no minuto exato.</p>
+              <p>A foto do criador pode aparecer no alerta expandido, conforme o suporte do telefone; o icone do CasaSync continua visivel. No iPhone/iPad, adicione o CasaSync à Tela de Início e ative as notificações dentro do app instalado (iOS/iPadOS 16.4 ou superior).</p>
               <p>O formato do balão e o som são controlados pelo telefone. Modo Foco, economia de bateria e permissões podem silenciar os alertas.</p>
               {!pushSupported && <p className="rounded-2xl bg-amber-50 px-4 py-3 font-semibold text-amber-700">Este navegador nao oferece suporte completo a Web Push.</p>}
               {pushPermission === "denied" && (

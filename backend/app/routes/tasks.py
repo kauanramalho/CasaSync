@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Body, Depends, File, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Query, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -19,6 +19,7 @@ from app.services.task_attachment_service import (
 from app.services.task_import_service import import_task_suggestions
 from app.services.task_service import complete_task, create_task, delete_task, get_task, list_due_reminder_tasks, list_tasks, update_task
 from app.services.calendar_service import delete_task_calendar_event
+from app.services.notification_service import deliver_task_events_in_background
 
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -39,11 +40,14 @@ def list_all(
 @router.post("", response_model=TaskRead, status_code=201)
 def create(
     payload: TaskCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     family_id: str = Depends(get_family_id),
     db: Session = Depends(get_db),
 ):
-    return create_task(db, family_id, current_user.id, payload)
+    task = create_task(db, family_id, current_user.id, payload)
+    background_tasks.add_task(deliver_task_events_in_background, family_id)
+    return task
 
 
 @router.get("/reminders/due", response_model=list[TaskRead])
@@ -54,12 +58,13 @@ def due_reminders(family_id: str = Depends(get_family_id), db: Session = Depends
 @router.post("/import-suggestions", response_model=TaskSuggestionsImportResponse)
 def import_suggestions(
     payload: TaskSuggestionsImportRequest,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     family_id: str = Depends(get_family_id),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    return import_task_suggestions(
+    result = import_task_suggestions(
         db,
         family_id=family_id,
         creator_id=current_user.id,
@@ -68,6 +73,8 @@ def import_suggestions(
         auto_create=payload.autoCreate,
         settings=settings,
     )
+    background_tasks.add_task(deliver_task_events_in_background, family_id)
+    return result
 
 
 @router.post("/{task_id}/attachments", response_model=TaskAttachmentRead, status_code=201)
@@ -117,8 +124,11 @@ def retrieve(task_id: str, family_id: str = Depends(get_family_id), db: Session 
 
 
 @router.patch("/{task_id}", response_model=TaskRead)
-def update(task_id: str, payload: TaskUpdate, family_id: str = Depends(get_family_id), db: Session = Depends(get_db)):
-    return update_task(db, family_id, task_id, payload)
+def update(task_id: str, payload: TaskUpdate, background_tasks: BackgroundTasks,
+           family_id: str = Depends(get_family_id), db: Session = Depends(get_db)):
+    task = update_task(db, family_id, task_id, payload)
+    background_tasks.add_task(deliver_task_events_in_background, family_id)
+    return task
 
 
 @router.post("/{task_id}/complete", response_model=TaskRead)

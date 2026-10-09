@@ -71,6 +71,17 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
+function safeNotificationAvatar(value) {
+  if (typeof value !== "string") return null;
+  try {
+    const url = new URL(value);
+    return url.origin === "https://casasync-api.onrender.com" && !url.username && !url.password && !url.search && !url.hash &&
+      /^\/api\/uploads\/images\/[0-9a-f-]{36}$/.test(url.pathname) ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 self.addEventListener("push", (event) => {
   let data = {};
   try {
@@ -92,6 +103,10 @@ self.addEventListener("push", (event) => {
     timestamp: data.timestamp || Date.now(),
     data: { url: data.url || "/", taskId: data.taskId || null }
   };
+  // The brand stays visible even if the optional creator photo cannot load.
+  // Android may show image only in the expanded alert; iOS may ignore it.
+  const avatar = safeNotificationAvatar(data.avatarUrl);
+  if (avatar) options.image = avatar;
 
   event.waitUntil(self.registration.showNotification(title, options));
 });

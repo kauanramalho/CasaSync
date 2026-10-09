@@ -18,6 +18,8 @@ class NotificationRead(ORMModel):
     read: bool
     created_at: datetime
     read_at: datetime | None = None
+    creator_name: str | None = None
+    creator_avatar_url: str | None = None
 
 
 class NotificationPreferencesUpdate(BaseModel):

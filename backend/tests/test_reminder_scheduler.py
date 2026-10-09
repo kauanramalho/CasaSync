@@ -96,7 +96,7 @@ class ScheduledDeliveryTest(unittest.TestCase):
         with patch("app.services.notification_service.send_task_reminder_push", return_value="sent") as sender:
             first = process_due_task_reminders(self.db)
             second = process_due_task_reminders(self.db)
-        self.assertEqual(first.created, 2)
+        self.assertEqual(first.created, 3)  # Both members of Casa, plus the other family's owner.
         self.assertEqual(first.push_sent, 1)
         self.assertEqual(second.created, 0)
         sender.assert_called_once()
@@ -109,7 +109,7 @@ class ScheduledDeliveryTest(unittest.TestCase):
         first = process_due_task_reminders(self.db, batch_limit=1)
         second = process_due_task_reminders(self.db, batch_limit=1)
         third = process_due_task_reminders(self.db, batch_limit=1)
-        self.assertEqual((first.created, second.created, third.created), (1, 1, 0))
+        self.assertEqual((first.created, second.created, third.created), (2, 2, 0))
         self.assertEqual((first.scanned, second.scanned, third.scanned), (1, 1, 0))
 
     def test_busy_delivery_lock_does_not_send_or_mark_pending_reminders(self):
@@ -119,7 +119,7 @@ class ScheduledDeliveryTest(unittest.TestCase):
             result = process_due_task_reminders(self.db)
         self.assertEqual(result.created, 0)
         self.assertFalse(task.reminder_sent)
-        self.assertEqual(process_due_task_reminders(self.db).created, 1)
+        self.assertEqual(process_due_task_reminders(self.db).created, 2)
 
     def test_elapsed_budget_preserves_pending_reminders(self):
         task = self.make_due()

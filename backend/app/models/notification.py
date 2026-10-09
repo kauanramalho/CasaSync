@@ -1,4 +1,5 @@
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy.orm import relationship
 
 from app.database.base import Base
 from app.models.base import TimestampMixin, UUIDPrimaryKeyMixin
@@ -21,6 +22,7 @@ class Notification(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     email_sent_at = Column(DateTime(timezone=True), nullable=True)
     push_status = Column(String(24), default="not_requested", nullable=False)
     push_sent_at = Column(DateTime(timezone=True), nullable=True)
+    task = relationship("Task", viewonly=True)
 
 
 class WebPushSubscription(Base, UUIDPrimaryKeyMixin, TimestampMixin):

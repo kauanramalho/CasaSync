@@ -1,10 +1,13 @@
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from time import monotonic
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import HTTPException, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import get_settings
@@ -13,13 +16,14 @@ from app.core.rate_limit import check_rate_limit
 from app.models.enums import TaskStatus
 from app.models.family import Family, FamilyMember
 from app.models.notification import Notification, WebPushSubscription
+from app.models.image_asset import ImageAsset
 from app.models.task import Task, TaskReminder
 from app.models.user import User
 from app.schemas.notification import ReminderProcessResult, WebPushSubscriptionIn, WebPushTestRead
 from app.services.email_service import send_task_reminder_email
 from app.services.family_service import require_family_member
 from app.services.reminder_lock import reminder_delivery_lock
-from app.services.task_metrics import get_task_assignee_ids, unique_user_ids
+from app.services.task_metrics import unique_user_ids
 logger = logging.getLogger(__name__)
 SAO_PAULO_FALLBACK_TZ = timezone(timedelta(hours=-3), name="America/Sao_Paulo")
 
@@ -42,7 +46,10 @@ def _format_due_date(value: datetime | None) -> str:
 
 def _notification_description(task: Task) -> str:
     due = _format_due_date(task.due_date)
-    return f"A tarefa {task.title} esta chegando{f' em {due}' if due else ''}. Abra o CasaSync para revisar."
+    creator = task.creator.name if task.creator else "Um membro da familia"
+    responsible = ", ".join(link.user.name[:40] for link in task.assignee_links[:3] if link.user)
+    return (f'{creator} criou "{task.title}". Prazo{f": {due}" if due else " nao definido"}.'
+            f'{f" Responsaveis: {responsible}." if responsible else ""} Prioridade: {task.priority}.')
 
 
 def _notification_title() -> str:
@@ -51,13 +58,23 @@ def _notification_title() -> str:
 
 def list_user_notifications(db: Session, *, family_id: str, user_id: str, limit: int = 80) -> list[Notification]:
     require_family_member(db, family_id, user_id)
-    return (
+    rows = (
         db.query(Notification)
-        .filter(Notification.family_id == family_id, Notification.user_id == user_id)
+        .options(selectinload(Notification.task).selectinload(Task.creator))
+        .filter(Notification.family_id == family_id, Notification.user_id == user_id, Notification.title != "")
         .order_by(Notification.created_at.desc())
         .limit(limit)
         .all()
     )
+    avatars = {}
+    for notification in rows:
+        task = notification.task
+        if task and task.family_id == family_id and notification.type in {"task_created", "reminder", "overdue"}:
+            if task.creator_id not in avatars:
+                avatars[task.creator_id] = _creator_avatar(db, task)
+            notification.creator_name = task.creator.name if task.creator else None
+            notification.creator_avatar_url = avatars[task.creator_id]
+    return rows
 
 
 def _get_user_notification(db: Session, *, family_id: str, user_id: str, notification_id: str) -> Notification:
@@ -100,10 +117,16 @@ def mark_all_notifications_read(db: Session, *, family_id: str, user_id: str) ->
 
 def clear_user_notifications(db: Session, *, family_id: str, user_id: str) -> int:
     require_family_member(db, family_id, user_id)
-    rows = db.query(Notification).filter(Notification.family_id == family_id, Notification.user_id == user_id).all()
+    rows = db.query(Notification).filter(Notification.family_id == family_id, Notification.user_id == user_id, Notification.title != "").all()
     count = len(rows)
     for notification in rows:
-        db.delete(notification)
+        # Keep event keys so clearing the inbox never re-sends a deadline alert.
+        notification.title = ""
+        notification.description = None
+        notification.read = True
+        notification.read_at = _utcnow()
+        if notification.push_status in {"pending", "retry"}:
+            notification.push_status = "skipped"
     if rows:
         db.commit()
     return count
@@ -192,7 +215,26 @@ def _get_device_push_subscription(db: Session, *, user_id: str, family_id: str,
     ).first()
 
 
-def _push_payload(task: Task, reminder_id: str | None = None) -> str:
+def _creator_avatar(db: Session, task: Task) -> str | None:
+    """Only existing, owned CasaSync avatar uploads; never third-party fetches."""
+    creator = task.creator
+    if not creator or not creator.is_active or not creator.avatar_url:
+        return None
+    if not db.query(FamilyMember.id).filter_by(family_id=task.family_id, user_id=creator.id).first():
+        return None
+    try:
+        url = urlsplit(creator.avatar_url)
+        match = re.fullmatch(r"/api/uploads/images/([0-9a-f-]{36})", url.path)
+        if (url.scheme != "https" or url.netloc != "casasync-api.onrender.com"
+                or url.query or url.fragment or not match):
+            return None
+        asset = db.query(ImageAsset.id).filter_by(id=match[1], owner_user_id=creator.id, scope="avatar").first()
+        return creator.avatar_url if asset else None
+    except ValueError:
+        return None
+
+
+def _push_payload(task: Task, reminder_id: str | None = None, *, avatar_url: str | None = None) -> str:
     return json.dumps(
         {
             "title": _notification_title(),
@@ -200,8 +242,9 @@ def _push_payload(task: Task, reminder_id: str | None = None) -> str:
             "url": "/tarefas",
             "tag": f"task-reminder-{task.id}-{reminder_id or 'legacy'}",
             "taskId": task.id,
+            "avatarUrl": avatar_url,
             "timestamp": int(_utcnow().timestamp() * 1000),
-        }
+        }, ensure_ascii=False,
     )
 
 
@@ -224,7 +267,7 @@ def send_task_reminder_push(db: Session, *, user_id: str, family_id: str, task: 
     if not subscriptions:
         return "no_subscription"
 
-    return _send_push_to_subscriptions(db, subscriptions, data=_push_payload(task, reminder_id))
+    return _send_push_to_subscriptions(db, subscriptions, data=_push_payload(task, reminder_id, avatar_url=_creator_avatar(db, task)))
 
 
 def _send_push_to_subscriptions(db: Session, subscriptions: list[WebPushSubscription],
@@ -299,19 +342,37 @@ def send_device_test_push(db: Session, *, user: User, family_id: str,
 
 
 def _active_recipients(db: Session, task: Task) -> list[User]:
-    candidate_ids = unique_user_ids([*get_task_assignee_ids(task), task.creator_id])
-    if not candidate_ids:
+    # A corrupt/legacy task must not broadcast across a family its creator left.
+    if not db.query(FamilyMember.id).filter_by(family_id=task.family_id, user_id=task.creator_id).first():
         return []
     return [
         member.user
         for member in (
             db.query(FamilyMember)
             .options(selectinload(FamilyMember.user))
-            .filter(FamilyMember.family_id == task.family_id, FamilyMember.user_id.in_(candidate_ids))
+            .filter(FamilyMember.family_id == task.family_id)
             .all()
         )
         if member.user and member.user.is_active
     ]
+
+
+def create_task_created_notifications(db: Session, *, task: Task) -> int:
+    """Persist event + push intent in the same transaction as task creation."""
+    if task.status == TaskStatus.DONE.value:
+        return 0
+    created = 0
+    for recipient in _active_recipients(db, task):
+        key = f"task-created:{task.family_id}:{task.id}:{recipient.id}"
+        if db.query(Notification.id).filter_by(dedupe_key=key).first():
+            continue
+        db.add(Notification(family_id=task.family_id, user_id=recipient.id, task_id=task.id,
+                            type="task_created", title=f"{task.creator.name[:100]} criou uma tarefa",
+                            description=_notification_description(task), dedupe_key=key,
+                            push_status="pending" if recipient.push_task_reminders_enabled else "skipped"))
+        created += 1
+    db.flush()
+    return created
 
 
 def create_task_assignment_notifications(
@@ -353,6 +414,7 @@ def create_task_assignment_notifications(
                 title="Nova tarefa para voce",
                 description=f'{actor_name} atribuiu "{task.title}" a voce.',
                 dedupe_key=dedupe_key,
+                push_status="pending" if recipient.push_task_reminders_enabled else "skipped",
             )
         )
         created += 1
@@ -398,8 +460,137 @@ def process_due_task_reminders(
         if not acquired:
             return ReminderProcessResult()
         deadline = monotonic() + max_duration_seconds if max_duration_seconds is not None else None
-        return _process_due_task_reminders(db, family_id=family_id, now=now,
-                                          batch_limit=batch_limit, deadline=deadline)
+        result = _process_due_task_reminders(db, family_id=family_id, now=now,
+                                            batch_limit=batch_limit, deadline=deadline)
+        overdue = _process_expired_tasks(db, family_id=family_id, now=now,
+                                        batch_limit=max(0, batch_limit - result.scanned), deadline=deadline)
+        _merge_result(result, overdue)
+        pending = _deliver_pending_task_push(db, family_id=family_id,
+                                            batch_limit=batch_limit, deadline=deadline, now=now)
+        _merge_result(result, pending)
+        return result
+
+
+def _merge_result(result: ReminderProcessResult, other: ReminderProcessResult) -> None:
+    for field in ReminderProcessResult.model_fields:
+        setattr(result, field, getattr(result, field) + getattr(other, field))
+
+
+def deliver_task_events_in_background(family_id: str) -> None:
+    """Fresh session after HTTP response; no provider delay in task creation."""
+    from app.database.session import SessionLocal
+
+    try:
+        with SessionLocal() as db, reminder_delivery_lock(db) as acquired:
+            if acquired:
+                _deliver_pending_task_push(db, family_id=family_id, batch_limit=25,
+                                           deadline=monotonic() + 45)
+    except Exception as exc:
+        # Durable pending events can be picked up by the scheduler after a crash.
+        logger.warning("Task event dispatch failed error_type=%s", type(exc).__name__)
+
+
+def _deliver_pending_task_push(db: Session, *, family_id: str | None = None,
+                               batch_limit: int = 25, deadline: float | None = None,
+                               now: datetime | None = None) -> ReminderProcessResult:
+    result = ReminderProcessResult()
+    query = db.query(Notification).filter(
+        Notification.type.in_(["task_created", "task_assigned", "overdue", "reminder"]),
+        or_(Notification.push_status == "pending",
+            (Notification.push_status == "retry") & (Notification.updated_at <= _utcnow() - timedelta(minutes=1))),
+    )
+    if family_id:
+        query = query.filter(Notification.family_id == family_id)
+    for notification in query.order_by(Notification.created_at).limit(batch_limit).all():
+        if deadline is not None and monotonic() >= deadline:
+            break
+        task = db.get(Task, notification.task_id)
+        user = db.get(User, notification.user_id)
+        created_at = notification.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        if (not task or task.family_id != notification.family_id or task.archived_at
+                or task.status == TaskStatus.DONE.value or not user or not user.is_active
+                or not user.push_task_reminders_enabled
+                or not db.query(FamilyMember.id).filter_by(family_id=notification.family_id, user_id=user.id).first()
+                or not _active_recipients(db, task)
+                or created_at < _utcnow() - timedelta(days=1)):
+            notification.push_status = "skipped"
+            result.push_skipped += 1
+            db.commit()
+            continue
+        current_time = now or _utcnow()
+        if notification.type == "overdue":
+            due = task.due_date
+            aware_due = due.replace(tzinfo=timezone.utc) if due and due.tzinfo is None else due
+            if not due or aware_due > current_time or f":{due.isoformat()}:" not in notification.dedupe_key:
+                notification.push_status = "skipped"
+                result.push_skipped += 1
+                db.commit()
+                continue
+        if notification.type == "reminder":
+            dates = [r.reminder_at for r in task.reminders] or ([task.reminder_at] if task.reminder_at else [])
+            if not any(f":{date.isoformat()}:" in notification.dedupe_key for date in dates):
+                notification.push_status = "skipped"
+                result.push_skipped += 1
+                db.commit()
+                continue
+        previous_status = notification.push_status
+        data = json.loads(_push_payload(task, notification.id, avatar_url=_creator_avatar(db, task)))
+        data.update(title=notification.title, body=notification.description)
+        if notification.type != "reminder":
+            data["tag"] = f"casasync-event-{notification.id}"
+        settings = get_settings()
+        subscriptions = db.query(WebPushSubscription).filter_by(
+            user_id=user.id, family_id=notification.family_id, is_active=True).all()
+        try:
+            status_value = ("disabled" if not settings.web_push_enabled else
+                            "not_configured" if not settings.web_push_configured else
+                            "no_subscription" if not subscriptions else
+                            _send_push_to_subscriptions(db, subscriptions, data=json.dumps(data, ensure_ascii=False)))
+        except Exception:
+            status_value = "failed"
+        _record_push(notification, status_value, result)
+        if notification.push_status == "failed" and previous_status == "pending":
+            notification.push_status = "retry"
+        db.commit()
+    return result
+
+
+def _process_expired_tasks(db: Session, *, family_id: str | None, now: datetime | None,
+                           batch_limit: int, deadline: float | None) -> ReminderProcessResult:
+    """One deadline event per task/family. Catch up one day, not years of history."""
+    current_time = now or _utcnow()
+    already_warned = db.query(Notification.id).filter(
+        Notification.task_id == Task.id, Notification.family_id == Task.family_id,
+        Notification.type == "overdue", Notification.created_at >= Task.due_date,
+    ).exists()
+    query = db.query(Task).filter(Task.due_date <= current_time,
+        Task.due_date >= current_time - timedelta(days=1), Task.archived_at.is_(None),
+        Task.status != TaskStatus.DONE.value, ~already_warned,
+        db.query(FamilyMember.id).filter(FamilyMember.family_id == Task.family_id,
+                                        FamilyMember.user_id == Task.creator_id).exists(),
+        db.query(FamilyMember.id).join(User, User.id == FamilyMember.user_id).filter(
+            FamilyMember.family_id == Task.family_id, User.is_active.is_(True)).exists())
+    if family_id:
+        query = query.filter(Task.family_id == family_id)
+    result = ReminderProcessResult()
+    for task in query.order_by(Task.due_date).limit(batch_limit).all():
+        if deadline is not None and monotonic() >= deadline:
+            break
+        result.scanned += 1
+        for recipient in _active_recipients(db, task):
+            key = f"task-overdue:{task.family_id}:{task.id}:{task.due_date.isoformat()}:{recipient.id}"
+            if db.query(Notification.id).filter_by(dedupe_key=key).first():
+                continue
+            db.add(Notification(family_id=task.family_id, user_id=recipient.id, task_id=task.id,
+                                type="overdue", title="Prazo da tarefa venceu",
+                                description=_notification_description(task), dedupe_key=key,
+                                created_at=current_time,
+                                push_status="pending" if recipient.push_task_reminders_enabled else "skipped"))
+            result.created += 1
+        db.commit()
+    return result
 
 
 def _process_due_task_reminders(
@@ -491,13 +682,15 @@ def _process_due_task_reminders(
 
             try:
                 push_status = (
-                    send_task_reminder_push(db, user_id=recipient.id, family_id=task.family_id, task=task, reminder_id=reminder.id)
+                    send_task_reminder_push(db, user_id=recipient.id, family_id=task.family_id, task=task, reminder_id=notification.id)
                     if recipient.push_task_reminders_enabled
                     else "not_requested"
                 )
             except Exception:
                 push_status = "failed"
             _record_push(notification, push_status, result)
+            if notification.push_status == "failed":
+                notification.push_status = "retry"
 
         reminder.sent = True
         task.reminder_sent = all(item.sent for item in task.reminders)
@@ -584,13 +777,15 @@ def _process_due_task_reminders_legacy(
 
             try:
                 push_status = (
-                    send_task_reminder_push(db, user_id=recipient.id, family_id=task.family_id, task=task)
+                    send_task_reminder_push(db, user_id=recipient.id, family_id=task.family_id, task=task, reminder_id=notification.id)
                     if recipient.push_task_reminders_enabled
                     else "not_requested"
                 )
             except Exception:
                 push_status = "failed"
             _record_push(notification, push_status, result)
+            if notification.push_status == "failed":
+                notification.push_status = "retry"
 
         task.reminder_sent = True
         db.add(task)

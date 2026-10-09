@@ -73,7 +73,7 @@ class NotificationFlowTest(unittest.TestCase):
     def reminder_notifications(self):
         return self.db.query(Notification).filter(Notification.type == "reminder").all()
 
-    def test_assignment_notifies_only_other_family_assignee(self):
+    def test_creation_notifies_family_even_members_not_assigned(self):
         task = create_task(
             self.db,
             self.family.id,
@@ -81,9 +81,10 @@ class NotificationFlowTest(unittest.TestCase):
             TaskCreate(title="Comprar mantimentos", assignee_ids=[self.creator.id, self.assignee.id]),
         )
 
-        notifications = self.assignment_notifications()
-        self.assertEqual(len(notifications), 1)
-        self.assertEqual(notifications[0].user_id, self.assignee.id)
+        notifications = self.db.query(Notification).filter_by(type="task_created").all()
+        self.assertEqual(len(notifications), 2)
+        self.assertEqual({n.user_id for n in notifications}, {self.creator.id, self.assignee.id})
+        self.assertEqual(self.assignment_notifications(), [])
         self.assertEqual(notifications[0].family_id, self.family.id)
         self.assertEqual(notifications[0].task_id, task.id)
         self.assertIn(task.title, notifications[0].description)
@@ -152,7 +153,7 @@ class NotificationFlowTest(unittest.TestCase):
         reopened = complete_task(self.db, self.family.id, task.id)
         self.assertFalse(reopened.reminders[0].sent)
         result = process_due_task_reminders(self.db, family_id=self.family.id, now=reference + timedelta(hours=2, minutes=1))
-        self.assertEqual(result.created, 1)
+        self.assertEqual(result.created, 2)
 
         deletable = create_task(
             self.db,
@@ -166,7 +167,8 @@ class NotificationFlowTest(unittest.TestCase):
         )
         delete_task(self.db, self.family.id, deletable.id)
         after_delete = process_due_task_reminders(self.db, family_id=self.family.id, now=reference + timedelta(hours=3, minutes=1))
-        self.assertEqual(after_delete.created, 0)
+        self.assertEqual(after_delete.created, 2)  # Original reopened task reached its deadline.
+        self.assertFalse(self.db.query(Notification).filter_by(task_id=deletable.id, type="reminder").first())
 
     def test_task_without_date_and_multiple_device_subscription_fallback(self):
         task = create_task(self.db, self.family.id, self.creator.id, TaskCreate(title="Sem data"))

@@ -89,3 +89,25 @@ test("worker upgrade cleans only old CasaSync cache without touching other apps"
   await worker.dispatch("activate");
   assert.deepEqual(worker.removed, ["casasync-static-v2"]);
 });
+
+test("creator photo is optional while the app icon and Android badge stay intact", async () => {
+  const worker = workerHarness();
+  const avatar = "https://casasync-api.onrender.com/api/uploads/images/a1234567-1234-1234-1234-123456789abc";
+  await worker.dispatch("push", { data: { json: () => ({ title: "Synthetic creator", avatarUrl: avatar }) } });
+  assert.equal(worker.notifications[0].options.image, avatar);
+  assert.equal(worker.notifications[0].options.icon, "/icons/icon-192.png?v=20261008");
+  assert.equal(worker.notifications[0].options.badge, badgePath);
+});
+
+test("untrusted avatar URLs cannot make the worker fetch arbitrary images or credentials", async () => {
+  const worker = workerHarness();
+  const base = "https://casasync-api.onrender.com/api/uploads/images/a1234567-1234-1234-1234-123456789abc";
+  for (const avatarUrl of ["https://tracker.example/image.png", "data:image/svg+xml,evil", "javascript:evil", base + "?token=no",
+    base + "#token", base.replace("https://", "http://"), base.replace("casasync-api", "user:password@casasync-api"), base.replace("/images/", "/private/"), 42]) {
+    await worker.dispatch("push", { data: { json: () => ({ avatarUrl }) } });
+  }
+  for (const { options } of worker.notifications) {
+    assert.equal(options.image, undefined);
+    assert.equal(options.icon, "/icons/icon-192.png?v=20261008");
+  }
+});
