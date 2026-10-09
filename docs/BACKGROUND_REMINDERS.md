@@ -123,9 +123,36 @@ Fontes: [GitHub Actions billing](https://docs.github.com/en/billing/concepts/pro
   Orientado a ativar Chrome/banners nas configuracoes do sistema; nao houve
   alteracao automatica dessas preferencias. Exibicao visual continua pendente.
   O usuario confirmou que estavam desativadas e informou que as ativou;
-  reteste apos essa mudanca deve ser registrado separadamente.
+  reteste [37874902020](https://github.com/kauanramalho/CasaSync/actions/runs/37874902020)
+  enviou um push sem falha, e o usuario confirmou: "Apareceu sim".
+- Correcao da validade zero: commit `ea8b1e2`, Render `dep-db454a9srm7s738a8io0`
+  LIVE e Vercel `dpl_EHBQetuxywNjna4Ai6CksMuVWGNm` READY. Backend completo:
+  `.venv/Scripts/python.exe -m unittest discover -s tests -v`: 215 testes OK;
+  Ruff F821/F823/F401 aprovado. Teste automatizado verifica TTL, urgencia e timeout.
+  A chamada [37875349346](https://github.com/kauanramalho/CasaSync/actions/runs/37875349346)
+  confirmou execucao sem erros, mas nao tinha lembretes pendentes; nao comprova
+  entrega a dispositivo offline. O teste Windows confirmado acima precede TTL.
+- Android: usuario informa permissoes ativas e ausencia de balao. Solicitada tela
+  Configuracoes > Notificacoes para conferir registro da conta/familia; nao
+  concluir causa sem essa evidencia. iOS tambem permanece na lista de validacao
+  fisica, mediante iPhone disponivel e PWA instalado. Nao anunciar "100%".
 - Workflow ativo e schedule configurado; evento automatico `schedule` ainda nao
   observado nesta sessao. Os testes acima foram `workflow_dispatch`, nao cron.
+
+Comandos de qualidade (PowerShell, caminhos relativos ao repositorio):
+
+```powershell
+Set-Location backend
+.venv/Scripts/python.exe -m unittest discover -s tests -v
+uvx --offline ruff check app/routes/notifications.py app/services/notification_service.py tests/test_push_security.py tests/test_migrations.py alembic/env.py --select F821,F823,F401
+Set-Location ../frontend
+node --test tests/*.test.mjs
+npm.cmd run lint
+$env:VITE_API_URL='https://casasync-api.onrender.com/api'
+npm.cmd run build
+Set-Location ..
+git diff --check
+```
 
 Arquivos alterados: `.env.example`, `.github/workflows/reminders.yml`,
 `backend/reminder_scheduler.py`, `backend/app/core/config.py`,
