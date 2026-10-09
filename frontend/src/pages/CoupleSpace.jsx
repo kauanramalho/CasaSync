@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarHeart,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   ExternalLink,
   Heart,
@@ -73,6 +74,28 @@ function formatTime(value) {
   }).format(date);
 }
 
+function CreationSection({ title, icon: Icon, sectionRef, children }) {
+  return (
+    <Card className="!p-0">
+      <details ref={sectionRef} className="group" data-couple-create>
+        <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 rounded-[24px] px-4 py-3 font-bold text-ink focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blush/30 sm:px-5 [&::-webkit-details-marker]:hidden">
+          <Icon className="h-5 w-5 shrink-0 text-blush" aria-hidden="true" />
+          <span>{title}</span>
+          <ChevronDown className="ml-auto h-5 w-5 shrink-0 transition group-open:rotate-180" aria-hidden="true" />
+        </summary>
+        <div className="border-t border-slate-100 p-4 sm:p-5">{children}</div>
+      </details>
+    </Card>
+  );
+}
+
+function closeCreation(sectionRef) {
+  const section = sectionRef.current;
+  if (!section) return;
+  section.open = false;
+  section.querySelector("summary")?.focus();
+}
+
 export default function CoupleSpace() {
   const { user } = useAuth();
   const { addNotification } = useNotifications();
@@ -85,7 +108,24 @@ export default function CoupleSpace() {
   const [activeNotePalette, setActiveNotePalette] = useState("pastel");
   const [editingNote, setEditingNote] = useState(null);
   const [error, setError] = useState("");
+  const [savingCreators, setSavingCreators] = useState({ goal: false, date: false, note: false });
+  const creatingRef = useRef(new Set());
+  const goalSectionRef = useRef(null);
+  const dateSectionRef = useRef(null);
+  const noteSectionRef = useRef(null);
   const dateImageRef = useRef(null);
+
+  function beginCreation(kind) {
+    if (creatingRef.current.has(kind)) return false;
+    creatingRef.current.add(kind);
+    setSavingCreators((current) => ({ ...current, [kind]: true }));
+    return true;
+  }
+
+  function finishCreation(kind) {
+    creatingRef.current.delete(kind);
+    setSavingCreators((current) => ({ ...current, [kind]: false }));
+  }
 
   const showOperationError = useCallback((err) => {
     const message = normalizeApiError(err);
@@ -132,6 +172,7 @@ export default function CoupleSpace() {
 
   async function createGoal(event) {
     event.preventDefault();
+    if (!beginCreation("goal")) return;
     setError("");
     try {
       await coupleApi.createGoal({
@@ -142,10 +183,13 @@ export default function CoupleSpace() {
       addNotification({ title: "Nova meta do casal", description: `${goalForm.title} entrou no cantinho de metas.`, type: "couple", actor: user?.name });
       showToast({ type: "success", message: "Meta do casal criada com sucesso." });
       setGoalForm(initialGoal);
+      closeCreation(goalSectionRef);
       emitAppDataChanged();
       load();
     } catch (err) {
       showOperationError(err);
+    } finally {
+      finishCreation("goal");
     }
   }
 
@@ -175,6 +219,7 @@ export default function CoupleSpace() {
 
   async function createDateIdea(event) {
     event.preventDefault();
+    if (!beginCreation("date")) return;
     setError("");
     try {
       const imageUrl = await dateImageRef.current?.getValue();
@@ -183,10 +228,13 @@ export default function CoupleSpace() {
       showToast({ type: "success", message: "Date criado com sucesso." });
       setDateForm(initialDate);
       clearDateImage();
+      closeCreation(dateSectionRef);
       emitAppDataChanged();
       load();
     } catch (err) {
       showOperationError(err);
+    } finally {
+      finishCreation("date");
     }
   }
 
@@ -228,6 +276,7 @@ export default function CoupleSpace() {
 
   async function createNote(event) {
     event.preventDefault();
+    if (!beginCreation("note")) return;
     setError("");
     try {
       const created = await coupleApi.createNote({ message: noteForm.message, color: noteForm.color });
@@ -236,10 +285,13 @@ export default function CoupleSpace() {
       showToast({ type: "success", message: "Anotacao criada com sucesso." });
       setNoteForm(initialNote);
       setActiveNotePalette(getPaletteIdForColor(initialNote.color));
+      closeCreation(noteSectionRef);
       emitAppDataChanged();
       load();
     } catch (err) {
       showOperationError(err);
+    } finally {
+      finishCreation("note");
     }
   }
 
@@ -285,126 +337,128 @@ export default function CoupleSpace() {
 
   return (
     <>
-      <PageHeader title="Espaco do Casal" subtitle="Metas, ideias de dates, relacionamento e mensagens rapidas." user={user} />
+      <PageHeader title="Espaço do Casal" subtitle="Planos e momentos de vocês." user={user} />
       {error && <p className="mb-5 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</p>}
 
-      <div className="grid gap-6 xl:grid-cols-[0.9fr_1.2fr]">
-        <div className="space-y-6">
-          <Card className="theme-decorative">
-            <div className="flex items-center gap-3">
-              <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white text-blush shadow-card">
-                <Heart className="h-6 w-6" />
-              </div>
-              <div>
-                <h2 className="section-title">Nosso cantinho especial</h2>
-                <p className="text-sm text-muted">Pequenas acoes com cara de ritual.</p>
-              </div>
+      <div className="mx-auto max-w-6xl space-y-4 sm:space-y-5">
+        <Card className="theme-decorative !p-3 sm:!p-4">
+          <div className="flex items-center gap-3">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/80 text-blush">
+              <Heart className="h-5 w-5" />
             </div>
-            <div className="mt-6 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl bg-white/80 p-4 shadow-card">
-                <p className="text-2xl font-bold text-blush">{space.goals.length}</p>
-                <p className="text-xs font-bold text-muted">metas vivas</p>
-              </div>
-              <div className="rounded-2xl bg-white/80 p-4 shadow-card">
-                <p className="text-2xl font-bold text-orange-500">{space.date_ideas.length}</p>
-                <p className="text-xs font-bold text-muted">dates salvos</p>
-              </div>
-              <div className="rounded-2xl bg-white/80 p-4 shadow-card">
-                <p className="text-2xl font-bold text-lavender">{space.notes.length}</p>
-                <p className="text-xs font-bold text-muted">notas rapidas</p>
-              </div>
+            <h2 className="text-base font-bold text-ink">Nosso cantinho especial</h2>
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center" data-couple-summary>
+            <div className="min-w-0 rounded-xl bg-white/60 px-1 py-2">
+              <p className="text-lg font-bold text-blush">{space.goals.length}</p>
+              <p className="text-xs font-semibold text-muted">Metas</p>
             </div>
-          </Card>
+            <div className="min-w-0 rounded-xl bg-white/60 px-1 py-2">
+              <p className="text-lg font-bold text-orange-500">{space.date_ideas.length}</p>
+              <p className="text-xs font-semibold text-muted">Dates</p>
+            </div>
+            <div className="min-w-0 rounded-xl bg-white/60 px-1 py-2">
+              <p className="text-lg font-bold text-lavender">{space.notes.length}</p>
+              <p className="text-xs font-semibold text-muted">Notas</p>
+            </div>
+          </div>
+        </Card>
 
-          <Card>
-            <h2 className="section-title">Criar meta</h2>
-            <form onSubmit={createGoal} className="mt-5 space-y-3">
-              <input className="soft-input" placeholder="Ex: viagem juntos" value={goalForm.title} onChange={(event) => setGoalForm((current) => ({ ...current, title: event.target.value }))} required />
-              <textarea className="soft-input min-h-24 resize-none" placeholder="Descricao opcional" value={goalForm.description} onChange={(event) => setGoalForm((current) => ({ ...current, description: event.target.value }))} />
-              <div className="grid gap-3 sm:grid-cols-2">
-                <DateTimePicker value={goalForm.target_date} onChange={(value) => setGoalForm((current) => ({ ...current, target_date: value }))} placeholder="Data da meta" />
-                <input className="soft-input" type="number" min="0" max="100" placeholder="Progresso %" value={goalForm.progress} onChange={(event) => setGoalForm((current) => ({ ...current, progress: event.target.value }))} />
-              </div>
-              <Button type="submit" className="w-full">
-                <Plus className="h-5 w-5" />
-                Adicionar meta
-              </Button>
+        <div className="grid items-start gap-3 lg:grid-cols-3">
+          <CreationSection title="Criar meta" icon={Target} sectionRef={goalSectionRef}>
+            <form onSubmit={createGoal}>
+              <fieldset disabled={savingCreators.goal} className="min-w-0 space-y-3">
+                <input aria-label="Título da meta" className="soft-input" placeholder="Ex.: viagem juntos" maxLength={160} value={goalForm.title} onChange={(event) => setGoalForm((current) => ({ ...current, title: event.target.value }))} required />
+                <textarea aria-label="Descrição da meta" className="soft-input min-h-24 resize-none" placeholder="Descrição opcional" maxLength={1200} value={goalForm.description} onChange={(event) => setGoalForm((current) => ({ ...current, description: event.target.value }))} />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <DateTimePicker value={goalForm.target_date} onChange={(value) => setGoalForm((current) => ({ ...current, target_date: value }))} placeholder="Data da meta" />
+                  <input aria-label="Progresso da meta (%)" className="soft-input" type="number" min="0" max="100" placeholder="Progresso %" value={goalForm.progress} onChange={(event) => setGoalForm((current) => ({ ...current, progress: event.target.value }))} />
+                </div>
+                <Button type="submit" className="w-full" disabled={savingCreators.goal}>
+                  <Plus className="h-5 w-5" />
+                  {savingCreators.goal ? "Salvando..." : "Adicionar meta"}
+                </Button>
+              </fieldset>
             </form>
-          </Card>
+          </CreationSection>
 
-          <Card>
-            <h2 className="section-title">Nova ideia de date</h2>
-            <form onSubmit={createDateIdea} className="mt-5 space-y-3">
-              <input className="soft-input" placeholder="Titulo do date" value={dateForm.title} onChange={(event) => setDateForm((current) => ({ ...current, title: event.target.value }))} required />
-              <textarea className="soft-input min-h-20 resize-none" placeholder="Descricao" value={dateForm.description} onChange={(event) => setDateForm((current) => ({ ...current, description: event.target.value }))} />
-              <DateTimePicker value={dateForm.suggested_date} onChange={(value) => setDateForm((current) => ({ ...current, suggested_date: value }))} placeholder="Data sugerida do date" />
-              <div className="grid gap-3 sm:grid-cols-2">
-                <input className="soft-input" placeholder="Local" value={dateForm.location} onChange={(event) => setDateForm((current) => ({ ...current, location: event.target.value }))} />
-                <input className="soft-input" placeholder="Orcamento" value={dateForm.budget} onChange={(event) => setDateForm((current) => ({ ...current, budget: event.target.value }))} />
-              </div>
-              <div className="relative">
-                <Link2 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-                <input className="soft-input pl-10" placeholder="Link do local, Instagram ou Google Maps" value={dateForm.external_url} onChange={(event) => setDateForm((current) => ({ ...current, external_url: event.target.value }))} />
-              </div>
-              <div className="relative">
-                <ImagePlus className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-                <input
-                  className="soft-input pl-10"
-                  placeholder="Imagem opcional (URL)"
+          <CreationSection title="Criar date" icon={CalendarHeart} sectionRef={dateSectionRef}>
+            <form onSubmit={createDateIdea}>
+              <fieldset disabled={savingCreators.date} className="min-w-0 space-y-3">
+                <input aria-label="Título do date" className="soft-input" placeholder="Título do date" maxLength={160} value={dateForm.title} onChange={(event) => setDateForm((current) => ({ ...current, title: event.target.value }))} required />
+                <textarea aria-label="Descrição do date" className="soft-input min-h-20 resize-none" placeholder="Descrição opcional" maxLength={1200} value={dateForm.description} onChange={(event) => setDateForm((current) => ({ ...current, description: event.target.value }))} />
+                <DateTimePicker value={dateForm.suggested_date} onChange={(value) => setDateForm((current) => ({ ...current, suggested_date: value }))} placeholder="Data sugerida do date" />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input aria-label="Local do date" className="soft-input" placeholder="Local" maxLength={180} value={dateForm.location} onChange={(event) => setDateForm((current) => ({ ...current, location: event.target.value }))} />
+                  <input aria-label="Orçamento do date" className="soft-input" placeholder="Orçamento" maxLength={80} value={dateForm.budget} onChange={(event) => setDateForm((current) => ({ ...current, budget: event.target.value }))} />
+                </div>
+                <div className="relative">
+                  <Link2 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+                  <input aria-label="Link do date" className="soft-input pl-10" placeholder="Link do local, Instagram ou Google Maps" maxLength={2048} value={dateForm.external_url} onChange={(event) => setDateForm((current) => ({ ...current, external_url: event.target.value }))} />
+                </div>
+                <div className="relative">
+                  <ImagePlus className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+                  <input
+                    aria-label="URL da imagem do date"
+                    className="soft-input pl-10"
+                    placeholder="Imagem opcional (URL)"
+                    value={dateForm.image_url}
+                    onChange={(event) => {
+                      setDateForm((current) => ({ ...current, image_url: event.target.value }));
+                    }}
+                  />
+                </div>
+                <ImageAdjustField
+                  ref={dateImageRef}
                   value={dateForm.image_url}
-                  onChange={(event) => {
-                    setDateForm((current) => ({ ...current, image_url: event.target.value }));
+                  label="Imagem do date"
+                  chooseLabel="Escolher imagem"
+                  removeLabel="Remover imagem"
+                  previewClassName="h-40 w-full rounded-[20px]"
+                  outputWidth={768}
+                  outputHeight={432}
+                  outputQuality={0.86}
+                  uploadScope="date"
+                  disabled={savingCreators.date}
+                  onRemove={clearDateImage}
+                  onError={(message) => {
+                    setError(message);
+                    showToast({ type: "error", message });
                   }}
                 />
-              </div>
-              <ImageAdjustField
-                ref={dateImageRef}
-                value={dateForm.image_url}
-                label="Imagem do date"
-                chooseLabel="Escolher imagem"
-                removeLabel="Remover imagem"
-                previewClassName="h-40 w-full rounded-[20px]"
-                outputWidth={768}
-                outputHeight={432}
-                outputQuality={0.86}
-                uploadScope="date"
-                onRemove={clearDateImage}
-                onError={(message) => {
-                  setError(message);
-                  showToast({ type: "error", message });
-                }}
-              />
-              <Button type="submit" className="w-full">
-                <Plus className="h-5 w-5" />
-                Salvar date
-              </Button>
+                <Button type="submit" className="w-full" disabled={savingCreators.date}>
+                  <Plus className="h-5 w-5" />
+                  {savingCreators.date ? "Salvando..." : "Salvar date"}
+                </Button>
+              </fieldset>
             </form>
-          </Card>
+          </CreationSection>
 
-          <Card>
-            <h2 className="section-title">Nota rapida</h2>
-            <form onSubmit={createNote} className="mt-5 space-y-3">
-              <textarea className="soft-input min-h-24 resize-none" placeholder="Escreva uma mensagem curta..." value={noteForm.message} onChange={(event) => setNoteForm((current) => ({ ...current, message: event.target.value }))} required />
-              <CategoryStylePicker
-                color={noteForm.color}
-                icon={noteForm.icon}
-                activePalette={activeNotePalette}
-                onPaletteChange={setActiveNotePalette}
-                onColorChange={(color) => setNoteForm((current) => ({ ...current, color }))}
-                onIconChange={(icon) => setNoteForm((current) => ({ ...current, icon }))}
-                previewTitle="Nota rapida"
-                previewHelper={notePreviewColor?.label}
-                showPreview
-              />
-              <Button type="submit" className="w-full">
-                <MessageCircleHeart className="h-5 w-5" />
-                Guardar nota
-              </Button>
+          <CreationSection title="Criar nota" icon={MessageCircleHeart} sectionRef={noteSectionRef}>
+            <form onSubmit={createNote}>
+              <fieldset disabled={savingCreators.note} className="min-w-0 space-y-3">
+                <textarea aria-label="Mensagem da nota" className="soft-input min-h-24 resize-none" placeholder="Escreva uma mensagem curta..." maxLength={1200} value={noteForm.message} onChange={(event) => setNoteForm((current) => ({ ...current, message: event.target.value }))} required />
+                <CategoryStylePicker
+                  color={noteForm.color}
+                  icon={noteForm.icon}
+                  activePalette={activeNotePalette}
+                  onPaletteChange={setActiveNotePalette}
+                  onColorChange={(color) => setNoteForm((current) => ({ ...current, color }))}
+                  onIconChange={(icon) => setNoteForm((current) => ({ ...current, icon }))}
+                  previewTitle="Nota rapida"
+                  previewHelper={notePreviewColor?.label}
+                  showPreview
+                />
+                <Button type="submit" className="w-full" disabled={savingCreators.note}>
+                  <MessageCircleHeart className="h-5 w-5" />
+                  {savingCreators.note ? "Salvando..." : "Guardar nota"}
+                </Button>
+              </fieldset>
             </form>
-          </Card>
+          </CreationSection>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-5">
           <Card className="theme-decorative">
             <div className="flex items-center gap-3">
               <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-blush shadow-card">
@@ -419,7 +473,7 @@ export default function CoupleSpace() {
               {space.goals.map((goal) => (
                 <div key={goal.id} className="rounded-[24px] border border-white/80 bg-white/80 p-4 shadow-card transition hover:-translate-y-0.5 hover:shadow-soft">
                   <div className="flex items-start justify-between gap-3">
-                    <div>
+                    <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                       <p className="font-bold text-ink">{goal.title}</p>
                       {goal.description && <p className="mt-2 text-sm leading-relaxed text-muted">{goal.description}</p>}
                     </div>
@@ -491,7 +545,7 @@ export default function CoupleSpace() {
                   />
                   <div className="p-4">
                     <div className="flex items-start justify-between gap-3">
-                      <div>
+                      <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                         <p className="font-bold text-ink">{idea.title}</p>
                         {idea.description && <p className="mt-1 text-sm text-muted">{idea.description}</p>}
                       </div>
@@ -511,7 +565,7 @@ export default function CoupleSpace() {
                         </button>
                       </div>
                     </div>
-                    <div className="mt-4 space-y-2 text-xs font-bold text-muted">
+                    <div className="mt-4 space-y-2 text-xs font-bold text-muted [overflow-wrap:anywhere] [&>p]:max-w-full [&_svg]:shrink-0">
                       {idea.location && (
                         <p className="inline-flex items-center gap-2">
                           <MapPin className="h-4 w-4 text-blush" />
@@ -599,7 +653,7 @@ export default function CoupleSpace() {
                         />
                       </div>
                     ) : (
-                      <p className="text-sm font-semibold leading-relaxed">{note.message}</p>
+                      <p className="text-sm font-semibold leading-relaxed [overflow-wrap:anywhere]">{note.message}</p>
                     )}
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold opacity-75">
                       <span className="inline-flex items-center gap-1">
