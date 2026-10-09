@@ -18,6 +18,11 @@ Nao ha um pagamento avulso necessario para ativar este agendador.
   e inscricoes de cada dispositivo. Nenhuma credencial de banco, SMTP ou VAPID
   precisa ser copiada para o GitHub.
 
+A tela de notificacoes confirma a inscricao deste dispositivo no servidor para
+a conta e familia ativas. Permissao local ou uma inscricao antiga nao comprovam
+ativacao. Ao trocar de familia, confirme/ative novamente nesse dispositivo;
+a inscricao permanece limitada a uma familia, sem ampliar o envio para outras.
+
 A rota `POST /api/notifications/reminders/scheduled` exige a credencial exclusiva
 do agendador. JWT de usuario nao libera processamento global. Sem a flag e sem
 credencial forte, a rota falha fechada. A resposta contem somente contadores.
@@ -76,3 +81,30 @@ o hash no Render.
 
 Fontes: [GitHub Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions),
 [schedules](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
+
+## Evidencias da publicacao — 2026-10-08
+
+- Agendador: commit `b368299`, Render `dep-db44hv5r1irc739fft50` LIVE;
+  readiness HTTP 200, chamada sem credencial recusada com HTTP 401.
+- GitHub variable de ativacao confirmada `true`, secret cadastrado sem aparecer
+  em codigo/logs. Nenhum recurso pago criado e nenhum pagamento executado.
+- Execucao manual inicial [37872267399](https://github.com/kauanramalho/CasaSync/actions/runs/37872267399)
+  concluida com sucesso e contadores zerados (nenhum lembrete vencido).
+- Teste controlado com a aba do CasaSync fora da tela:
+  [37872650431](https://github.com/kauanramalho/CasaSync/actions/runs/37872650431)
+  criou um lembrete interno, sem falha; push pulado por inscricao nao confirmada.
+  A permissao local aparecia ativa. Dispositivo reinscrito e UI corrigida para
+  confirmar conta, familia, chaves, opt-in e estado ativo no servidor.
+- Checks depois da correcao da UI: 215 testes backend e 118 frontend aprovados;
+  ESLint, build Vite com `VITE_API_URL=https://casasync-api.onrender.com/api`,
+  actionlint e `git diff --check` aprovados. O build sem URL HTTPS de producao
+  foi corretamente recusado pelo guardrail existente.
+- Validacao em telefone fisico e exibicao do balao pelo sistema operacional
+  devem ser registradas separadamente; nao inferir entrega a partir de HTTP 200.
+
+Arquivos alterados: `.env.example`, `.github/workflows/reminders.yml`,
+`backend/reminder_scheduler.py`, `backend/app/core/config.py`,
+`backend/app/routes/notifications.py`, `backend/app/services/notification_service.py`,
+`backend/app/services/reminder_lock.py`, `backend/tests/test_reminder_scheduler.py`,
+`backend/tests/test_push_security.py`, `frontend/src/services/api.js`,
+`frontend/src/pages/Settings.jsx` e este documento. Sem migracao de banco.

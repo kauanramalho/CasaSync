@@ -20,6 +20,7 @@ from app.services.notification_service import (
     clear_user_notifications,
     disable_web_push_subscription,
     has_active_web_push_subscription,
+    is_device_push_subscription_active,
     list_user_notifications,
     mark_all_notifications_read,
     mark_notification_read,
@@ -140,6 +141,24 @@ def update_preferences(
         push_task_reminders_enabled=updated.push_task_reminders_enabled,
         vapid_public_key=settings.vapid_public_key if settings.web_push_enabled else None,
     )
+
+
+@router.post("/push-subscriptions/status", response_model=WebPushSubscriptionStatus)
+def device_push_status(
+    payload: WebPushSubscriptionIn,
+    current_user: User = Depends(get_current_user),
+    family_id: str = Depends(get_family_id),
+    db: Session = Depends(get_db),
+):
+    settings = get_settings()
+    enabled = bool(settings.web_push_enabled and settings.web_push_configured
+                   and current_user.push_task_reminders_enabled
+                   and is_device_push_subscription_active(db, user_id=current_user.id,
+                                                          family_id=family_id, payload=payload))
+    return WebPushSubscriptionStatus(enabled=enabled, message=(
+        "Dispositivo registrado para lembretes desta familia." if enabled
+        else "Ative este dispositivo para receber lembretes desta familia."
+    ))
 
 
 @router.post("/push-subscriptions", response_model=WebPushSubscriptionStatus)

@@ -510,6 +510,7 @@ export const notificationsApi = {
   settings: () => request("/notifications/settings"),
   updatePreferences: (payload) => request("/notifications/preferences", { method: "PATCH", body: payload }),
   savePushSubscription: (subscription) => request("/notifications/push-subscriptions", { method: "POST", body: subscription }),
+  pushSubscriptionStatus: (subscription) => request("/notifications/push-subscriptions/status", { method: "POST", body: subscription }),
   deletePushSubscription: (subscription) => request("/notifications/push-subscriptions", { method: "DELETE", body: subscription }),
   processReminders: () => request("/notifications/reminders/process", { method: "POST", body: {} })
 };

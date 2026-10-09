@@ -31,7 +31,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useTheme } from "../hooks/useTheme";
 import { useToast } from "../hooks/useToast";
 import { familiesApi, integrationsApi, notificationsApi } from "../services/api";
-import { emitAppDataChanged } from "../utils/events";
+import { ACTIVE_FAMILY_CHANGED_EVENT, emitAppDataChanged } from "../utils/events";
 import { normalizeApiError } from "../utils/formatters";
 import { timezoneOptions, weekStartOptions } from "../utils/preferences";
 import { consumeGoogleCalendarCallback } from "../utils/googleCalendarCallback";
@@ -80,6 +80,7 @@ export default function Settings() {
   const [notificationBusy, setNotificationBusy] = useState("");
   const [notificationMessage, setNotificationMessage] = useState("");
   const [devicePushEnabled, setDevicePushEnabled] = useState(false);
+  const [familyRevision, setFamilyRevision] = useState(0);
   const [family, setFamily] = useState(null);
   const [currentMember, setCurrentMember] = useState(null);
   const [familyForm, setFamilyForm] = useState({ name: "" });
@@ -88,6 +89,15 @@ export default function Settings() {
   const [savingFamily, setSavingFamily] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
   const callbackHandled = useRef(false);
+
+  useEffect(() => {
+    function onFamilyChanged() {
+      setDevicePushEnabled(false);
+      setFamilyRevision((revision) => revision + 1);
+    }
+    window.addEventListener(ACTIVE_FAMILY_CHANGED_EVENT, onFamilyChanged);
+    return () => window.removeEventListener(ACTIVE_FAMILY_CHANGED_EVENT, onFamilyChanged);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -115,7 +125,19 @@ export default function Settings() {
         setCurrentMember(membersResult.value.find((member) => member.user_id === user?.id) || null);
       }
       if (pushSubscriptionResult.status === "fulfilled") {
-        setDevicePushEnabled(Boolean(pushSubscriptionResult.value));
+        const subscription = pushSubscriptionResult.value;
+        let confirmed = false;
+        if (subscription && notificationResult.status === "fulfilled") {
+          try {
+            const status = await notificationsApi.pushSubscriptionStatus(subscription);
+            confirmed = status.enabled === true;
+          } catch {
+            // Local permission/subscription is not proof of server registration.
+            if (alive) setNotificationMessage("Nao foi possivel confirmar este dispositivo no servidor. Ative novamente para verificar.");
+          }
+        }
+        if (!alive) return;
+        setDevicePushEnabled(confirmed);
       }
       if (calendarResult.status === "rejected") {
         const message = normalizeApiError(calendarResult.reason);
@@ -129,7 +151,7 @@ export default function Settings() {
     return () => {
       alive = false;
     };
-  }, [showToast, user?.id]);
+  }, [showToast, user?.id, familyRevision]);
 
   useEffect(() => {
     const callback = consumeGoogleCalendarCallback(searchParams, location.hash);
@@ -627,6 +649,7 @@ export default function Settings() {
                   : "Push esta desativado por configuracao."}
               </p>
               <p>Permissao do navegador: {getNotificationPermissionLabel(pushPermission)}.</p>
+              <p>{devicePushEnabled ? "Dispositivo registrado para a familia ativa." : "Ative neste dispositivo para registrar os lembretes da familia ativa."}</p>
               <p>Alertas em segundo plano dependem do Web Push ativo, de um lembrete configurado e da permissão deste dispositivo. No iPhone/iPad, adicione o CasaSync à Tela de Início e ative as notificações dentro do app instalado (iOS/iPadOS 16.4 ou superior).</p>
               <p>O formato do balão e o som são controlados pelo telefone. Modo Foco, economia de bateria e permissões podem silenciar os alertas.</p>
               {!pushSupported && <p className="rounded-2xl bg-amber-50 px-4 py-3 font-semibold text-amber-700">Este navegador nao oferece suporte completo a Web Push.</p>}

@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 from app.core.config import Settings
 from app.schemas.notification import WebPushSubscriptionIn
-from app.services.notification_service import save_web_push_subscription, send_task_reminder_push
+from app.services.notification_service import is_device_push_subscription_active, save_web_push_subscription, send_task_reminder_push
 from tests import test_notifications as notification_fixtures
 
 
@@ -61,6 +61,43 @@ class PushSubscriptionOwnershipTest(unittest.TestCase):
         first = save_web_push_subscription(self.db, family_id=self.family.id, user_id=self.creator.id, payload=payload)
         second = save_web_push_subscription(self.db, family_id=self.family.id, user_id=self.creator.id, payload=payload)
         self.assertEqual(first.id, second.id)
+
+    def test_device_confirmation_checks_account_family_keys_and_active_state(self):
+        from app.models import FamilyMember
+
+        payload = push_payload()
+        check = lambda user_id, family_id, value=payload: is_device_push_subscription_active(
+            self.db, user_id=user_id, family_id=family_id, payload=value)
+        self.assertFalse(check(self.creator.id, self.family.id))
+        row = save_web_push_subscription(self.db, family_id=self.family.id, user_id=self.creator.id, payload=payload)
+        self.assertTrue(check(self.creator.id, self.family.id))
+        self.assertFalse(check(self.assignee.id, self.family.id))
+        changed_keys = WebPushSubscriptionIn(endpoint=payload.endpoint, keys={"p256dh": "x" * 24, "auth": "a" * 16})
+        self.assertFalse(check(self.creator.id, self.family.id, changed_keys))
+        self.db.add(FamilyMember(id="creator-other", family_id=self.other_family.id, user_id=self.creator.id, role="member"))
+        self.db.commit()
+        self.assertFalse(check(self.creator.id, self.other_family.id))
+        row.is_active = False
+        self.db.commit()
+        self.assertFalse(check(self.creator.id, self.family.id))
+
+    def test_device_status_does_not_expose_or_enable_another_subscription(self):
+        from app.routes.notifications import device_push_status
+
+        payload = push_payload()
+        row = save_web_push_subscription(self.db, family_id=self.family.id, user_id=self.creator.id, payload=payload)
+        settings = Settings(_env_file=None, web_push_enabled=True, vapid_public_key="public",
+                            vapid_private_key="private", vapid_subject="mailto:test@example.com")
+        with patch("app.routes.notifications.get_settings", return_value=settings):
+            self.creator.push_task_reminders_enabled = False
+            self.assertFalse(device_push_status(payload, self.creator, self.family.id, self.db).enabled)
+            self.creator.push_task_reminders_enabled = True
+            result = device_push_status(payload, self.creator, self.family.id, self.db)
+            self.assertTrue(result.enabled)
+            self.assertNotIn(payload.endpoint, result.model_dump_json())
+            self.assignee.push_task_reminders_enabled = True
+            self.assertFalse(device_push_status(payload, self.assignee, self.family.id, self.db).enabled)
+        self.assertEqual(row.user_id, self.creator.id)
 
     def test_legacy_arbitrary_destination_is_never_contacted(self):
         from app.models import Task, WebPushSubscription

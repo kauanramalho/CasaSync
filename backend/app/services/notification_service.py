@@ -173,6 +173,19 @@ def has_active_web_push_subscription(db: Session, *, user_id: str) -> bool:
     )
 
 
+def is_device_push_subscription_active(db: Session, *, user_id: str, family_id: str,
+                                       payload: WebPushSubscriptionIn) -> bool:
+    require_family_member(db, family_id, user_id)
+    return db.query(WebPushSubscription.id).filter(
+        WebPushSubscription.user_id == user_id,
+        WebPushSubscription.family_id == family_id,
+        WebPushSubscription.endpoint == payload.endpoint,
+        WebPushSubscription.p256dh == payload.keys.p256dh,
+        WebPushSubscription.auth == payload.keys.auth,
+        WebPushSubscription.is_active.is_(True),
+    ).first() is not None
+
+
 def _push_payload(task: Task, reminder_id: str | None = None) -> str:
     return json.dumps(
         {
