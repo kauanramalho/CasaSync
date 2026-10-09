@@ -362,6 +362,9 @@ def create_task_created_notifications(db: Session, *, task: Task) -> int:
     """Persist event + push intent in the same transaction as task creation."""
     if task.status == TaskStatus.DONE.value:
         return 0
+    # Assignee links are new objects; persist them before their user relationship
+    # is read for the creation snapshot (SessionLocal disables autoflush).
+    db.flush()
     created = 0
     for recipient in _active_recipients(db, task):
         key = f"task-created:{task.family_id}:{task.id}:{recipient.id}"

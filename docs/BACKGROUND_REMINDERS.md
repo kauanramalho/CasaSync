@@ -61,6 +61,19 @@ foi criado nesta correcao. Validacao fisica de iOS segue pendente sem aparelho.
 
 ### Qualidade e rollback desta correcao
 
+Validacao local: 243 testes backend e 127 testes frontend passaram, alem de
+Ruff, ESLint e build com a URL de producao explicita. Em producao, a tarefa
+tecnica "Teste real CasaSync — criacao e lembrete" foi salva e redirecionou
+ao Dashboard. A central exibiu um evento de criacao e um lembrete as 09:26
+de 09/10/2026, com foto do criador carregada. O lote de criacao registrou
+`recipient_accepted=1`, `skipped=0`, `failed=0`; isso comprova aceitacao pelo
+provedor para uma conta, nao recebimento em ambos os celulares. A aba estava
+aberta no lembrete: nao atribuir esse resultado ao cron nem considera-lo
+prova de segundo plano. Confirmacao fisica desses eventos segue necessaria.
+O teste visual tambem revelou o snapshot de criacao sem responsaveis; flush
+das novas atribuicoes antes da montagem do aviso corrigiu esse detalhe e
+ganhou assercao de regressao. Nenhum dado de producao foi migrado ou apagado.
+
 PowerShell na raiz do repositorio canonico:
 
 ```powershell

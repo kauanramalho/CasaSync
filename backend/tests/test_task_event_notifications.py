@@ -49,6 +49,7 @@ class TaskEventNotificationTest(unittest.TestCase):
         rows = self.db.query(Notification).filter_by(type="task_created").all()
         self.assertEqual({n.user_id for n in rows}, {self.creator.id, self.assignee.id})
         self.assertTrue(all(n.push_status == "pending" for n in rows))
+        self.assertTrue(all("Responsaveis: Kauan." in n.description for n in rows))
         self.assertEqual(create_task_created_notifications(self.db, task=task), 0)
         self.assertEqual(_deliver_pending_task_push(self.db).push_sent, 2)
         self.assertEqual(_deliver_pending_task_push(self.db).push_sent, 0)
