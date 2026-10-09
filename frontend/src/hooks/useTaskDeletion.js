@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { useAuth } from "./useAuth";
 import { useNotifications } from "./useNotifications";
@@ -13,19 +13,21 @@ export default function useTaskDeletion({ onDeleted, onError } = {}) {
   const { showToast } = useToast();
   const [pendingTask, setPendingTask] = useState(null);
   const [deletingTaskId, setDeletingTaskId] = useState("");
+  const deletingRef = useRef(false);
 
   const requestTaskDelete = useCallback((task) => {
-    if (!task?.id) return;
+    if (!task?.id || deletingRef.current) return;
     setPendingTask(task);
   }, []);
 
   const cancelTaskDelete = useCallback(() => {
-    if (deletingTaskId) return;
+    if (deletingRef.current) return;
     setPendingTask(null);
-  }, [deletingTaskId]);
+  }, []);
 
   const confirmTaskDelete = useCallback(async ({ deleteGoogleEvent = false } = {}) => {
-    if (!pendingTask?.id || deletingTaskId) return { ok: false };
+    if (!pendingTask?.id || deletingRef.current) return { ok: false };
+    deletingRef.current = true;
     setDeletingTaskId(pendingTask.id);
     try {
       const response = await tasksApi.delete(pendingTask.id, { deleteGoogleEvent });
@@ -46,9 +48,10 @@ export default function useTaskDeletion({ onDeleted, onError } = {}) {
       showToast({ type: "error", message });
       return { ok: false, error: message };
     } finally {
+      deletingRef.current = false;
       setDeletingTaskId("");
     }
-  }, [addNotification, deletingTaskId, onDeleted, onError, pendingTask, showToast, user?.name]);
+  }, [addNotification, onDeleted, onError, pendingTask, showToast, user?.name]);
 
   return {
     pendingDeleteTask: pendingTask,

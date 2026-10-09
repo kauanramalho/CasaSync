@@ -46,7 +46,7 @@ export default function AssigneePicker({ members = [], value = [], onChange }) {
               <Avatar user={profile} size="sm" />
               <span className="min-w-0">
                 <span className="block truncate text-sm font-bold">{profile.name}</span>
-                {member.role && <span className="block truncate text-[11px] font-semibold text-muted">{member.role}</span>}
+                {member.role && <span className="block truncate text-[11px] font-semibold text-muted">{{ owner: "Líder", member: "Membro" }[member.role] || member.role}</span>}
               </span>
             </span>
             <span

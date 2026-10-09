@@ -353,6 +353,7 @@ export default function Tasks() {
         task={detailsTask}
         onClose={() => setDetailsTask(null)}
         onEdit={openEditorFromDetails}
+        onDelete={requestTaskDelete}
       />
 
       <TaskEditorModal

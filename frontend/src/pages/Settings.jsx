@@ -13,11 +13,13 @@ import {
   Settings as SettingsIcon,
   ShieldAlert,
   Smartphone,
+  Sparkles,
   Unplug,
   User
 } from "lucide-react";
 
 import Avatar from "../components/Avatar";
+import AISettings from "../components/AISettings";
 import Button from "../components/Button";
 import Card from "../components/Card";
 import InstallApp from "../components/InstallApp";
@@ -48,6 +50,7 @@ const tabs = [
   { key: "general", label: "Gerais", icon: SettingsIcon },
   { key: "notifications", label: "Notificacoes", icon: BellRing },
   { key: "appearance", label: "Aparencia", icon: Palette },
+  { key: "ai", label: "IA", icon: Sparkles },
   { key: "account", label: "Conta", icon: User },
   { key: "security", label: "Seguranca", icon: LockKeyhole }
 ];
@@ -70,7 +73,7 @@ export default function Settings() {
   const { preferences, updatePreference, updatePreferences } = useAppPreferences();
   const { paletteId, palettes, selectPalette, storageAvailable } = useTheme();
   const { showToast } = useToast();
-  const [activeTab, setActiveTab] = useState("general");
+  const [activeTab, setActiveTab] = useState(() => searchParams.get("tab") === "ai" ? "ai" : "general");
   const [calendarStatus, setCalendarStatus] = useState(null);
   const [calendarMessage, setCalendarMessage] = useState("");
   const [calendarBusy, setCalendarBusy] = useState(false);
@@ -456,6 +459,7 @@ export default function Settings() {
         })}
       </div>
 
+      {activeTab === "ai" && <AISettings userId={user?.id} />}
       {activeTab === "general" && (
         <div className="grid gap-6 xl:grid-cols-2">
           <Card>

@@ -11,18 +11,15 @@ import PageHeader from "../components/PageHeader";
 import StatCard from "../components/StatCard";
 import TaskDeleteConfirmModal from "../components/TaskDeleteConfirmModal";
 import TaskDetailsModal from "../components/TaskDetailsModal";
-import TaskEditorModal from "../components/TaskEditorModal";
 import TaskList from "../components/TaskList";
 import WeeklyProductivityChart from "../components/WeeklyProductivityChart";
 import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
 import useTaskDeletion from "../hooks/useTaskDeletion";
-import { categoriesApi, coupleApi, dashboardApi, familiesApi, tasksApi } from "../services/api";
+import { coupleApi, dashboardApi, tasksApi } from "../services/api";
 import { APP_RESUMED_EVENT, emitAppDataChanged } from "../utils/events";
 import { formatDate, normalizeApiError, toValidDate } from "../utils/formatters";
-import { syncTaskToGoogleCalendarSafely } from "../utils/googleCalendarTasks";
 import { getHiddenRecentTaskIds, hideRecentTask } from "../utils/recentTasks";
-import { applyTaskAttachmentChanges, hasTaskAttachmentChanges } from "../utils/taskAttachments";
 import { isTaskOpen, sortTasksForDisplay } from "../utils/tasks";
 
 const statMeta = {
@@ -179,13 +176,9 @@ export default function Dashboard() {
   const { user } = useAuth();
   const { addNotification } = useNotifications();
   const [dashboard, setDashboard] = useState(null);
-  const [categoriesRows, setCategoriesRows] = useState([]);
   const [coupleSpace, setCoupleSpace] = useState({ goals: [], date_ideas: [], notes: [] });
-  const [members, setMembers] = useState([]);
   const [hiddenRecentIds, setHiddenRecentIds] = useState(() => getHiddenRecentTaskIds());
   const [detailsTask, setDetailsTask] = useState(null);
-  const [editingTask, setEditingTask] = useState(null);
-  const [savingEdit, setSavingEdit] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -193,10 +186,8 @@ export default function Dashboard() {
     setLoading(true);
     setError("");
     try {
-      const [dashboardRows, categoryRows, memberRows, coupleRows] = await Promise.all([dashboardApi.get(), categoriesApi.list(), familiesApi.members(), coupleApi.get()]);
+      const [dashboardRows, coupleRows] = await Promise.all([dashboardApi.get(), coupleApi.get()]);
       setDashboard(dashboardRows);
-      setCategoriesRows(categoryRows);
-      setMembers(memberRows);
       setCoupleSpace(coupleRows);
     } catch (err) {
       setError(normalizeApiError(err));
@@ -223,36 +214,6 @@ export default function Dashboard() {
     load();
   }, [addNotification, load, user?.name]);
 
-  const handleSaveEdit = useCallback(async function handleSaveEdit(payload, attachmentChanges = {}) {
-    if (!editingTask) return;
-    setSavingEdit(true);
-    try {
-      const updated = await tasksApi.update(editingTask.id, payload);
-      await applyTaskAttachmentChanges(updated.id, attachmentChanges);
-      const calendarResult = attachmentChanges.syncGoogleCalendar
-        ? await syncTaskToGoogleCalendarSafely(updated.id)
-        : null;
-      if (calendarResult && !calendarResult.ok) {
-        setError(calendarResult.message);
-      }
-      addNotification({
-        title: "Tarefa editada",
-        description: hasTaskAttachmentChanges(attachmentChanges)
-          ? `${updated.title} foi atualizada com anexos.`
-          : `${updated.title} foi atualizada nas recentes e nos relatórios.`,
-        type: "task",
-        actor: user?.name
-      });
-      setEditingTask(null);
-      emitAppDataChanged();
-      load();
-    } catch (err) {
-      setError(normalizeApiError(err));
-    } finally {
-      setSavingEdit(false);
-    }
-  }, [addNotification, editingTask, load, user?.name]);
-
   const handleRemoveRecent = useCallback(function handleRemoveRecent(task) {
     setHiddenRecentIds(hideRecentTask(task.id));
     addNotification({
@@ -268,7 +229,6 @@ export default function Dashboard() {
       ? { ...current, recent_tasks: (current.recent_tasks || []).filter((item) => item.id !== task.id) }
       : current);
     setDetailsTask((current) => (current?.id === task.id ? null : current));
-    setEditingTask((current) => (current?.id === task.id ? null : current));
     load();
   }, [load]);
 
@@ -282,11 +242,6 @@ export default function Dashboard() {
     onDeleted: handleTaskDeleted,
     onError: setError
   });
-
-  const handleEditFromDetails = useCallback(function handleEditFromDetails(task) {
-    setDetailsTask(null);
-    setEditingTask(task);
-  }, []);
 
   const stats = useMemo(() => dashboard?.stats ?? [], [dashboard]);
   const productivity = useMemo(() => dashboard?.weekly_productivity ?? [], [dashboard]);
@@ -381,7 +336,6 @@ export default function Dashboard() {
           <TaskList
             tasks={recentTasks}
             onComplete={handleComplete}
-            onEdit={setEditingTask}
             onRemoveRecent={handleRemoveRecent}
             onDelete={requestTaskDelete}
             onOpenDetails={setDetailsTask}
@@ -476,16 +430,7 @@ export default function Dashboard() {
       <TaskDetailsModal
         task={detailsTask}
         onClose={() => setDetailsTask(null)}
-        onEdit={handleEditFromDetails}
-      />
-
-      <TaskEditorModal
-        task={editingTask}
-        categories={categoriesRows}
-        members={members}
-        saving={savingEdit}
-        onClose={() => setEditingTask(null)}
-        onSave={handleSaveEdit}
+        onDelete={requestTaskDelete}
       />
 
       <TaskDeleteConfirmModal

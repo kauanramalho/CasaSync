@@ -45,8 +45,9 @@ export default function TaskDeleteConfirmModal({ task, deleting = false, onCance
             <p className="mt-2 text-sm font-semibold leading-relaxed text-muted">
               A tarefa <span className="font-black text-ink">"{task.title}"</span> sera removida do CasaSync e nao aparecera no Dashboard, Tarefas ou Calendario.
             </p>
+            <p className="mt-2 text-xs font-semibold text-rose-600">Essa ação também remove os anexos e lembretes. Não pode ser desfeita.</p>
           </div>
-          <button type="button" onClick={onCancel} disabled={deleting} className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-slate-50 text-muted transition hover:text-ink disabled:opacity-50">
+          <button type="button" onClick={onCancel} disabled={deleting} aria-label="Cancelar exclusão" className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-slate-50 text-muted transition hover:text-ink disabled:opacity-50">
             <X className="h-5 w-5" />
           </button>
         </div>

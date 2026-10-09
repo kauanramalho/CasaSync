@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import clsx from "clsx";
-import { CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, Edit3, Filter, Plus, RotateCcw, Send, X } from "lucide-react";
+import { CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, Filter, Plus, RotateCcw, Send, Trash2, X } from "lucide-react";
 
 import AssigneeStack from "../components/AssigneeStack";
 import { CategoryBadge, CategoryGlyph, PriorityBadge, StatusBadge } from "../components/Badges";
@@ -11,7 +11,8 @@ import Card from "../components/Card";
 import PageHeader from "../components/PageHeader";
 import SelectMenu from "../components/SelectMenu";
 import TaskDetailsModal from "../components/TaskDetailsModal";
-import TaskEditorModal from "../components/TaskEditorModal";
+import TaskDeleteConfirmModal from "../components/TaskDeleteConfirmModal";
+import useTaskDeletion from "../hooks/useTaskDeletion";
 import { useAppPreferences } from "../hooks/useAppPreferences";
 import { useAuth } from "../hooks/useAuth";
 import { useNotifications } from "../hooks/useNotifications";
@@ -30,9 +31,7 @@ import {
 } from "../utils/calendar";
 import { APP_RESUMED_EVENT, emitAppDataChanged } from "../utils/events";
 import { formatDate, normalizeApiError } from "../utils/formatters";
-import { syncTaskToGoogleCalendarSafely } from "../utils/googleCalendarTasks";
 import { buildMonthDays, getStoredPreferences, getWeekdayLabels, startOfWeek as getPreferenceStartOfWeek } from "../utils/preferences";
-import { applyTaskAttachmentChanges, hasTaskAttachmentChanges } from "../utils/taskAttachments";
 import { getAssigneeNames, getCategorySemanticStyle, getTaskPointLabel, sortTasksForDisplay } from "../utils/tasks";
 
 const weekdays = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
@@ -175,7 +174,7 @@ function TaskPreview({ preview, onMouseEnter, onMouseLeave }) {
   );
 }
 
-function DayPanel({ date, tasks, onClose, onComplete, onCompleteAll, onEdit, onOpenDetails }) {
+function DayPanel({ date, tasks, onClose, onComplete, onCompleteAll, onDelete, onOpenDetails }) {
   const dialogRef = useRef(null);
   useDialogFocus(dialogRef, true, onClose);
   const orderedTasks = sortCalendarTasks(tasks);
@@ -206,12 +205,6 @@ function DayPanel({ date, tasks, onClose, onComplete, onCompleteAll, onEdit, onO
           </div>
 
           <div className="mt-5 flex flex-wrap gap-3">
-            {orderedTasks.length > 0 && (
-              <Button variant="secondary" onClick={() => onEdit?.(orderedTasks[0])}>
-                <Edit3 className="h-4 w-4" />
-                Editar
-              </Button>
-            )}
             <Button variant="secondary" onClick={() => onCompleteAll?.(openTasks)} disabled={!openTasks.length}>
               <Check className="h-4 w-4" />
               Concluir todas
@@ -249,9 +242,9 @@ function DayPanel({ date, tasks, onClose, onComplete, onCompleteAll, onEdit, onO
                   </div>
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <AssigneeStack task={task} className="min-w-0" />
-                    <button type="button" onClick={() => onEdit?.(task)} className="inline-flex min-h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-blue-50 px-3 py-2 text-xs font-bold text-blue-600 transition hover:bg-blue-100 sm:w-fit">
-                      <Edit3 className="h-3.5 w-3.5" />
-                      Editar
+                    <button type="button" onClick={() => onDelete?.(task)} aria-label={`Excluir ${task.title}`} className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600 transition hover:bg-rose-100 sm:w-fit">
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Excluir
                     </button>
                   </div>
                 </div>
@@ -279,15 +272,12 @@ export default function Calendar() {
   const [selectedDate, setSelectedDate] = useState(null);
   const [preview, setPreview] = useState(null);
   const [detailsTask, setDetailsTask] = useState(null);
-  const [editingTask, setEditingTask] = useState(null);
-  const [savingEdit, setSavingEdit] = useState(false);
   const [calendarStatus, setCalendarStatus] = useState(null);
   const [syncingTaskId, setSyncingTaskId] = useState("");
   const [memberFilter, setMemberFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [editError, setEditError] = useState("");
   const previewTimer = useRef(null);
 
   const load = useCallback(async function load() {
@@ -465,44 +455,15 @@ export default function Calendar() {
     }
   }, [addNotification, showToast, user?.name]);
 
-  const handleSaveEdit = useCallback(async function handleSaveEdit(payload, attachmentChanges = {}) {
-    if (!editingTask) return;
-    setSavingEdit(true);
-    setEditError("");
-    try {
-      const updated = await tasksApi.update(editingTask.id, payload);
-      setTasks((current) => current.map((task) => (task.id === updated.id ? updated : task)));
-      const changedAttachments = await applyTaskAttachmentChanges(updated.id, attachmentChanges);
-      const calendarResult = attachmentChanges.syncGoogleCalendar
-        ? await syncTaskToGoogleCalendarSafely(updated.id)
-        : null;
-      if (calendarResult && !calendarResult.ok) {
-        showToast({ type: "info", message: calendarResult.message });
-      }
-      const persisted = changedAttachments || calendarResult?.task ? await tasksApi.retrieve(updated.id) : updated;
-      addNotification({
-        title: "Tarefa editada",
-        description: hasTaskAttachmentChanges(attachmentChanges)
-          ? `${updated.title} foi atualizada com anexos.`
-          : `${updated.title} foi atualizada no calendário.`,
-        type: "task",
-        actor: user?.name
-      });
-      setTasks((current) => current.map((task) => (task.id === persisted.id ? persisted : task)));
-      showToast({
-        type: "success",
-        message: calendarResult?.message ? `Tarefa editada com sucesso. ${calendarResult.message}` : "Tarefa editada com sucesso."
-      });
-      setEditingTask(null);
-      emitAppDataChanged();
-    } catch (err) {
-      const message = normalizeApiError(err);
-      setEditError(message);
-      showToast({ type: "error", message });
-    } finally {
-      setSavingEdit(false);
-    }
-  }, [addNotification, editingTask, showToast, user?.name]);
+  const handleTaskDeleted = useCallback((task) => {
+    setTasks((current) => current.filter((item) => item.id !== task.id));
+    setDetailsTask((current) => current?.id === task.id ? null : current);
+    setPreview(null);
+    setSelectedDate(null);
+  }, []);
+  const { pendingDeleteTask, deletingTaskId, requestTaskDelete, cancelTaskDelete, confirmTaskDelete } = useTaskDeletion({
+    onDeleted: handleTaskDeleted, onError: setError
+  });
 
   const handleSyncCalendar = useCallback(async function handleSyncCalendar(task) {
     if (task.google_calendar_event_id) {
@@ -732,9 +693,9 @@ export default function Calendar() {
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           <CategoryBadge category={task.category} compact />
                           <StatusBadge status={task.status} />
-                          <button type="button" onClick={() => setEditingTask(task)} className="inline-flex items-center gap-1 rounded-xl bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-600 hover:bg-blue-100">
-                            <Edit3 className="h-3 w-3" />
-                            Editar
+                          <button type="button" onClick={() => requestTaskDelete(task)} aria-label={`Excluir ${task.title}`} className="inline-flex min-h-11 items-center gap-1 rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-100">
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Excluir
                           </button>
                         </div>
                       </div>
@@ -854,10 +815,10 @@ export default function Calendar() {
                   type="button"
                   variant="secondary"
                   className="mt-3 w-full px-3 py-2 text-xs"
-                  onClick={() => setEditingTask(task)}
+                  onClick={() => requestTaskDelete(task)}
                 >
-                  <Edit3 className="h-4 w-4" />
-                  Editar tarefa
+                  <Trash2 className="h-4 w-4" />
+                  Excluir tarefa
                 </Button>
                 {calendarStatus?.is_enabled && (
                   <Button
@@ -892,10 +853,7 @@ export default function Calendar() {
           onClose={() => setSelectedDate(null)}
           onComplete={handleComplete}
           onCompleteAll={handleCompleteAll}
-          onEdit={(task) => {
-            setEditingTask(task);
-            setSelectedDate(null);
-          }}
+          onDelete={requestTaskDelete}
           onOpenDetails={setDetailsTask}
         />
       )}
@@ -903,24 +861,14 @@ export default function Calendar() {
       <TaskDetailsModal
         task={detailsTask}
         onClose={() => setDetailsTask(null)}
-        onEdit={(task) => {
-          setDetailsTask(null);
-          setSelectedDate(null);
-          setEditingTask(task);
-        }}
+        onDelete={requestTaskDelete}
       />
 
-      <TaskEditorModal
-        task={editingTask}
-        categories={categories}
-        members={members}
-        saving={savingEdit}
-        error={editError}
-        onClose={() => {
-          setEditError("");
-          setEditingTask(null);
-        }}
-        onSave={handleSaveEdit}
+      <TaskDeleteConfirmModal
+        task={pendingDeleteTask}
+        deleting={Boolean(deletingTaskId)}
+        onCancel={cancelTaskDelete}
+        onConfirm={confirmTaskDelete}
       />
     </>
   );

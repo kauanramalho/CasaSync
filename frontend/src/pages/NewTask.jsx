@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { ChevronDown, Plus, Sparkles } from "lucide-react";
 
 import AssigneePicker from "../components/AssigneePicker";
 import Button from "../components/Button";
 import Card from "../components/Card";
 import DateTimePicker from "../components/DateTimePicker";
 import ImageTaskImportPanel from "../components/ImageTaskImportPanel";
+import GoogleCalendarOptIn from "../components/GoogleCalendarOptIn";
 import PageHeader from "../components/PageHeader";
 import SelectMenu from "../components/SelectMenu";
 import TaskAttachmentField from "../components/TaskAttachmentField";
@@ -28,9 +29,11 @@ export default function NewTask() {
   const [members, setMembers] = useState([]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [pendingFiles, setPendingFiles] = useState([]);
   const [calendarStatus, setCalendarStatus] = useState(null);
   const [syncGoogleCalendar, setSyncGoogleCalendar] = useState(false);
+  const [aiExpanded, setAIExpanded] = useState(false);
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -98,12 +101,14 @@ export default function NewTask() {
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (savingRef.current) return;
     setError("");
     const reminderError = getReminderValidationError(form);
     if (reminderError) {
       setError(reminderError);
       return;
     }
+    savingRef.current = true;
     setSaving(true);
     try {
       const created = await tasksApi.create({
@@ -141,30 +146,25 @@ export default function NewTask() {
       setError(message);
       showToast({ type: "error", message });
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
 
   return (
     <>
-      <PageHeader title="Nova tarefa" subtitle="Crie uma responsabilidade com contexto, prazo, prioridade e pontuacao." user={user} />
-
-      <ImageTaskImportPanel categories={categories} members={members} currentUserId={user?.id} />
+      <PageHeader title="Nova tarefa" subtitle="O que precisa ser feito?" user={user} />
 
       <Card className="mx-auto max-w-4xl">
         <form onSubmit={handleSubmit} className="grid gap-5 md:grid-cols-2">
           <div className="md:col-span-2">
-            <label htmlFor="new-task-title" className="mb-2 block text-sm font-semibold text-ink">Titulo</label>
+            <label htmlFor="new-task-title" className="mb-2 block text-sm font-semibold text-ink">Título</label>
             <input id="new-task-title" className="soft-input" value={form.title} onChange={(event) => updateField("title", event.target.value)} minLength={2} maxLength={180} required />
           </div>
           <div className="md:col-span-2">
-            <label htmlFor="new-task-description" className="mb-2 block text-sm font-semibold text-ink">Descricao</label>
-            <textarea id="new-task-description" className="soft-input min-h-28 resize-none" value={form.description} onChange={(event) => updateField("description", event.target.value)} maxLength={1200} />
-          </div>
-          <div className="md:col-span-2">
-            <label className="mb-2 block text-sm font-semibold text-ink">Responsaveis</label>
+            <label className="mb-2 block text-sm font-semibold text-ink">Responsáveis</label>
             <AssigneePicker members={members} value={form.assignee_ids} onChange={(value) => updateField("assignee_ids", value)} />
-            <p className="mt-2 text-xs font-semibold text-muted">Se ninguem for selecionado, a tarefa fica para voce.</p>
+            <p className="mt-2 text-xs font-semibold text-muted">Sem seleção, a tarefa fica para você.</p>
           </div>
           <div>
             <label className="mb-2 block text-sm font-semibold text-ink">Categoria</label>
@@ -174,59 +174,54 @@ export default function NewTask() {
             <label className="mb-2 block text-sm font-semibold text-ink">Prazo</label>
             <DateTimePicker value={form.due_date} onChange={(value) => updateField("due_date", value)} />
           </div>
-          <TaskReminderFields form={form} onChange={updateReminder} />
+          <details className="group md:col-span-2 rounded-2xl border border-slate-200">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-semibold text-ink">
+              Lembretes {form.reminders.length > 0 && <span className="ml-auto text-xs text-muted">{form.reminders.length} ativo(s)</span>}
+              <ChevronDown className="h-4 w-4 shrink-0 transition group-open:rotate-180" />
+            </summary>
+            <TaskReminderFields form={form} onChange={updateReminder} />
+          </details>
           {calendarStatus?.is_enabled && (
-            <label
-              className={`md:col-span-2 flex items-start gap-3 rounded-2xl border px-3 py-3 text-xs font-bold ${
-                calendarStatus?.can_sync && hasGoogleCalendarDateTime(form.due_date)
-                  ? "border-blue-100 bg-blue-50/70 text-blue-700"
-                  : "border-slate-200 bg-slate-100 text-muted"
-              }`}
-            >
-              <input
-                type="checkbox"
-                className="mt-1 h-4 w-4 shrink-0 accent-blue-600"
-                checked={syncGoogleCalendar}
-                onChange={(event) => setSyncGoogleCalendar(event.target.checked)}
-                disabled={!calendarStatus?.can_sync || !hasGoogleCalendarDateTime(form.due_date) || saving}
-              />
-              <span>
-                Tambem adicionar esta tarefa ao Google Agenda quando houver data e horario.
-                {!calendarStatus?.can_sync
-                  ? ` ${calendarStatus?.message || "Conecte o Google Agenda nas configuracoes."}`
-                  : !hasGoogleCalendarDateTime(form.due_date)
-                    ? " Defina data e horario para sincronizar."
-                    : ""}
-              </span>
-            </label>
+            <div className="md:col-span-2"><GoogleCalendarOptIn checked={syncGoogleCalendar} onChange={setSyncGoogleCalendar} canSync={calendarStatus.can_sync} hasDateTime={hasGoogleCalendarDateTime(form.due_date)} busy={saving} /></div>
           )}
-          <TaskAttachmentField pendingFiles={pendingFiles} onPendingFilesChange={setPendingFiles} disabled={saving} onError={setError} />
-          <div>
-            <label className="mb-2 block text-sm font-semibold text-ink">Prioridade</label>
-            <SelectMenu
-              aria-label="Prioridade"
-              value={form.priority}
-              onChange={(value) => updateField("priority", value)}
-              options={[
-                { value: "baixa", label: "Baixa", helper: "5 pontos" },
-                { value: "media", label: "Media", helper: "10 pontos" },
-                { value: "alta", label: "Alta", helper: "20 pontos" }
-              ]}
-            />
-          </div>
-          <div>
-            <label className="mb-2 block text-sm font-semibold text-ink">Status</label>
-            <SelectMenu
-              aria-label="Status"
-              value={form.status}
-              onChange={(value) => updateField("status", value)}
-              options={[
-                { value: "pendente", label: "Pendente", helper: "Entra na fila" },
-                { value: "em_andamento", label: "Em andamento", helper: "Ja comecou" },
-                { value: "concluida", label: "Concluida", helper: "Ja pontua" }
-              ]}
-            />
-          </div>
+          <details className="group md:col-span-2 rounded-2xl border border-slate-200">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-semibold text-ink">
+              Descrição, anexos e opções <ChevronDown className="h-4 w-4 shrink-0 transition group-open:rotate-180" />
+            </summary>
+            <div className="grid gap-4 p-3 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <label htmlFor="new-task-description" className="mb-2 block text-sm font-semibold text-ink">Descrição</label>
+                <textarea id="new-task-description" className="soft-input min-h-24 resize-none" value={form.description} onChange={(event) => updateField("description", event.target.value)} maxLength={1200} />
+              </div>
+              <TaskAttachmentField pendingFiles={pendingFiles} onPendingFilesChange={setPendingFiles} disabled={saving} onError={setError} />
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-ink">Prioridade</label>
+                <SelectMenu
+                  aria-label="Prioridade"
+                  value={form.priority}
+                  onChange={(value) => updateField("priority", value)}
+                  options={[
+                    { value: "baixa", label: "Baixa", helper: "5 pontos" },
+                    { value: "media", label: "Média", helper: "10 pontos" },
+                    { value: "alta", label: "Alta", helper: "20 pontos" }
+                  ]}
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-ink">Status</label>
+                <SelectMenu
+                  aria-label="Status"
+                  value={form.status}
+                  onChange={(value) => updateField("status", value)}
+                  options={[
+                    { value: "pendente", label: "Pendente", helper: "Entra na fila" },
+                    { value: "em_andamento", label: "Em andamento", helper: "Já começou" },
+                    { value: "concluida", label: "Concluída", helper: "Já pontua" }
+                  ]}
+                />
+              </div>
+            </div>
+          </details>
           {error && <p className="md:col-span-2 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</p>}
           <div className="md:col-span-2 flex flex-col sm:flex-row sm:justify-end">
             <Button type="submit" className="w-full sm:w-auto" disabled={saving}>
@@ -236,6 +231,14 @@ export default function NewTask() {
           </div>
         </form>
       </Card>
+      <details onToggle={(event) => setAIExpanded(event.currentTarget.open)} className="group mx-auto mt-4 max-w-4xl rounded-[24px] border border-slate-200 bg-white/75 shadow-sm">
+        <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-4 py-3 font-bold text-ink">
+          <Sparkles className="h-5 w-5 shrink-0 text-blush" />
+          Criar com IA
+          <ChevronDown className="ml-auto h-5 w-5 shrink-0 transition group-open:rotate-180" />
+        </summary>
+        <ImageTaskImportPanel categories={categories} members={members} currentUserId={user?.id} active={aiExpanded} />
+      </details>
     </>
   );
 }

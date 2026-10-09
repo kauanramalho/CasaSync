@@ -12,6 +12,7 @@ import {
   Info,
   Loader2,
   Tag,
+  Trash2,
   X
 } from "lucide-react";
 
@@ -77,7 +78,7 @@ function DetailMetric({ icon: Icon, label, value, tone = "slate" }) {
   );
 }
 
-export default function TaskDetailsModal({ task, onClose, onEdit }) {
+export default function TaskDetailsModal({ task, onClose, onEdit, onDelete }) {
   const dialogRef = useRef(null);
   useDialogFocus(dialogRef, Boolean(task), onClose);
   const [details, setDetails] = useState(task);
@@ -334,6 +335,12 @@ export default function TaskDetailsModal({ task, onClose, onEdit }) {
             <Button type="button" className="w-full sm:w-auto" onClick={handleEdit}>
               <Edit3 className="h-5 w-5" />
               Editar tarefa
+            </Button>
+          )}
+          {onDelete && (
+            <Button type="button" variant="danger" className="w-full sm:w-auto" onClick={() => onDelete(currentTask)} disabled={loading}>
+              <Trash2 className="h-5 w-5" />
+              Excluir tarefa
             </Button>
           )}
         </div>

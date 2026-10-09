@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   AlertTriangle,
   BellRing,
@@ -12,7 +13,6 @@ import {
   Sparkles,
   Trash2,
   UploadCloud,
-  WandSparkles,
   XCircle
 } from "lucide-react";
 
@@ -20,6 +20,7 @@ import AssigneePicker from "./AssigneePicker";
 import Button from "./Button";
 import Card from "./Card";
 import DateTimePicker from "./DateTimePicker";
+import GoogleCalendarOptIn from "./GoogleCalendarOptIn";
 import SelectMenu from "./SelectMenu";
 import { imageAnalysisApi, integrationsApi, tasksApi } from "../services/api";
 import { emitAppDataChanged } from "../utils/events";
@@ -41,6 +42,7 @@ import {
   validateReviewItemsBeforeImport
 } from "../utils/taskSuggestionReview";
 import { useToast } from "../hooks/useToast";
+import useAIQuickReview from "../hooks/useAIQuickReview";
 
 function mergeDateTime(date, time) {
   if (!date) return "";
@@ -176,11 +178,12 @@ function clipboardImageFiles(clipboardData) {
   return files;
 }
 
-export default function ImageTaskImportPanel({ categories = [], members = [], currentUserId = null, onImported }) {
+export default function ImageTaskImportPanel({ categories = [], members = [], currentUserId = null, onImported, active = true }) {
   const { showToast } = useToast();
   const inputRef = useRef(null);
   const selectedImagesRef = useRef([]);
   const activeAnalysisJobRef = useRef("");
+  const operationRef = useRef(false);
   const [selectedImages, setSelectedImages] = useState([]);
   const [error, setError] = useState("");
   const [analysis, setAnalysis] = useState(null);
@@ -195,12 +198,8 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
   const [calendarStatus, setCalendarStatus] = useState(null);
   const [syncGoogleCalendar, setSyncGoogleCalendar] = useState(false);
   const [calendarPreferenceTouched, setCalendarPreferenceTouched] = useState(false);
-  const [autoCreateEnabled, setAutoCreateEnabled] = useState(false);
-  const [customInstructions, setCustomInstructions] = useState("");
-  const [customInstructionsDraft, setCustomInstructionsDraft] = useState("");
+  const { enabled: autoCreateEnabled } = useAIQuickReview(currentUserId);
   const [imageContext, setImageContext] = useState("");
-  const [instructionsMaxLength, setInstructionsMaxLength] = useState(1500);
-  const [savingInstructions, setSavingInstructions] = useState(false);
   const [pasteFeedback, setPasteFeedback] = useState("");
 
   const selectedItems = useMemo(() => reviewItems.filter((item) => item.selected), [reviewItems]);
@@ -220,16 +219,8 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
     (item) => item.confidence < LOW_CONFIDENCE_THRESHOLD && !item.acceptedLowConfidence
   );
   const selectedImageCount = selectedImages.length;
-  const analyzeButtonLabel = autoCreateEnabled
-    ? "Interpretar e criar automaticamente"
-    : selectedImageCount > 1
-      ? "Interpretar imagens com IA real"
-      : "Interpretar imagem com IA real";
-  const analyzingLabel = autoCreateEnabled
-    ? "IA analisando e preparando criacao..."
-    : selectedImageCount > 1
-      ? "IA analisando imagens..."
-      : "IA analisando imagem...";
+  const analyzeButtonLabel = selectedImageCount > 1 ? "Analisar imagens" : "Analisar imagem";
+  const analyzingLabel = "Analisando imagem...";
   const pendingReviewCount = importReport?.pendingReview?.length || 0;
   const createdCount = importReport?.created?.length || 0;
   const calendarCreatedCount = importReport?.created?.filter((item) => item.googleCalendarEventId).length || 0;
@@ -251,21 +242,14 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
     let alive = true;
 
     async function loadPanelSettings() {
-      const [calendarResult, preferencesResult, providerResult] = await Promise.allSettled([
+      const [calendarResult, providerResult] = await Promise.allSettled([
         integrationsApi.googleCalendarStatus(),
-        imageAnalysisApi.getPreferences(),
         imageAnalysisApi.getStatus()
       ]);
       if (!alive) return;
       if (providerResult.status === "fulfilled") setProviderStatus(providerResult.value);
       if (calendarResult.status === "fulfilled") setCalendarStatus(calendarResult.value);
       if (calendarResult.status === "rejected") setCalendarStatus(null);
-      if (preferencesResult.status === "fulfilled") {
-        const value = preferencesResult.value?.customInstructions || "";
-        setCustomInstructions(value);
-        setCustomInstructionsDraft(value);
-        setInstructionsMaxLength(preferencesResult.value?.maxLength || 1500);
-      }
     }
 
     loadPanelSettings();
@@ -443,13 +427,14 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
 
   useEffect(() => {
     function handleDocumentPaste(event) {
+      if (!active) return;
       if (event.defaultPrevented) return;
       if (isEditablePasteTarget(event.target)) return;
       handlePaste(event);
     }
     document.addEventListener("paste", handleDocumentPaste);
     return () => document.removeEventListener("paste", handleDocumentPaste);
-  }, [handlePaste]);
+  }, [active, handlePaste]);
 
   function handleInputChange(event) {
     acceptFiles(event.target.files, { source: "file" });
@@ -488,43 +473,6 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
 
   function updateImageStatus(imageId, patch) {
     setSelectedImages((current) => current.map((image) => (image.id === imageId ? { ...image, ...patch } : image)));
-  }
-
-  async function saveCustomInstructions() {
-    setSavingInstructions(true);
-    setError("");
-    try {
-      const response = await imageAnalysisApi.savePreferences({ customInstructions: customInstructionsDraft });
-      const value = response.customInstructions || "";
-      setCustomInstructions(value);
-      setCustomInstructionsDraft(value);
-      setInstructionsMaxLength(response.maxLength || instructionsMaxLength);
-      showToast({ type: "success", message: "Instrucoes da IA salvas." });
-    } catch (err) {
-      const message = normalizeApiError(err);
-      setError(message);
-      showToast({ type: "error", message });
-    } finally {
-      setSavingInstructions(false);
-    }
-  }
-
-  async function clearCustomInstructions() {
-    setSavingInstructions(true);
-    setError("");
-    try {
-      const response = await imageAnalysisApi.clearPreferences();
-      setCustomInstructions("");
-      setCustomInstructionsDraft("");
-      setInstructionsMaxLength(response.maxLength || instructionsMaxLength);
-      showToast({ type: "success", message: "Instrucoes da IA restauradas para o padrao." });
-    } catch (err) {
-      const message = normalizeApiError(err);
-      setError(message);
-      showToast({ type: "error", message });
-    } finally {
-      setSavingInstructions(false);
-    }
   }
 
   function updateReviewItem(suggestionId, patch) {
@@ -632,11 +580,12 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
   }
 
   async function handleAnalyze() {
-    if (!selectedImages.length || analyzing || importing) return;
+    if (!selectedImages.length || operationRef.current || analyzing || importing) return;
     if (providerStatus && (!providerStatus.enabled || !providerStatus.configured)) {
       setError(providerStatus.message);
       return;
     }
+    operationRef.current = true;
     setAnalyzing(true);
     setError("");
     setAnalysis(null);
@@ -678,9 +627,6 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
         buildReviewItem(item, index, categories, members, currentUserId)
       );
       const hasGoogleSuggestion = nextReviewItems.some((item) => item.googleCalendarSuggestion && item.date && item.time);
-      const shouldSyncGoogleCalendar = Boolean(
-        calendarStatus?.can_sync && (syncGoogleCalendar || (!calendarPreferenceTouched && hasGoogleSuggestion))
-      );
       setAnalysis(response);
       setReviewItems(nextReviewItems);
       if (hasGoogleSuggestion && calendarStatus?.can_sync && !calendarPreferenceTouched) {
@@ -703,53 +649,21 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
           : "Nenhuma tarefa encontrada nas imagens."
       });
 
-      if (autoCreateEnabled && nextReviewItems.length) {
-        setImporting(true);
-        setAnalysisJob((current) => ({
-          jobId: current?.jobId || "",
-          status: "creating_tasks",
-          progress: 90,
-          message: "Criando automaticamente apenas sugestoes seguras.",
-          totalImages: current?.totalImages || selectedImages.length
-        }));
-        const rawReport = await tasksApi.importSuggestions(
-          buildTaskImportPayload(nextReviewItems, { syncGoogleCalendar: false, autoCreate: true })
-        );
-        const report = await syncImportReportCalendar(rawReport, shouldSyncGoogleCalendar);
-        setImportReport(report);
-        setAnalysisJob((current) => (current ? { ...current, status: "completed", progress: 100, message: "Importacao concluida." } : current));
-        const blockedIds = new Set([...(report.pendingReview || []), ...(report.failed || [])].map((item) => item.suggestionId));
-        const pendingItems = nextReviewItems.filter((item) => blockedIds.has(item.suggestionId));
-        setReviewItems(pendingItems);
-        setItemErrors(
-          [...(report.pendingReview || []), ...(report.failed || [])].reduce((errors, item) => {
-            errors[item.suggestionId] = item.reason;
-            return errors;
-          }, {})
-        );
-        if (report.created?.length) {
-          emitAppDataChanged();
-          onImported?.(report);
-        }
-        showToast({
-          type: report.created?.length ? "success" : "info",
-          message: report.created?.length
-            ? `${report.created.length} tarefa(s) criada(s) automaticamente.`
-            : "Nenhuma sugestao foi criada automaticamente; revise os itens pendentes."
-        });
-      }
+      // Analysis is read-only. Even a saved quick-review preference never saves
+      // tasks until the user reviews the suggestions and confirms below.
     } catch (err) {
       const message = normalizeApiError(err) || "Erro ao interpretar imagem.";
       setError(message);
       showToast({ type: "error", message });
       setSelectedImages((current) => current.map((image) => (image.status === "processing" ? { ...image, status: "ready" } : image)));
     } finally {
+      operationRef.current = false;
       setAnalyzing(false);
-      setImporting(false);
     }
   }
 
-  async function handleImportSuggestions() {
+  async function handleImportSuggestions({ safeOnly = autoCreateEnabled } = {}) {
+    if (operationRef.current || analyzing || importing) return;
     setError("");
     setImportReport(null);
     setItemErrors({});
@@ -761,7 +675,10 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
       return;
     }
 
-    const validationErrors = validateReviewItemsBeforeImport(selectedItems);
+    // Safe mode delegates segregation to the backend: uncertain items stay
+    // pending rather than blocking the safe batch. Manual import still requires
+    // explicit acceptance of every selected low-confidence item.
+    const validationErrors = safeOnly ? {} : validateReviewItemsBeforeImport(selectedItems);
     if (Object.keys(validationErrors).length) {
       const message = "Corrija os itens destacados antes de criar tarefas.";
       setItemErrors(validationErrors);
@@ -770,6 +687,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
       return;
     }
 
+    operationRef.current = true;
     setImporting(true);
     try {
       setAnalysisJob((current) => ({
@@ -781,10 +699,13 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
       }));
       const shouldSyncGoogleCalendar = Boolean(syncGoogleCalendar && calendarStatus?.can_sync);
       const rawReport = await tasksApi.importSuggestions(
-        buildTaskImportPayload(selectedItems, { syncGoogleCalendar: false })
+        buildTaskImportPayload(selectedItems, { syncGoogleCalendar: false, autoCreate: safeOnly })
       );
       const report = await syncImportReportCalendar(rawReport, shouldSyncGoogleCalendar);
       setImportReport(report);
+      const createdIds = new Set((report.created || []).map((item) => item.suggestionId));
+      setReviewItems((items) => items.filter((item) => !createdIds.has(item.suggestionId)));
+      setItemErrors(Object.fromEntries([...(report.pendingReview || []), ...(report.failed || [])].map((item) => [item.suggestionId, item.reason])));
       setAnalysisJob((current) => (current ? { ...current, status: "completed", progress: 100, message: "Importacao concluida." } : current));
       if (report.created?.length) {
         emitAppDataChanged();
@@ -801,6 +722,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
       setError(message);
       showToast({ type: "error", message });
     } finally {
+      operationRef.current = false;
       setImporting(false);
     }
   }
@@ -813,9 +735,9 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
             <Sparkles className="h-3.5 w-3.5" />
             Importar por imagem
           </div>
-          <h2 className="text-xl font-black text-ink">Criar sugestoes por imagem</h2>
+          <h2 className="text-lg font-black text-ink">Envie uma imagem</h2>
           <p className="mt-1 max-w-2xl text-sm font-semibold text-muted">
-            A OpenAI interpreta a imagem no backend. Revise e confirme antes de transformar sugestoes em tarefas reais.
+            Analise, revise e confirme as tarefas sugeridas.
           </p>
         </div>
         {analysis?.needsUserReview && (
@@ -914,7 +836,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
                 <p className="mt-1 text-xs font-semibold text-muted">
                   {selectedImages.length
                     ? `Total selecionado: ${formatFileSize(selectedImages.reduce((total, image) => total + image.file.size, 0))}`
-                    : "A analise usa um adapter isolado e nao salva as imagens."}
+                    : "Escolha uma imagem e revise as sugestões antes de criar."}
                 </p>
               </div>
             </div>
@@ -974,13 +896,14 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
                   <FileImage className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-black text-ink">Contexto da imagem</p>
+                  <p id="ai-image-context-label" className="text-sm font-black text-ink">Contexto (opcional)</p>
                   <p className="mt-1 text-xs font-semibold text-muted">
-                    Opcional e temporario para esta analise. Explique o que a imagem representa para a IA criar titulos e datas melhores.
+                    Explique a imagem ou dê orientações para esta análise.
                   </p>
                 </div>
               </div>
               <textarea
+                aria-labelledby="ai-image-context-label"
                 className="soft-input mt-3 min-h-24 resize-none bg-white/90 text-sm"
                 value={imageContext}
                 maxLength={imageContextMaxLength}
@@ -997,86 +920,10 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
               </div>
             </div>
 
-            <div className="mt-4 rounded-[22px] border border-violet-100 bg-violet-50/50 p-3">
-              <div className="flex items-start gap-3">
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-white text-blush shadow-sm">
-                  <WandSparkles className="h-4 w-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-black text-ink">Instrucoes personalizadas da IA</p>
-                  <p className="mt-1 text-xs font-semibold text-muted">
-                    Elas orientam lembretes, categoria, prioridade, descricao e Google Agenda, mas as regras de seguranca do CasaSync continuam acima delas.
-                  </p>
-                </div>
-              </div>
-              <textarea
-                className="soft-input mt-3 min-h-24 resize-none bg-white/90 text-sm"
-                value={customInstructionsDraft}
-                maxLength={instructionsMaxLength}
-                onChange={(event) => setCustomInstructionsDraft(event.target.value)}
-                placeholder="Ex.: sempre sugerir lembrete 1 hora antes e adicionar ao Google Agenda quando houver data e horario."
-              />
-              <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <span className="text-xs font-bold text-muted">
-                  {customInstructionsDraft.length}/{instructionsMaxLength} caracteres
-                  {customInstructions ? " - instrucoes salvas ativas" : " - usando padrao"}
-                </span>
-                <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="px-3 py-2 text-xs"
-                    onClick={clearCustomInstructions}
-                    disabled={savingInstructions || (!customInstructions && !customInstructionsDraft)}
-                  >
-                    Limpar
-                  </Button>
-                  <Button
-                    type="button"
-                    className="px-3 py-2 text-xs"
-                    onClick={saveCustomInstructions}
-                    disabled={savingInstructions || customInstructionsDraft.length > instructionsMaxLength}
-                  >
-                    {savingInstructions ? "Salvando..." : "Salvar instrucoes"}
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            <label className="mt-4 flex items-start gap-3 rounded-2xl border border-amber-100 bg-amber-50/75 px-3 py-3 text-xs font-bold text-amber-700">
-              <input
-                type="checkbox"
-                className="mt-1 h-4 w-4 shrink-0 accent-amber-600"
-                checked={autoCreateEnabled}
-                onChange={(event) => setAutoCreateEnabled(event.target.checked)}
-                disabled={analyzing || importing}
-              />
-              <span>
-                Confiar na IA e criar automaticamente. Tarefas com baixa confianca, dados incompletos ou risco de erro ainda ficam para revisao.
-              </span>
-            </label>
+            <Link to="/configuracoes?tab=ai" className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-blush hover:underline">Preferências da IA</Link>
 
             {calendarStatus?.is_enabled && (
-              <label
-                className={`mt-3 flex items-start gap-3 rounded-2xl border px-3 py-3 text-xs font-bold ${
-                  calendarStatus?.can_sync ? "border-blue-100 bg-blue-50/70 text-blue-700" : "border-slate-200 bg-slate-100 text-muted"
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  className="mt-1 h-4 w-4 shrink-0 accent-blue-600"
-                  checked={syncGoogleCalendar}
-                  onChange={(event) => {
-                    setCalendarPreferenceTouched(true);
-                    setSyncGoogleCalendar(event.target.checked);
-                  }}
-                  disabled={!calendarStatus?.can_sync || analyzing || importing}
-                />
-                <span>
-                  Tambem adicionar tarefas criadas ao Google Agenda quando houver data e horario.
-                  {!calendarStatus?.can_sync ? ` ${calendarStatus?.message || "Conecte o Google Agenda nas configuracoes."}` : ""}
-                </span>
-              </label>
+              <GoogleCalendarOptIn plural checked={syncGoogleCalendar} canSync={calendarStatus.can_sync} busy={analyzing || importing} onChange={(value) => { setCalendarPreferenceTouched(true); setSyncGoogleCalendar(value); }} />
             )}
 
             <p className="mt-4 text-xs leading-relaxed text-muted" role="status">
@@ -1088,7 +935,7 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
             </p>
             <Button type="button" className="mt-4 w-full" onClick={handleAnalyze} disabled={!selectedImages.length || analyzing || importing || Boolean(providerStatus && (!providerStatus.enabled || !providerStatus.configured))}>
               {analyzing ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImagePlus className="h-5 w-5" />}
-              {importing && autoCreateEnabled ? "Criando automaticamente..." : analyzing ? analyzingLabel : analyzeButtonLabel}
+              {analyzing ? analyzingLabel : analyzeButtonLabel}
             </Button>
           </div>
 
@@ -1365,31 +1212,12 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
 
               {hasLowConfidencePendingReview && (
                 <div className="mt-4">
-                  <SoftAlert>Ha sugestoes de baixa confianca selecionadas. Marque a confirmacao de revisao nelas antes de criar.</SoftAlert>
+                  <SoftAlert>{autoCreateEnabled ? "Itens incertos ficam pendentes ao confirmar sugestões seguras. Para criá-los depois, revise e marque a confirmação em cada item." : "Há sugestões de baixa confiança selecionadas. Confirme a revisão nelas antes de criar."}</SoftAlert>
                 </div>
               )}
 
               {calendarStatus?.is_enabled && (
-                <label
-                  className={`mt-4 flex items-start gap-3 rounded-2xl border px-3 py-3 text-xs font-bold ${
-                    calendarStatus?.can_sync ? "border-blue-100 bg-blue-50/70 text-blue-700" : "border-slate-200 bg-slate-100 text-muted"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    className="mt-1 h-4 w-4 shrink-0 accent-blue-600"
-                    checked={syncGoogleCalendar}
-                    onChange={(event) => {
-                      setCalendarPreferenceTouched(true);
-                      setSyncGoogleCalendar(event.target.checked);
-                    }}
-                    disabled={!calendarStatus?.can_sync || importing}
-                  />
-                  <span>
-                    Tambem adicionar tarefas criadas ao Google Agenda.
-                    {!calendarStatus?.can_sync ? ` ${calendarStatus?.message || "Conecte o Google Agenda nas configuracoes."}` : ""}
-                  </span>
-                </label>
+                <GoogleCalendarOptIn plural checked={syncGoogleCalendar} canSync={calendarStatus.can_sync} busy={importing} onChange={(value) => { setCalendarPreferenceTouched(true); setSyncGoogleCalendar(value); }} />
               )}
 
               <div className="mt-4 flex flex-col gap-3 sm:flex-row">
@@ -1402,8 +1230,11 @@ export default function ImageTaskImportPanel({ categories = [], members = [], cu
                 </Button>
                 <Button type="button" className="w-full sm:flex-[1.5]" onClick={handleImportSuggestions} disabled={importing || !selectedItems.length}>
                   {importing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
-                  {importing ? "Criando tarefas" : `Criar ${selectedItems.length} tarefa(s) selecionada(s)`}
+                  {importing ? "Criando tarefas" : autoCreateEnabled ? "Confirmar sugestões seguras" : `Criar ${selectedItems.length} tarefa(s) selecionada(s)`}
                 </Button>
+                {autoCreateEnabled && pendingReviewCount > 0 && (
+                  <Button type="button" variant="secondary" disabled={importing || !selectedItems.length} onClick={() => handleImportSuggestions({ safeOnly: false })}>Criar itens revisados</Button>
+                )}
               </div>
             </div>
           )}
